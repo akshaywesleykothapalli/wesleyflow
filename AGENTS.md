@@ -35,3 +35,11 @@ The user authorizes the ten proposal Domain contracts, strict bounded serializat
 ## Phase1B.2B final review and local checkpoint
 
 The current user authorizes independent review, narrow Phase1B.2B fixes/regressions and verification if necessary, explicit staging of reviewed Phase1B.2B files, and one local commit named `feat(workspace): implement structured proposal validation`. This supersedes the prior no-staging/no-commit statement for that checkpoint only. No push, remote creation, live model/runtime/effects, or Phase1B.2C. Preserve historical evidence and stop after the checkpoint.
+
+## Phase1B.2C read-only observation authorization
+
+The current user authorizes an explicit fixture-root registry, read-only descriptor broker in SystemOperations, Domain observation ports/data, Workspace snapshots/context and proposal integration, deterministic disposable-fixture tests, documentation and actual builds/full/replay verification. Historical no-2C statements are superseded only for this scope. No app operational wiring, automatic real-project access, filesystem effects, live provider/runtime/inference, general process executor, new entitlement, Phase1B.3, staging, commit or push. Preserve existing behavior and stop after2C.
+
+## Phase1B.2C final review and local checkpoint
+
+The current user authorizes independent review, reproducible Phase1B.2C fixes/regression tests, actual focused/full/replay/Debug/Release/concurrency verification, explicit staging of only reviewed files, and one local commit named `feat(workspace): add secure read-only project context`. This supersedes the preceding no-staging/no-commit statement only for this checkpoint. Preserve prior behavior/evidence; no push, remote creation, live inference, productive operations or Phase1B.3. Stop after the checkpoint.

@@ -5,6 +5,8 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "19CA6BC6250D3A8FFBC14E14" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Packages/WesleyFlowCore/Tests/WorkspaceTests/ContextObservationTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "CD0CE631E9C5325AD187F337" = { "isa" = "PBXBuildFile"; "fileRef" = "19CA6BC6250D3A8FFBC14E14"; };
     "A97B3181A49D1868CD436BC9" = {
       "isa" = "PBXFileReference";
       "lastKnownFileType" = "sourcecode.swift";
@@ -49,6 +51,7 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "CD0CE631E9C5325AD187F337",
         "178EE4FA3E52D432F672451C",
         "3D069E884CEAFF79F8142F22",
         "0F51B4F222156C3C997BFC7E",
@@ -373,6 +376,7 @@
       "isa" = "PBXGroup";
       "name" = "Sources";
       "children" = (
+        "19CA6BC6250D3A8FFBC14E14",
         "A97B3181A49D1868CD436BC9",
         "EA2F7FB0C13DAB7131652216",
         "629959870F4D32F813DF64D3",

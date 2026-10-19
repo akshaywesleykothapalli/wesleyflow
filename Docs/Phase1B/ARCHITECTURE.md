@@ -57,3 +57,7 @@ The new ADR selects reduced authority, not an approved general execution mode un
 ## Phase1B.2B implementation status
 
 A populated Workspace target now implements pure proposal decoding, SHA256 identity and validation against injected snapshots/policy; it imports Domain plus Foundation/CryptoKit only. Domain contains the ten proposal values. The app does not wire Workspace into a productive feature, and no provider, real read context, broker or verifier is activated. Existing Phase1A/1B.1 source and behavior remain unchanged. See [completion report](PHASE1B2B-COMPLETION.md);1B.2C requires separate authorization.
+
+## Phase1B.2C read-only implementation
+
+SystemOperations now owns ReadOnlyWorkspaceBroker, an actor implementing the Domain ProjectRegistry and WorkspaceObservationSource ports for explicitly injected local fixture roots. WorkspaceSnapshotBuilder and ContextAssembler consume those ports; neither imports SystemOperations nor opens source files. Domain contains immutable Sendable observation data and a conservative context allowlist. Package dependencies and app composition are unchanged. No provider, productive effect broker or real-project UI is wired. See [completion and limitations](PHASE1B2C-COMPLETION.md). Root registration and read observation are distinct from file-modification authority; the existing permission broker still rejects productive operations. Later context disclosure requires explicit review/consent and provider-specific resource/token gates.
