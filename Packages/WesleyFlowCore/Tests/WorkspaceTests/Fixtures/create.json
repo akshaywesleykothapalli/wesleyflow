@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "proposalID": "11111111-1111-4111-8111-111111111111",
+  "projectID": "22222222-2222-4222-8222-222222222222",
+  "baseSnapshotDigest": "a15c9dee78a160f485bd84b7c33e5c1c04490dca4cb472a4f286f9b115c15983",
+  "changes": [
+    {
+      "kind": "create",
+      "relativePath": "Sources/New.swift",
+      "expectedRevision": {
+        "kind": "absent"
+      },
+      "utf8Content": "new\n"
+    }
+  ]
+}

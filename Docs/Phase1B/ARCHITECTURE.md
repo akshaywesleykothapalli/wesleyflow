@@ -24,7 +24,7 @@ This is the future product flow, not a description of active implementation. Con
 
 ## Module and authority direction
 
-App composes concrete adapters. Presentation imports Domain/TaskExecution; TaskExecution imports Domain only. CodingAgents, Workspace, SystemOperations, ModelProviders, Verification and Persistence each import Domain only. Domain imports no vendor, UI, process or persistence framework. Do not add empty targets. Today ModelProvider remains a documented future Domain port, not an implemented Swift protocol or populated target. Preserve its replaceable design; Ollama is the primary future adapter, not a Domain dependency.
+App composes concrete adapters. Presentation imports Domain/TaskExecution; TaskExecution imports Domain only. CodingAgents, Workspace, SystemOperations, ModelProviders, Verification and Persistence each import Domain only. Domain imports no vendor, UI, process or persistence framework. Do not add empty targets. ModelProvider remains a documented future Domain port, not an implemented Swift protocol or populated target. Preserve its replaceable design; Ollama is the primary future adapter, not a Domain dependency.
 
 Workspace owns pure proposal validation and context/snapshot normalization. Trusted SystemOperations owns root handles and actual authorized read/write effects; a snapshot contains identities and digests, not a reusable root capability. ModelProviders owns bounded transport, exact artifact identity, one inference lease and cancellation/resource accounting. It receives reviewed bytes, never an executor, grant issuer, bookmark or raw host-root handle. Verification independently checks broker receipts and observed post-state. Adapter calls pass through Domain ports injected by App, never cross-adapter imports.
 
@@ -36,7 +36,7 @@ Preserve CodingAgentRuntime, fixture HTTP/SSE parsers, bounded queues, foreign/d
 
 ## Proposal and revision contracts
 
-[PROPOSAL-CONTRACTS.md](PROPOSAL-CONTRACTS.md) defines the future version 1 typed values and strict decoder/validator behavior. A proposal is not an accepted plan, permission, effect receipt or verified result. Separate bounded proposal tasks from separately approved immutable application tasks. Proposal-only completion means **proposal prepared**, never code edited or tests passed.
+[PROPOSAL-CONTRACTS.md](PROPOSAL-CONTRACTS.md) defines the implemented1B.2B version1 data values and pure decoder/validator behavior. A proposal is not an accepted plan, permission, effect receipt or verified result. Separate bounded proposal tasks from separately approved immutable application tasks. Proposal-only completion means **proposal prepared**, never code edited or tests passed.
 
 Before edits, add a narrowly scoped versioned coding-plan/receipt contract with canonical descriptor digests, base and expected per-step post-snapshots and independently observed final snapshot. Preserve existing TaskPlan decoding and its fixed-revision semantics; never mutate an admitted plan or relabel an edited tree as the old base. Domain/TaskExecution integration and persistence migrations require 1B.4 authorization and tests. No file broker is implemented or activated by this revision.
 
@@ -53,3 +53,7 @@ Actor-owned mutable sessions/resources; Sendable values across boundaries; expli
 | 1B-D05 independent evidence | Retained; command execution separately blocked on containment |
 
 The new ADR selects reduced authority, not an approved general execution mode under Phase0 ADR008. Host build/test commands over generated projects remain blocked until separately established and tested subprocess containment. No implicit unrestricted-host fallback. Follow [milestones](IMPLEMENTATION-PLAN.md), [security](SECURITY-BOUNDARIES.md), [lifecycle](TASK-LIFECYCLE.md), [provider](MODEL-PROVIDER.md), [gates](TEST-AND-ACCEPTANCE.md), [risks](RISKS.md) and [pivot report](ARCHITECTURE-PIVOT-REPORT.md). Each later milestone still requires separate implementation authorization.
+
+## Phase1B.2B implementation status
+
+A populated Workspace target now implements pure proposal decoding, SHA256 identity and validation against injected snapshots/policy; it imports Domain plus Foundation/CryptoKit only. Domain contains the ten proposal values. The app does not wire Workspace into a productive feature, and no provider, real read context, broker or verifier is activated. Existing Phase1A/1B.1 source and behavior remain unchanged. See [completion report](PHASE1B2B-COMPLETION.md);1B.2C requires separate authorization.

@@ -27,3 +27,11 @@ The current user authorizes only an experimental Swift sandbox helper, ad-hoc si
 ## Phase 1B.2A finalization and adopted architecture
 
 The user adopts proposal-only local AI inference. Follow Docs/Phase1B/ARCHITECTURE.md, PROPOSAL-CONTRACTS.md, revised milestones/gates and the adopted ADR. Keep OpenCode fixture infrastructure preserved and disabled; ModelProvider remains a replaceable documented future port. No model commands, writes/deletes, self-approval or permission expansion. Only a separately authorized future broker may perform effects; no provider/broker is activated now. This request authorizes documentation/contracts-in-documentation, scope/evidence consistency review, preservation of the existing standalone containment experiment, and one reviewed local commit named `docs(security): adopt proposal-only coding architecture`. It supersedes the prior no-commit instruction only for that checkpoint. No live inference, new production source, Phase1B.2B implementation, push or remote creation. Before any command-based product verification separately establish and test subprocess containment. Stop after finalization.
+
+## Phase 1B.2B proposal validation authorization
+
+The user authorizes the ten proposal Domain contracts, strict bounded serialization/hashing and a pure Workspace validation engine with injected snapshots/policy, fixtures/tests and actual focused/full/replay/Debug/Release/concurrency/module verification. Preserve Phase1A and1B.1 behavior; no broker, filesystem observations/effects, provider/runtime/AI execution, new services or external dependencies, or later phase. Validation is data-only and never user approval or an executable capability. The earlier no-1B.2B statement is superseded only within this scope. No commit, staging, push or Phase1B.2C. Stop after1B.2B.
+
+## Phase1B.2B final review and local checkpoint
+
+The current user authorizes independent review, narrow Phase1B.2B fixes/regressions and verification if necessary, explicit staging of reviewed Phase1B.2B files, and one local commit named `feat(workspace): implement structured proposal validation`. This supersedes the prior no-staging/no-commit statement for that checkpoint only. No push, remote creation, live model/runtime/effects, or Phase1B.2C. Preserve historical evidence and stop after the checkpoint.

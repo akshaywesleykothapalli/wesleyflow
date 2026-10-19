@@ -1,6 +1,6 @@
 # Revised Phase 1B milestones
 
-19 October 2026 · Adopted architecture; the names below reconcile the old broad1B.2 into smaller proposed delivery milestones. Every future implementation needs separate authorization. This task implements none of them.
+19 October 2026 · Adopted architecture; the names below reconcile the old broad1B.2 into smaller proposed delivery milestones. Every future implementation needs separate authorization. The subsequent user request authorized1B.2B only; see its implementation status below.
 
 ## Mapping and prerequisites
 
@@ -19,3 +19,7 @@ Dependency order: **1B.1 + 1B.2A → 1B.2B → 1B.2C → 1B.3 → 1B.4 → 1B.5*
 PB/PC/PI/PE/PX are revised names, not aliases declaring old B2–B5 complete. [Acceptance criteria](TEST-AND-ACCEPTANCE.md) define reporting. No generated project build/test command may run merely because its executable is allowlisted; scripts and tests are arbitrary code requiring the separate contained runner gate.
 
 For every phase: keep Domain imports inward, no unnecessary abstractions/dependencies, explicit toolchain/concurrency, meaningful deterministic tests, source hashes and actual exits. Zero mandatory skips/empty selectors; report limits accurately. Rollback means disable the new adapter, revoke and assess resources, preserve history/user changes/unresolved effects; never reset Git, delete evidence or restart a failed effect automatically. No new runtime grants survive restart.
+
+## Subsequent1B.2B status
+
+Structured proposal contracts, strict serialization/hashing and pure validation are implemented and verified on the available Xcode27beta/Swift6.4 lane. Focused123 cases and full/replay474 cases pass; Debug/Release pass. See [actual evidence](PHASE1B2B-COMPLETION.md). This completes the pure PB implementation scope, not the PC/PI/PE/command/PX gates or minimum-OS/compiler release lane.1B.2C may be separately authorized next; it has not begun.
