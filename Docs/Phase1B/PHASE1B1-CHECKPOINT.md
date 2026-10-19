@@ -1,5 +1,8 @@
 # Phase 1B.1 final review and Git checkpoint
 
+Current architecture note (2A finalization): this is a historical phase record. [Proposal-only architecture](ARCHITECTURE.md) and the [adopted containment ADR](ADR-EXECUTION-CONTAINMENT.md) now govern delivery. OpenCode stays disabled; retained gateway/runtime references below describe optional infrastructure, not a requirement or authorization for revised1B.3. Original evidence and phase results remain unchanged.
+
+
 19 October 2026 · Review decision: PASS for the requested local checkpoint after a narrow fixture-session correction. No production coding agent or Phase1B.2 implementation is enabled.
 
 ## Review of the seven requested checks

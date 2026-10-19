@@ -1,5 +1,8 @@
 # Phase 1B.1 completion report
 
+Current architecture note (2A finalization): this is a historical phase record. [Proposal-only architecture](ARCHITECTURE.md) and the [adopted containment ADR](ADR-EXECUTION-CONTAINMENT.md) now govern delivery. OpenCode stays disabled; retained gateway/runtime references below describe optional infrastructure, not a requirement or authorization for revised1B.3. Original evidence and phase results remain unchanged.
+
+
 19 October 2026 · Fixture-only coding-agent protocol foundation
 
 Checkpoint follow-up: the original 349-case evidence below was reproduced. Final review added two regression cases and a narrow observer state fix; the latest total is 351 cases. See [final review and checkpoint](PHASE1B1-CHECKPOINT.md) for current results and the separately authorized local commit.

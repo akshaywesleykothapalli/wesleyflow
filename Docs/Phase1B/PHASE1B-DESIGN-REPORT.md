@@ -1,5 +1,8 @@
 # Phase 1B.0 design report
 
+Current architecture note (2A finalization): this is a historical phase record. [Proposal-only architecture](ARCHITECTURE.md) and the [adopted containment ADR](ADR-EXECUTION-CONTAINMENT.md) now govern delivery. OpenCode stays disabled; retained gateway/runtime references below describe optional infrastructure, not a requirement or authorization for revised1B.3. Original evidence and phase results remain unchanged.
+
+
 19 October 2026 · Documentation-only delivery · No implementation authorization inferred.
 
 ## Recommendation

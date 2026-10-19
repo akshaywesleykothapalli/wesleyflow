@@ -19,3 +19,11 @@ The current user explicitly authorizes Domain protocol values, a populated Codin
 ## Phase 1B.1 final review and checkpoint authorization
 
 The user separately authorizes final review, narrow Phase1B.1 fixes with regression verification, explicit staging of reviewed implementation/documentation, and one local commit named `feat(agent): add fixture-only coding runtime foundation`. This supersedes the prior no-commit statement for that single checkpoint only. No push, remote creation, live runtime/provider execution or Phase1B.2 work.
+
+## Phase 1B.2A containment feasibility authorization
+
+The current user authorizes only an experimental Swift sandbox helper, ad-hoc signing of disposable test bundles, harmless synthetic filesystem/local-listener/process-lifecycle probes, relevant tests/builds and feasibility/ADR documentation. Keep experiments outside production targets. No OpenCode, inference, sensitive-data access, unrelated projects, system service installation, privileged/system-security changes, broad Phase1B.2, commit or push. Same-user native Codex execution approval does not authorize sudo or system-wide changes. Stop any test requiring those and report it separately.
+
+## Phase 1B.2A finalization and adopted architecture
+
+The user adopts proposal-only local AI inference. Follow Docs/Phase1B/ARCHITECTURE.md, PROPOSAL-CONTRACTS.md, revised milestones/gates and the adopted ADR. Keep OpenCode fixture infrastructure preserved and disabled; ModelProvider remains a replaceable documented future port. No model commands, writes/deletes, self-approval or permission expansion. Only a separately authorized future broker may perform effects; no provider/broker is activated now. This request authorizes documentation/contracts-in-documentation, scope/evidence consistency review, preservation of the existing standalone containment experiment, and one reviewed local commit named `docs(security): adopt proposal-only coding architecture`. It supersedes the prior no-commit instruction only for that checkpoint. No live inference, new production source, Phase1B.2B implementation, push or remote creation. Before any command-based product verification separately establish and test subprocess containment. Stop after finalization.

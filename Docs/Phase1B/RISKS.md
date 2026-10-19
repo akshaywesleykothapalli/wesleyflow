@@ -1,34 +1,29 @@
-# Phase 1B risk register
+# Phase 1B risk register — proposal-only architecture
 
-19 October 2026 · Potential future exposure, not findings of an enabled production agent.
+19 October 2026 · Updated after adopted2A finalization. Future exposure, not evidence of an enabled production agent. Original risk history is preserved in Git and phase reports.
 
-| ID / priority | Risk and present evidence | Required closure / responsible boundary | Blocking scope |
+| ID / priority | Current evidence and changed applicability | Required closure | Blocking scope |
 |---|---|---|---|
-| B-R01 / critical | No verified OS containment. Native OpenCode/shell can bypass WF-mediated tools; HTTP is not isolation | Select execution-mode ADR, explicit approval and B2 OS evidence; SystemOperations/security review | All live runtime/general-purpose host effects and untrusted autonomous work |
-| B-R02 / high | Installed V1 1.18.25; rolling docs include incompatible V2 and potentially changed routes | Pin binary+schema, fixture/conformance test exact fields; CodingAgents | Live API enablement; fixture-only 1B.1 can proceed |
-| B-R03 / critical | Configuration/plugins/hooks can execute before tool prompts; personal global config exists, contents intentionally unopened | Isolated config/data/home and sanitized context; effective provenance/negative tests; CodingAgents/SystemOperations | Live runtime launch |
-| B-R04 / high | Current fixed-revision immutable TaskPlan cannot honestly represent edits/final verification | Narrow versioned plan/receipt/revision extension, migration/terminal/evidence regressions; Domain/TaskExecution/Workspace | Productive application/verification, not transport fixtures |
-| B-R05 / critical | Current public token is identity, coordinator grant consume is not final filesystem enforcement | Broker-only one-use dispatch capability with final revalidation; SystemOperations | File/process effects |
-| B-R06 / high | Abort RPC/HTTP cancellation does not prove worker, descendant or shared Ollama computation stopped | Positive resource evidence within 5 s or quarantine; no kill of unrelated daemon; supervisor/provider | Physical cancellation and safe resource-reuse claims |
-| B-R07 / high | 7–8B weights plus cache/runtime/VM may exceed 8 GiB; 16 GiB machine has other load | Actual aggregate 30-minute M4 tests, declared thresholds; ModelProviders | Live model acceptance/E2E |
-| B-R08 / high | OpenCode provider bridge/gateway and enforcement of turn caps unverified | Pinned provider protocol, bounded requests and no hidden inference; CodingAgents/ModelProviders | Live OpenCode+Ollama integration |
-| B-R09 / high | Model tool quality unknown, particularly smaller context; no inference performed | Frozen 20-task corpus, malformed-call rejection, independent success; ModelProviders/Verification | Model selection, never authorization correctness |
-| B-R10 / high | Build/test scripts are arbitrary code; Linux isolation cannot qualify AppKit/macOS verification | Accepted macOS contained runner/toolchain with B4 evidence, or hold feature; Verification/SystemOperations | Native independent command verification |
-| B-R11 / high | Path swaps/hardlinks/nested aliases/external editors defeat naïve root checks | Handle-relative no-follow access, restrictive first patch scope, hashes and race/OS tests; Workspace/broker | Project access/effects |
-| B-R12 / high | External runtime content caches bypass default sanitized WF history; projected quota not hard limit | Ephemeral isolated data, combined content quota accounting, opt-in artifacts, cache cleanup/uncertainty tests; Persistence/runtime | Privacy/quota/production evidence acceptance |
-| B-R13 / high | Partial multi-file edits and DB/filesystem crash boundary cannot be atomic | Per-file intent/receipt and artifact matrix; inspect unknowns, no replay/automatic rollback; Persistence/broker | Productive reliability claims |
-| B-R14 / high | macOS26.0 runtime and full Xcode26.3/6.2.3 lane remain unverified; selected tools beta | Separate GC/stable release evidence on supported host; compatibility owner | Compatibility/release claim, not docs/fixture design |
-| B-R15 / medium | SSE replay/ordering/exact terminal events and retention lifetime unverified | B1 bounds, duplicate/foreign event tests, status reconciliation without resend; CodingAgents | Transport acceptance/live reconnection |
-| B-R16 / medium | User authorization can be confused with malicious model/project approval text | Trusted UI exact scope, escaped rendering, no autoapprove; Presentation/broker | Every productive operation |
+| B-R01 / critical | Tested App Sandbox enforced outside-container restrictions but lacked complete task/executable/descendant boundary. Live OpenCode disabled, not accepted with deferrals | Separate concrete isolation decision/tests if any untrusted execution returns; command subgate remains mandatory | General runtime and generated build/test execution |
+| B-R02 / high | Pinned1.18.25 static schema/fixtures retained; live binary conformance untested. Not a dependency of direct inference | New decision/authorization plus exact binary/schema conformance before optional reuse | Optional future OpenCode only |
+| B-R03 / critical | OpenCode configuration/plugins/hooks remain unverified; no launcher enabled. Hostile project text also threatens provider/policy injection | No execution of context/config; strict data-only proposals and trusted provider routes; contained safe-start proof before any runtime reconsideration | Runtime startup; PC/PI hostile-context acceptance |
+| B-R04 / high | Existing fixed-revision TaskPlan cannot honestly represent edits | Versioned per-step expected/observed revision/effect ADR, old-model migration tests, immutable application task | PE productive editing |
+| B-R05 / critical | Public identities are not dispatch authority; current broker rejects productive effects | Private one-use final-dispatch capability with exact scope/generation/deadline/root/hash rechecks | Every productive effect |
+| B-R06 / high | Child survived forced parent death. Provider HTTP cancel is not server stop; no model inference tested | Positive owned-resource/lease settlement within shared5s or quarantine; never kill unrelated daemon | Resource reuse/physical-stop claims; commands |
+| B-R07 / high | M4/16GiB; two7–8B artifacts known historically, no winning benchmark. Tiny helper RSS is not model budget |30-minute aggregate8GiB/headroom4GiB target-device workload and artifact accounting | PI live model acceptance |
+| B-R08 / high | OpenCode-to-Ollama gateway no longer required; direct Ollama structured output and cancellation unverified | Replaceable ModelProvider conformance, bounded structured bytes, no arbitrary routes/pull/cloud, exact leases | PI enablement |
+| B-R09 / high | Proposal quality and stale/malformed handling unmeasured | Frozen20-task corpus, compare both candidates; reject invalid output, select neither on failure | Model selection; never grants authority |
+| B-R10 / critical | Builds/tests execute arbitrary code even without an agent runtime. App Sandbox experiment did not qualify a general runner | Separately establish and test contained macOS runner; independent actual command evidence | Command-based verification in PE/PX |
+| B-R11 / high | Pure paths/hashes cannot stop root/symlink/hardlink/alias races | Trusted handle-relative no-follow reads/effects, root/file identities, scoped snapshots and actual race tests | PC disclosure and PE writes |
+| B-R12 / high | Prompts/source/cache/evidence can exceed retention/quotas | Opt-in content, sanitized durable summaries, combined100MiB quota/10MiB reserve; actual provider accounting and cleanup | PC/PI/PE privacy and production retention |
+| B-R13 / high | Multi-file effects and DB are not one atomic transaction | Per-file intent/receipt/crash reconciliation; no automatic retry/rollback; unknowns visible | PE/PX reliability |
+| B-R14 / high | Swift6.4/Xcode27beta/macOS27.2 evidence only; actual macOS26 and compiler floor open | Separate full older-toolchain/runtime and stable signing/release lane | Compatibility/release claims |
+| B-R15 / medium | Fixture SSE bounds/epochs tested; optional live replay still unverified. New proposal decoder not implemented | Preserve existing fixture tests; PB strict bounded parser/digest vectors; PI bounded stream and no blind resend | PB/PI, optional runtime reconsideration |
+| B-R16 / critical | Model/project approval text can imitate user intent; a validation result is not authority | MainActor exact diff/scope approval, policy/validator failure blocks, one-use broker dispatch; no approval/result wire fields | Every productive operation |
+| B-R17 / high | Proposal-only design reduces execution authority but still discloses selected source to provider and admits hostile structured bytes | PC explicit bounded disclosure; PB unknown/duplicate/schema/size rejection; provider threat/privacy model | PB/PC/PI |
 
-## Decisions still requiring evidence or approval
+## Current disposition
 
-The primary transport and reduced-authority model are recommended. Execution-mode acceptance remains open: can a properly packaged sandboxed proposal helper run the pinned runtime with no host data/egress, or is a dedicated VM necessary and affordable? No mechanism has passed B2. A VM may need images/toolchains/entitlements and more RAM/storage than available; none is approved for provisioning here.
+Architecture adopts proposal-only local inference, not an active feature. PB documentation is ready for separately scoped implementation. No broker/provider is enabled. OpenCode fixture infrastructure is preserved and disabled. XPC/VM are research alternatives only; neither is accepted for general execution and no provisioning is authorized.
 
-Can shared Ollama expose enough cancellation/residency evidence without disrupting other clients? If not, require a separately owned provider deployment or keep inference disabled. Can the exact V1 runtime route all inference through the scoped gateway and disable configuration/extension side effects? Can all internal turns/tool attempts be bounded? A negative answer favors the direct proposal-only provider fallback, not broader authority.
-
-The versioned revision-chain/evidence extension needs an ADR and old-store tests before mutation. Source retention opt-in and a trusted approval/evidence UI must exist before sending real code or applying changes. Keep 0A graph/lifecycle intact and resolve contradictions explicitly; old historical phase numbering does not grant any new implementation scope.
-
-## Readiness disposition
-
-Documentation is ready for review and a **separately authorized 1B.1 fixture-only implementation**. Real OpenCode sessions, host changes, commands, model acceptance and 1B completion remain HOLD until their gates pass. No P0/P1 production defect is inferred solely from a future risk; these priorities describe how severely an unsafe integration could fail. Existing Phase1A compatibility/storage limitations remain in force.
+Accepting this reduced architecture closes the decision of which primary path to pursue; it does not close the evidence gates above or Phase0 ADR008's requirements for any future command execution. No risk is waived because an application policy says denied, a signature exists, cancellation was acknowledged, or351 deterministic tests passed.

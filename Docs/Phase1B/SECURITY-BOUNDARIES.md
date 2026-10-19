@@ -1,6 +1,6 @@
 # Security boundaries and execution gate
 
-19 October 2026 · Highest-priority requirements · No containment mechanism was implemented or tested in this task.
+19 October 2026 · Revised after2A. The tested native helper configuration was insufficient for the complete execution requirements; it did enforce measured restrictions. Proposal-only inference adopted. No live provider/broker activation.
 
 ## Authority separation
 
@@ -9,7 +9,7 @@
 | User authorization | Trusted MainActor UI gesture, showing exact project/diff/command scope | Decision outcome only; project text is never a gesture |
 | WF policy | SystemOperations broker, immutable limits and session revocation | Normalized denial/result, no issuer capability |
 | Runtime session | CodingAgents actor and supervised worker ownership | Its own opaque session ID and bounded context |
-| Tool proposals | Model/runtime, untrusted input | Ability to propose, never authority to execute |
+| Structured proposals | Model, untrusted input | Create/update data only, never commands or authority to execute |
 | Actual effects | SystemOperations dispatch boundary | Sanitized receipts after authorized completion |
 | Filesystem | Broker-held root/directory descriptors and one-use operation capability | Selected bytes, relative logical paths; no raw host capability |
 | Terminal | Broker-owned executable/argv/environment/process descriptors | Output data, never shell access or arbitrary command delegation |
@@ -35,11 +35,15 @@ Apple Virtualization supports VM infrastructure, including macOS guests on Apple
 
 Do not base production security on ad hoc sandbox-exec profiles, process groups, code signing, Hardened Runtime or TCC consent alone. No supported arbitrary-process sandbox profile has been selected/verified. A signed, minimal sandboxed proposal helper may be lighter than a VM, but embedding this runtime, config writes, inherited rights and local inference connectivity remain feasibility gates.
 
-## Selected safe default and fallback
+## Adopted safe default and explicit gates
 
-No native OpenCode access to a host project, home, Keychain, credentials, global config or inherited descriptors. Start only deterministic fixtures in 1B.1. A future live proposal worker gets explicitly selected source bytes in a fresh disposable snapshot after containment and budget validation. Host brokers apply reviewed changes; guest-generated patches remain hostile data. Builds/tests can execute arbitrary repository scripts and generated code; require a separate contained verification boundary, not merely approval for the build executable.
+Use direct replaceable local ModelProvider inference with no OpenCode/native tool engine. The model receives only consented bounded context and returns [strict proposal data](PROPOSAL-CONTRACTS.md). It cannot launch commands, write/delete files, extend permissions or approve itself. Proposal validation and policy precede a trusted user gesture; a failed validator/policy cannot be overridden into dispatch by approval. Context authorization happens before disclosure, separately from later write approval.
 
-Execution-mode ADR and explicit scoped user approval must precede any general-purpose worker/build. The design recommends isolated mode. Trusted-project unrestricted mode remains an alternative allowed by old ADR008 only with separate visible user-account-authority approval; **not selected here**, never valid for untrusted autonomous work. If no isolation candidate fits M4/16 GiB or native toolchain needs, hold live execution. Direct Ollama proposal generation with WF-controlled effects is the safer reduced feature, also requiring its own implementation scope and provider cancellation gates.
+Only a separately implemented broker may consume exact one-use final-dispatch authority and perform changes. The present PermissionBroker continues to reject productive operations. No file broker, live provider or general process executor is enabled here. Independent content verification must compare actual receipts/post-state; build/test verification additionally needs separately established and tested subprocess containment. A build executable allowlist alone does not confine scripts/generated code.
+
+The empirical distinction is mandatory: outside-container syscall denials were OS enforcement; the experiment's token guard was only synthetic scope validation; sibling-container reads and `/usr/bin/true` were permitted; a child survived parent death until the runner killed it. Metadata inspection was not itself proof of a kernel denial. Other transports, descriptors, quota attacks, real XPC/VM/OpenCode and actual macOS26 remain unverified. See [feasibility report](PHASE1B2A-SECURITY-FEASIBILITY.md) and [adopted ADR](ADR-EXECUTION-CONTAINMENT.md).
+
+No native general-purpose execution mode or unrestricted-host fallback was accepted. XPC/VM alternatives need separate scope and positive security/resource evidence if reconsidered. The execution ADR now adopts reduced authority; it does not close old productive-execution gates. The remaining handle-relative access, privacy, final-effect, cancellation and evidence requirements below still apply to future trusted adapters.
 
 ## Filesystem and project threats
 
