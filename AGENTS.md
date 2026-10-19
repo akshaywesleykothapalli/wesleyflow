@@ -43,3 +43,11 @@ The current user authorizes an explicit fixture-root registry, read-only descrip
 ## Phase1B.2C final review and local checkpoint
 
 The current user authorizes independent review, reproducible Phase1B.2C fixes/regression tests, actual focused/full/replay/Debug/Release/concurrency verification, explicit staging of only reviewed files, and one local commit named `feat(workspace): add secure read-only project context`. This supersedes the preceding no-staging/no-commit statement only for this checkpoint. Preserve prior behavior/evidence; no push, remote creation, live inference, productive operations or Phase1B.3. Stop after the checkpoint.
+
+## Phase1B.3A proposal-only local provider authorization
+
+The current user authorizes local Ollama0.33.0 metadata/conformance inspection, a replaceable ModelProviders implementation, synthetic-only structured proposals through existing validation/coordinator ports, deterministic fixtures, bounded sequential experiments with installed models and memory admission, relevant documentation and actual builds/full/replay verification. This supersedes historical no-inference/no1B.3 restrictions only within1B.3A. No real user source disclosure or edits, tools/commands, OpenCode, cloud fallback, model downloads/training, privileged services, Phase1B.4, staging, commit or push. Do not bypass memory admission to produce benchmark results. Stop after1B.3A.
+
+## Phase1B.3A engineering review and foundation checkpoint
+
+The current user authorizes engineering review, narrow Phase1B.3A defect fixes/regression verification if necessary, explicit staging of reviewed source/tests/configuration/documentation and one local commit named `feat(models): add guarded local Ollama provider foundation`. This supersedes the previous no-staging/no-commit rule only for this foundation checkpoint. Do not start inference, change safety thresholds, claim live-provider acceptance, push, create a remote, or begin a later milestone. Preserve the measured40 BLOCKED model rows and all live inference/cancellation/unload limitations. Stop after the checkpoint.

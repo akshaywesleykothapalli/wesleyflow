@@ -10,17 +10,21 @@ let package = Package(
         .library(name: "Persistence", targets: ["Persistence"]),
         .library(name: "SystemOperations", targets: ["SystemOperations"]),
         .library(name: "CodingAgents", targets: ["CodingAgents"]),
-        .library(name: "Workspace", targets: ["Workspace"])
+        .library(name: "Workspace", targets: ["Workspace"]),
+        .library(name: "ModelProviders", targets: ["ModelProviders"]),
+        .executable(name: "OllamaEvaluation", targets: ["OllamaEvaluation"])
     ],
     targets: [
+        .executableTarget(name: "OllamaEvaluation", dependencies: ["Domain", "ModelProviders", "Workspace", "SystemOperations"], path: "Tools/OllamaEvaluation", resources: [.copy("Corpus.json")]),
         .target(name: "Domain"),
+        .target(name: "ModelProviders", dependencies: ["Domain"]),
         .target(name: "Workspace", dependencies: ["Domain"]),
         .target(name: "CodingAgents", dependencies: ["Domain"]),
         .target(name: "TaskExecution", dependencies: ["Domain"]),
         .target(name: "Persistence", dependencies: ["Domain"]),
         .target(name: "SystemOperations", dependencies: ["Domain"]),
         .testTarget(name: "DomainTests", dependencies: ["Domain"]),
-        .testTarget(name: "WorkspaceTests", dependencies: ["Domain", "Workspace", "SystemOperations"], resources: [.copy("Fixtures")]),
+        .testTarget(name: "WorkspaceTests", dependencies: ["Domain", "Workspace", "SystemOperations", "ModelProviders", "TaskExecution"], resources: [.copy("Fixtures")]),
         .testTarget(name: "CodingAgentsTests", dependencies: ["Domain", "CodingAgents"], resources: [.copy("Fixtures")]),
         .testTarget(name: "Phase1ATests", dependencies: ["Domain", "TaskExecution", "Persistence", "SystemOperations"])
     ],

@@ -1,6 +1,6 @@
 # Phase 1B architecture — proposal-only local inference
 
-19 October 2026 · Architecture adopted by explicit Phase1B.2A finalization request. Documentation only; no live inference or effect broker activation. Supersedes the original OpenCode-first delivery recommendation; historical design and execution evidence remain in Git history and the completion reports.
+19 October 2026 · Architecture adopted by explicit Phase1B.2A finalization request. Original adoption was documentation only; see the current implementation status below. No effect broker is activated. Supersedes the original OpenCode-first delivery recommendation; historical design and execution evidence remain in Git history and the completion reports.
 
 ## Decision and flow
 
@@ -24,7 +24,7 @@ This is the future product flow, not a description of active implementation. Con
 
 ## Module and authority direction
 
-App composes concrete adapters. Presentation imports Domain/TaskExecution; TaskExecution imports Domain only. CodingAgents, Workspace, SystemOperations, ModelProviders, Verification and Persistence each import Domain only. Domain imports no vendor, UI, process or persistence framework. Do not add empty targets. ModelProvider remains a documented future Domain port, not an implemented Swift protocol or populated target. Preserve its replaceable design; Ollama is the primary future adapter, not a Domain dependency.
+App composes concrete adapters. Presentation imports Domain/TaskExecution; TaskExecution imports Domain only. CodingAgents, Workspace, SystemOperations, ModelProviders, Verification and Persistence each import Domain only. Domain imports no vendor, UI, process or persistence framework. Do not add empty targets. Phase1B.3A implements the replaceable LocalModelProvider Domain port and populated ModelProviders target. Ollama remains an adapter, not a Domain dependency; model admission restrictions belong to that adapter.
 
 Workspace owns pure proposal validation and context/snapshot normalization. Trusted SystemOperations owns root handles and actual authorized read/write effects; a snapshot contains identities and digests, not a reusable root capability. ModelProviders owns bounded transport, exact artifact identity, one inference lease and cancellation/resource accounting. It receives reviewed bytes, never an executor, grant issuer, bookmark or raw host-root handle. Verification independently checks broker receipts and observed post-state. Adapter calls pass through Domain ports injected by App, never cross-adapter imports.
 
@@ -61,3 +61,9 @@ A populated Workspace target now implements pure proposal decoding, SHA256 ident
 ## Phase1B.2C read-only implementation
 
 SystemOperations now owns ReadOnlyWorkspaceBroker, an actor implementing the Domain ProjectRegistry and WorkspaceObservationSource ports for explicitly injected local fixture roots. WorkspaceSnapshotBuilder and ContextAssembler consume those ports; neither imports SystemOperations nor opens source files. Domain contains immutable Sendable observation data and a conservative context allowlist. Package dependencies and app composition are unchanged. No provider, productive effect broker or real-project UI is wired. See [completion and limitations](PHASE1B2C-COMPLETION.md). Root registration and read observation are distinct from file-modification authority; the existing permission broker still rejects productive operations. Later context disclosure requires explicit review/consent and provider-specific resource/token gates.
+
+## Phase1B.3A provider foundation
+
+Domain adds inert inference requests/responses/errors/cancellation/resource observations and a proposal-preparation port. ModelProviders implements loopback-only nonstreaming Ollama0.33.0 transport with bounded responses, explicit deadlines, one process-wide WF inference lease, memory admission and uncertainty quarantine. Workspace ProposalGenerator performs strict existing proposal decoding/validation; TaskExecution ProposalTaskExecutor adapts a single inspection-only generation through the existing coordinator. No productive operation or new persistence framework is introduced. SystemOperations owns native memory observation. All these production adapters depend only on Domain.
+
+The developer-only OllamaEvaluation executable is a leaf composition root over Domain/ModelProviders/Workspace/SystemOperations and a frozen synthetic corpus. It is not linked into the application. Test composition imports concrete adapters deliberately. AppComposition and prior source/tests are unchanged. Live model generation was blocked by conservative memory admission on the measured host workload; fixture success is not live inference, cancellation, unload or OS isolation evidence. See [the3A report](PHASE1B3A-COMPLETION.md). No model is selected for production and later milestones require separate authorization.

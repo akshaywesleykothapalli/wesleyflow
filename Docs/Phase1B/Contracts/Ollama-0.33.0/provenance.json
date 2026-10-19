@@ -1,0 +1,92 @@
+{
+  "capturedUTC": "2026-10-19T16:42:44.720338+00:00",
+  "officialSources": [
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/v0.33.0/api/types.go",
+      "version": "v0.33.0",
+      "sha256": "032fe8c044429afd42fd9f898c6bbd6efc5977ffeeec4dd3c5a04035e9c3d0b1",
+      "bytes": 41112
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/v0.33.0/server/routes.go",
+      "version": "v0.33.0",
+      "sha256": "c2ebab461d0f258340152e9207d35a4d72113a57c46043121d5b6798d8c770fa",
+      "bytes": 90584
+    }
+  ],
+  "installedBinary": {
+    "path": "/opt/homebrew/Cellar/ollama/0.33.0/libexec/ollama",
+    "sha256": "e9104e224bd12435301f2d52d67762e608b79660e9439396d23e4178262d56ba"
+  },
+  "observedVersion": {
+    "version": "0.33.0"
+  },
+  "observedResidentCount": 0,
+  "models": [
+    {
+      "name": "qwen3:8b",
+      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "storedBytes": 5225388164,
+      "details": {
+        "parent_model": "",
+        "format": "gguf",
+        "family": "qwen3",
+        "families": [
+          "qwen3"
+        ],
+        "parameter_size": "8.2B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 40960,
+        "embedding_length": 4096
+      },
+      "capabilities": [
+        "completion",
+        "tools",
+        "thinking"
+      ],
+      "modelInfo": {
+        "general.architecture": "qwen3",
+        "general.file_type": 15,
+        "general.parameter_count": 8190735360,
+        "qwen3.block_count": 36,
+        "qwen3.context_length": 40960
+      }
+    },
+    {
+      "name": "qwen2.5-coder:7b",
+      "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+      "storedBytes": 4683087561,
+      "details": {
+        "parent_model": "",
+        "format": "gguf",
+        "family": "qwen2",
+        "families": [
+          "qwen2"
+        ],
+        "parameter_size": "7.6B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 32768,
+        "embedding_length": 3584
+      },
+      "capabilities": [
+        "completion",
+        "tools",
+        "insert"
+      ],
+      "modelInfo": {
+        "general.architecture": "qwen2",
+        "general.file_type": 15,
+        "general.parameter_count": 7615616512,
+        "qwen2.block_count": 28,
+        "qwen2.context_length": 32768
+      }
+    }
+  ],
+  "scope": "Metadata observed only. Chat structured output, streaming, generation metrics, live cancellation and unload remain unverified when memory admission blocks inference. Source hashes identify retrieved tag bytes, not runtime attestation.",
+  "currentDocumentation": [
+    "https://docs.ollama.com/api/chat",
+    "https://docs.ollama.com/api/tags",
+    "https://docs.ollama.com/api/ps",
+    "https://docs.ollama.com/capabilities/structured-outputs"
+  ]
+}

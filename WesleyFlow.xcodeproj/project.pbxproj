@@ -5,6 +5,34 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "E9201E34DB01CE257F1B8830" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/WorkspaceTests/ProviderTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "ED47F42CC96584420F538969" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "E9201E34DB01CE257F1B8830";
+    };
+    "3BE057550AEE2A030B7E9BD4" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "ModelProviders";
+    };
+    "5965CE0AEAEC9309208D44EE" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "3BE057550AEE2A030B7E9BD4";
+    };
+    "F922321D848B737FF940C285" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "TaskExecution";
+    };
+    "E54D195D77194C26C6AD8BAA" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "F922321D848B737FF940C285";
+    };
     "19CA6BC6250D3A8FFBC14E14" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Packages/WesleyFlowCore/Tests/WorkspaceTests/ContextObservationTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
     "CD0CE631E9C5325AD187F337" = { "isa" = "PBXBuildFile"; "fileRef" = "19CA6BC6250D3A8FFBC14E14"; };
     "A97B3181A49D1868CD436BC9" = {
@@ -51,6 +79,7 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "ED47F42CC96584420F538969",
         "CD0CE631E9C5325AD187F337",
         "178EE4FA3E52D432F672451C",
         "3D069E884CEAFF79F8142F22",
@@ -89,6 +118,8 @@
       "isa" = "PBXFrameworksBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "5965CE0AEAEC9309208D44EE",
+        "E54D195D77194C26C6AD8BAA",
         "6EA5E533103AB147BBFD2DAB",
         "37B54B9FED6612C2C8645B1E",
         "81805B1E6DBB2542BA7D673A",
@@ -155,6 +186,8 @@
       "dependencies" = (
       );
       "packageProductDependencies" = (
+        "3BE057550AEE2A030B7E9BD4",
+        "F922321D848B737FF940C285",
         "B9583D4277CA685A2194DCC5",
         "72CB38EF2410E178D059C975",
         "FD9C047A9F1318DC0FA5EBAE",
@@ -376,6 +409,7 @@
       "isa" = "PBXGroup";
       "name" = "Sources";
       "children" = (
+        "E9201E34DB01CE257F1B8830",
         "19CA6BC6250D3A8FFBC14E14",
         "A97B3181A49D1868CD436BC9",
         "EA2F7FB0C13DAB7131652216",
