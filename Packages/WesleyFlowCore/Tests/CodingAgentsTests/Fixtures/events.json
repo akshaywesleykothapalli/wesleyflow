@@ -1,0 +1,61 @@
+[
+  {
+    "schema": "EventPermissionAsked",
+    "event": {
+      "id": "evt_0",
+      "type": "permission.asked",
+      "properties": {
+        "id": "per_fixture",
+        "permission": "bash",
+        "patterns": [
+          "echo test"
+        ],
+        "metadata": {},
+        "always": [
+          "*"
+        ],
+        "sessionID": "ses_fixture"
+      }
+    }
+  },
+  {
+    "schema": "EventMessagePartDelta",
+    "event": {
+      "id": "evt_1",
+      "type": "message.part.delta",
+      "properties": {
+        "messageID": "msg_fixture",
+        "partID": "prt_fixture",
+        "field": "text",
+        "delta": "fixture progress",
+        "sessionID": "ses_fixture"
+      }
+    }
+  },
+  {
+    "schema": "EventSessionIdle",
+    "event": {
+      "id": "evt_2",
+      "type": "session.idle",
+      "properties": {
+        "sessionID": "ses_fixture"
+      }
+    }
+  },
+  {
+    "schema": "EventSessionStatus",
+    "event": {
+      "id": "evt_3",
+      "type": "session.status",
+      "properties": {
+        "status": {
+          "type": "retry",
+          "attempt": 0,
+          "message": "fixture",
+          "next": 2000
+        },
+        "sessionID": "ses_fixture"
+      }
+    }
+  }
+]

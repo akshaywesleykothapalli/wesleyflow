@@ -1,0 +1,54 @@
+{
+  "kind": "WF-owned future gateway contract fixture; not vendor wire schema; inert",
+  "request": {
+    "requestID": "inference-fixture",
+    "taskID": "task-fixture",
+    "operationID": "proposal-fixture",
+    "sessionID": "session-fixture",
+    "generation": 1,
+    "connectionEpoch": 0,
+    "providerID": "ollama-local-fixture",
+    "artifactDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contextDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "contextTokens": 4096,
+    "maximumOutputTokens": 1024,
+    "monotonicDeadlineMilliseconds": 10000,
+    "leaseID": "identity-only-not-authority"
+  },
+  "responseExamples": [
+    {
+      "sequence": 0,
+      "kind": "text",
+      "text": "fixture progress"
+    },
+    {
+      "sequence": 1,
+      "kind": "toolProposal",
+      "callID": "call-fixture",
+      "name": "inspect",
+      "arguments": {
+        "relativePath": "fixture.swift"
+      }
+    },
+    {
+      "sequence": 2,
+      "kind": "final",
+      "verifiedSuccess": false
+    }
+  ],
+  "cancellation": {
+    "requestID": "inference-fixture",
+    "assessment": "uncertain-until-provider-settles"
+  },
+  "errors": [
+    "unavailable",
+    "artifactMismatch",
+    "malformedPayload",
+    "overloaded",
+    "resourcePressure",
+    "timeout",
+    "cancelled",
+    "unexpectedEnd",
+    "cleanupUncertain"
+  ]
+}

@@ -5,6 +5,169 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "BDE34C4E2FD13ADCF6DF1A1E" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "folder";
+      "path" = "Packages/WesleyFlowCore/Tests/CodingAgentsTests/Fixtures";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "F54950DAB044A52E916063E6" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "BDE34C4E2FD13ADCF6DF1A1E";
+    };
+    "9D2EBF9A4176F64814BE9278" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/CodingAgentsTests/FixtureSupport.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "454ABC9F1FB686C8227D2315" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "9D2EBF9A4176F64814BE9278";
+    };
+    "8581F2BC4BB9232E4298CEAC" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/CodingAgentsTests/HTTPTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "8D9D4C7F6487C8DA4BAA37ED" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "8581F2BC4BB9232E4298CEAC";
+    };
+    "AA02B5F58ACB0460BC071971" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/CodingAgentsTests/RuntimeDomainTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "97582D3059218C5A80BF7402" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "AA02B5F58ACB0460BC071971";
+    };
+    "6F9FF45C4710EBBC198CF4C9" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/CodingAgentsTests/SSETests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "D2EFBD89DDA2E9BC726644C4" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "6F9FF45C4710EBBC198CF4C9";
+    };
+    "86B1F3D95BBCE21EDBE41C0F" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/CodingAgentsTests/SessionTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "B12924C4E43A69859B80A37B" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "86B1F3D95BBCE21EDBE41C0F";
+    };
+    "7C599CBDE91FBD61CD6FBA5A" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "454ABC9F1FB686C8227D2315",
+        "8D9D4C7F6487C8DA4BAA37ED",
+        "97582D3059218C5A80BF7402",
+        "D2EFBD89DDA2E9BC726644C4",
+        "B12924C4E43A69859B80A37B",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "897C09685106B10D4C6F1884" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Domain";
+    };
+    "271A0E51F1A2C5DECFE2499B" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "897C09685106B10D4C6F1884";
+    };
+    "0F747088B17CA8AED0B407C0" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "CodingAgents";
+    };
+    "3E3DFE081F3A68D0938D1E7C" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "0F747088B17CA8AED0B407C0";
+    };
+    "01FBD027E62AB5B8FA3EE98A" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "271A0E51F1A2C5DECFE2499B",
+        "3E3DFE081F3A68D0938D1E7C",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "EF79323081C6E77A7D77EC7E" = {
+      "isa" = "PBXResourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "F54950DAB044A52E916063E6",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "3961E81E3FE3B70B3916BB6E" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.CodingAgentsTests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks";
+        "PRODUCT_NAME" = "CodingAgentsTests";
+      };
+    };
+    "E4F8A7B2A8F8F21C24DBA63E" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Release";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.CodingAgentsTests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks";
+        "PRODUCT_NAME" = "CodingAgentsTests";
+      };
+    };
+    "16073175DE41BA4967DC7B74" = {
+      "isa" = "XCConfigurationList";
+      "defaultConfigurationIsVisible" = "0";
+      "defaultConfigurationName" = "Release";
+      "buildConfigurations" = (
+        "3961E81E3FE3B70B3916BB6E",
+        "E4F8A7B2A8F8F21C24DBA63E",
+      );
+    };
+    "960AD53517362B67A357E4B6" = {
+      "isa" = "PBXFileReference";
+      "explicitFileType" = "wrapper.cfbundle";
+      "path" = "CodingAgentsTests.xctest";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+    };
+    "95BA6807B0750D0C8F9807B5" = {
+      "isa" = "PBXNativeTarget";
+      "name" = "CodingAgentsTests";
+      "productName" = "CodingAgentsTests";
+      "productType" = "com.apple.product-type.bundle.unit-test";
+      "productReference" = "960AD53517362B67A357E4B6";
+      "buildConfigurationList" = "16073175DE41BA4967DC7B74";
+      "buildPhases" = (
+        "7C599CBDE91FBD61CD6FBA5A",
+        "01FBD027E62AB5B8FA3EE98A",
+        "EF79323081C6E77A7D77EC7E",
+      );
+      "buildRules" = (
+      );
+      "dependencies" = (
+      );
+      "packageProductDependencies" = (
+        "897C09685106B10D4C6F1884",
+        "0F747088B17CA8AED0B407C0",
+      );
+    };
     "36FAA52D1DA23358E1CE5160" = {
       "isa" = "XCBuildConfiguration";
       "buildSettings" = {
@@ -58,6 +221,12 @@
       "isa" = "PBXGroup";
       "name" = "Sources";
       "children" = (
+        "BDE34C4E2FD13ADCF6DF1A1E",
+        "9D2EBF9A4176F64814BE9278",
+        "8581F2BC4BB9232E4298CEAC",
+        "AA02B5F58ACB0460BC071971",
+        "6F9FF45C4710EBBC198CF4C9",
+        "86B1F3D95BBCE21EDBE41C0F",
         "E51C7513A3AF75FB3E9AC43F",
         "B9A6734F470A7F7E1B159C92",
         "B07CE3FCAD7E2E943FC39F7A",
@@ -158,6 +327,7 @@
       "isa" = "PBXGroup";
       "name" = "Products";
       "children" = (
+        "960AD53517362B67A357E4B6",
         "DEF93E8F8AC229A0D98BBEFA",
         "970FB190220EDCE2E3BBCD1A",
         "429772860090C5C97D909AE9",
@@ -380,6 +550,7 @@
         "47520DFBC21476733446881D",
       );
       "targets" = (
+        "95BA6807B0750D0C8F9807B5",
         "28842F0FBEF7D211F304ACBC",
         "BD64E34F3B89E990E8D455E3",
         "9BA5BA72BC7B907FF73C6137",

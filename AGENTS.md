@@ -11,3 +11,11 @@ The user explicitly authorized Phase 1A: durable task orchestration, FIFO schedu
 ## Phase 1A remediation authorization
 
 The user separately authorized fixing audit A1–A4 and the small observer cleanup A5, regression/recovery/stress tests, relevant documentation, and one local commit named `fix(core): resolve task lifecycle concurrency defects` only after all P1 fixes and verification pass. Preserve pre-existing Phase1A work, use native approvals, and keep the historical audit/evidence. No push, remote creation or Phase1B/product integration is authorized.
+
+## Phase 1B.1 fixture-only authorization
+
+The current user explicitly authorizes Domain protocol values, a populated CodingAgents target, injected HTTP/SSE fixtures, bounded actor-owned fixture sessions, inert launch data, tests and actual Debug/Release/full-suite/replay verification. Preserve existing design documents and Phase1A behavior. No OpenCode invocation, launcher, live agent/provider/network execution, productive tools, Phase1B.2, commit or push. Runtime identities/proposals never grant execution authority.
+
+## Phase 1B.1 final review and checkpoint authorization
+
+The user separately authorizes final review, narrow Phase1B.1 fixes with regression verification, explicit staging of reviewed implementation/documentation, and one local commit named `feat(agent): add fixture-only coding runtime foundation`. This supersedes the prior no-commit statement for that single checkpoint only. No push, remote creation, live runtime/provider execution or Phase1B.2 work.

@@ -8,14 +8,17 @@ let package = Package(
         .library(name: "Domain", targets: ["Domain"]),
         .library(name: "TaskExecution", targets: ["TaskExecution"]),
         .library(name: "Persistence", targets: ["Persistence"]),
-        .library(name: "SystemOperations", targets: ["SystemOperations"])
+        .library(name: "SystemOperations", targets: ["SystemOperations"]),
+        .library(name: "CodingAgents", targets: ["CodingAgents"])
     ],
     targets: [
         .target(name: "Domain"),
+        .target(name: "CodingAgents", dependencies: ["Domain"]),
         .target(name: "TaskExecution", dependencies: ["Domain"]),
         .target(name: "Persistence", dependencies: ["Domain"]),
         .target(name: "SystemOperations", dependencies: ["Domain"]),
         .testTarget(name: "DomainTests", dependencies: ["Domain"]),
+        .testTarget(name: "CodingAgentsTests", dependencies: ["Domain", "CodingAgents"], resources: [.copy("Fixtures")]),
         .testTarget(name: "Phase1ATests", dependencies: ["Domain", "TaskExecution", "Persistence", "SystemOperations"])
     ],
     swiftLanguageModes: [.v6]

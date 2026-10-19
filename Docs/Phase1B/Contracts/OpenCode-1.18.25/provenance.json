@@ -1,0 +1,36 @@
+{
+  "openapi.json": {
+    "url": "https://raw.githubusercontent.com/anomalyco/opencode/v1.18.25/packages/sdk/openapi.json",
+    "sha256": "c0af493bae06c8f50ae05474921570eb05f301c92a5f68f6a6365f530b719ad7",
+    "bytes": 1060879,
+    "immutable_url": "https://raw.githubusercontent.com/anomalyco/opencode/cb7d8b2f5e44876ef98b661dc10590c915af3a9f/packages/sdk/openapi.json"
+  },
+  "config.ts": {
+    "url": "https://raw.githubusercontent.com/anomalyco/opencode/v1.18.25/packages/opencode/src/config/config.ts",
+    "sha256": "87a9071af1ddb04d65947dba49be3fb4c94ecf63e120f17ce46ee81ff25dd45a",
+    "bytes": 27747,
+    "immutable_url": "https://raw.githubusercontent.com/anomalyco/opencode/cb7d8b2f5e44876ef98b661dc10590c915af3a9f/packages/opencode/src/config/config.ts"
+  },
+  "package.json": {
+    "url": "https://raw.githubusercontent.com/anomalyco/opencode/v1.18.25/packages/opencode/package.json",
+    "sha256": "b5ffecdcf0cd3f3dc981a754641803bfb63ee4e4602e40c164bf22ede75de325",
+    "bytes": 5331,
+    "immutable_url": "https://raw.githubusercontent.com/anomalyco/opencode/cb7d8b2f5e44876ef98b661dc10590c915af3a9f/packages/opencode/package.json"
+  },
+  "LICENSE": {
+    "url": "https://raw.githubusercontent.com/anomalyco/opencode/v1.18.25/LICENSE",
+    "sha256": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b",
+    "bytes": 1065,
+    "immutable_url": "https://raw.githubusercontent.com/anomalyco/opencode/cb7d8b2f5e44876ef98b661dc10590c915af3a9f/LICENSE"
+  },
+  "tag": {
+    "sha": "cb7d8b2f5e44876ef98b661dc10590c915af3a9f",
+    "type": "commit",
+    "url": "https://api.github.com/repos/anomalyco/opencode/git/commits/cb7d8b2f5e44876ef98b661dc10590c915af3a9f"
+  },
+  "installed": {
+    "package": "opencode-ai",
+    "version": "1.18.25",
+    "binary_sha256": "88eed7b0c2431162422cb0625aa68a55239970446951e4c9aad6a4f1fbc232b9"
+  }
+}
