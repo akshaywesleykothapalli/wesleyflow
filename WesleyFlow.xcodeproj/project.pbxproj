@@ -1,59 +1,712 @@
 // !$*UTF8*$!
 {
-	archiveVersion = 1;
-	classes = {};
-	objectVersion = 77;
-	objects = {
-		E51C7513A3AF75FB3E9AC43F /* App/WesleyFlowApp.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/WesleyFlowApp.swift"; sourceTree = SOURCE_ROOT; };
-		A0AD78130D41429E92255BA8 /* App/WesleyFlowApp.swift-Build */ = { isa = PBXBuildFile; fileRef = E51C7513A3AF75FB3E9AC43F; };
-		B9A6734F470A7F7E1B159C92 /* App/AppComposition.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/AppComposition.swift"; sourceTree = SOURCE_ROOT; };
-		D93C06C0F79DE604053E56F0 /* App/AppComposition.swift-Build */ = { isa = PBXBuildFile; fileRef = B9A6734F470A7F7E1B159C92; };
-		B07CE3FCAD7E2E943FC39F7A /* App/FoundationView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/FoundationView.swift"; sourceTree = SOURCE_ROOT; };
-		78D1F2DC8E6A80231426E768 /* App/FoundationView.swift-Build */ = { isa = PBXBuildFile; fileRef = B07CE3FCAD7E2E943FC39F7A; };
-		F39B12FE27C9E7ED4CB972C7 /* AppTests/CompositionTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppTests/CompositionTests.swift"; sourceTree = SOURCE_ROOT; };
-		FE29802D63C081DF58633D5F /* AppTests/CompositionTests.swift-Build */ = { isa = PBXBuildFile; fileRef = F39B12FE27C9E7ED4CB972C7; };
-		9F80E2F026A1B3FDD4024410 /* Packages/WesleyFlowCore/Tests/DomainTests/TaskLifecycleTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Packages/WesleyFlowCore/Tests/DomainTests/TaskLifecycleTests.swift"; sourceTree = SOURCE_ROOT; };
-		90D72B864BC8FE860C0FCBAF /* Packages/WesleyFlowCore/Tests/DomainTests/TaskLifecycleTests.swift-Build */ = { isa = PBXBuildFile; fileRef = 9F80E2F026A1B3FDD4024410; };
-		DEF93E8F8AC229A0D98BBEFA /* AppProduct */ = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wesley Flow.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		970FB190220EDCE2E3BBCD1A /* TestProduct */ = { isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WesleyFlowAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		4EDC8BFAFC6BD936B849F38C /* Products */ = { isa = PBXGroup; children = (DEF93E8F8AC229A0D98BBEFA, 970FB190220EDCE2E3BBCD1A, 429772860090C5C97D909AE9); name = Products; sourceTree = "<group>"; };
-		1095002B6AA3B206FA7EBBBF /* SourcesGroup */ = { isa = PBXGroup; children = (E51C7513A3AF75FB3E9AC43F, B9A6734F470A7F7E1B159C92, B07CE3FCAD7E2E943FC39F7A, F39B12FE27C9E7ED4CB972C7, 9F80E2F026A1B3FDD4024410); name = Sources; sourceTree = "<group>"; };
-		97A63A01E61FD439E8760B8E /* MainGroup */ = { isa = PBXGroup; children = (1095002B6AA3B206FA7EBBBF, 4EDC8BFAFC6BD936B849F38C); sourceTree = "<group>"; };
-		47520DFBC21476733446881D /* LocalCore */ = { isa = XCLocalSwiftPackageReference; relativePath = Packages/WesleyFlowCore; };
-		341ED86D476EA7829AA8206A /* AppDomain */ = { isa = XCSwiftPackageProductDependency; package = 47520DFBC21476733446881D; productName = Domain; };
-		EC72F7F6F11429BF60F0270C /* AppDomain-Build */ = { isa = PBXBuildFile; productRef = 341ED86D476EA7829AA8206A; };
-		6A8F2FA95101DBACC4BAD5DA /* TestsDomain */ = { isa = XCSwiftPackageProductDependency; package = 47520DFBC21476733446881D; productName = Domain; };
-		BFD1C0C722B34895F28C75B4 /* TestsDomain-Build */ = { isa = PBXBuildFile; productRef = 6A8F2FA95101DBACC4BAD5DA; };
-		658E5DAD6B81BB44ABADF57E /* DomainTestProductDependency */ = { isa = XCSwiftPackageProductDependency; package = 47520DFBC21476733446881D; productName = Domain; };
-		9EB8C027048A605433C1874A /* DomainTestProductDependency-Build */ = { isa = PBXBuildFile; productRef = 658E5DAD6B81BB44ABADF57E; };
-		0D25A9A11793BE91427A3D7D /* AppSources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A0AD78130D41429E92255BA8, D93C06C0F79DE604053E56F0, 78D1F2DC8E6A80231426E768); runOnlyForDeploymentPostprocessing = 0; };
-		609A52E5B24E5BB109D44D04 /* AppFrameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (EC72F7F6F11429BF60F0270C); runOnlyForDeploymentPostprocessing = 0; };
-		DBBFC30291D55CDD50B10B32 /* AppResources */ = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		F4E9F38E16B01050A03B8113 /* TestsSources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (FE29802D63C081DF58633D5F); runOnlyForDeploymentPostprocessing = 0; };
-		376CB33734054840C2006334 /* TestsFrameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (BFD1C0C722B34895F28C75B4); runOnlyForDeploymentPostprocessing = 0; };
-		F3450B63233CC3F0A1670847 /* TestsResources */ = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		8C25E4C0CF680EC490165A4B /* DomainTestsSources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (90D72B864BC8FE860C0FCBAF); runOnlyForDeploymentPostprocessing = 0; };
-		4B733A9435BBBA06816BEBAC /* DomainTestsFrameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (9EB8C027048A605433C1874A); runOnlyForDeploymentPostprocessing = 0; };
-		02998C148F39FBB0756142D7 /* DomainTestsResources */ = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		429772860090C5C97D909AE9 /* DomainTestProduct */ = { isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DomainTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		9BA5BA72BC7B907FF73C6137 /* DomainTestTarget */ = { isa = PBXNativeTarget; buildConfigurationList = 763BAA71742FF7888B562D72; buildPhases = (8C25E4C0CF680EC490165A4B, 4B733A9435BBBA06816BEBAC, 02998C148F39FBB0756142D7); buildRules = (); dependencies = (); name = DomainTests; packageProductDependencies = (658E5DAD6B81BB44ABADF57E); productName = DomainTests; productReference = 429772860090C5C97D909AE9; productType = "com.apple.product-type.bundle.unit-test"; };
-		6242BF8ECD5A47A6CC1A8329 /* AppProxy */ = { isa = PBXContainerItemProxy; containerPortal = 985959785319747668373CC6; proxyType = 1; remoteGlobalIDString = 28842F0FBEF7D211F304ACBC; remoteInfo = WesleyFlow; };
-		73A0CC76AB02677EEB916893 /* TestAppDependency */ = { isa = PBXTargetDependency; target = 28842F0FBEF7D211F304ACBC; targetProxy = 6242BF8ECD5A47A6CC1A8329; };
-		28842F0FBEF7D211F304ACBC /* AppTarget */ = { isa = PBXNativeTarget; buildConfigurationList = 25121416BF4936786064FAA1; buildPhases = (0D25A9A11793BE91427A3D7D, 609A52E5B24E5BB109D44D04, DBBFC30291D55CDD50B10B32); buildRules = (); dependencies = (); name = WesleyFlow; packageProductDependencies = (341ED86D476EA7829AA8206A); productName = "Wesley Flow"; productReference = DEF93E8F8AC229A0D98BBEFA; productType = "com.apple.product-type.application"; };
-		BD64E34F3B89E990E8D455E3 /* TestTarget */ = { isa = PBXNativeTarget; buildConfigurationList = 36A7E768635CF9AAF302F9D0; buildPhases = (F4E9F38E16B01050A03B8113, 376CB33734054840C2006334, F3450B63233CC3F0A1670847); buildRules = (); dependencies = (73A0CC76AB02677EEB916893); name = WesleyFlowAppTests; packageProductDependencies = (6A8F2FA95101DBACC4BAD5DA); productName = WesleyFlowAppTests; productReference = 970FB190220EDCE2E3BBCD1A; productType = "com.apple.product-type.bundle.unit-test"; };
-		5667104C1D789661668F969C /* Project-Debug */ = { isa = XCBuildConfiguration; buildSettings = { ARCHS = arm64; ONLY_ACTIVE_ARCH = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; ENABLE_USER_SCRIPT_SANDBOXING = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; }; name = Debug; };
-		F2F023B5618BA20063C1AA94 /* App-Debug */ = { isa = XCBuildConfiguration; buildSettings = { GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Wesley Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; PRODUCT_BUNDLE_IDENTIFIER = local.wesleyflow.WesleyFlow; PRODUCT_NAME = "Wesley Flow"; PRODUCT_MODULE_NAME = WesleyFlow; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1.0; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = NO; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; }; name = Debug; };
-		A2CCC7869897D2BFF6E974DA /* Tests-Debug */ = { isa = XCBuildConfiguration; buildSettings = { GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = local.wesleyflow.WesleyFlowAppTests; PRODUCT_NAME = WesleyFlowAppTests; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wesley Flow.app/Contents/MacOS/Wesley Flow"; BUNDLE_LOADER = "$(TEST_HOST)"; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks"; }; name = Debug; };
-		BE251B8202E082185B522159 /* Project-Release */ = { isa = XCBuildConfiguration; buildSettings = { ARCHS = arm64; ONLY_ACTIVE_ARCH = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; ENABLE_USER_SCRIPT_SANDBOXING = YES; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_COMPILATION_MODE = wholemodule; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; }; name = Release; };
-		72987E080B9C7153F8B81F26 /* App-Release */ = { isa = XCBuildConfiguration; buildSettings = { GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Wesley Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; PRODUCT_BUNDLE_IDENTIFIER = local.wesleyflow.WesleyFlow; PRODUCT_NAME = "Wesley Flow"; PRODUCT_MODULE_NAME = WesleyFlow; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1.0; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = NO; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; }; name = Release; };
-		36FAA52D1DA23358E1CE5160 /* Tests-Release */ = { isa = XCBuildConfiguration; buildSettings = { GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = local.wesleyflow.WesleyFlowAppTests; PRODUCT_NAME = WesleyFlowAppTests; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wesley Flow.app/Contents/MacOS/Wesley Flow"; BUNDLE_LOADER = "$(TEST_HOST)"; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks"; }; name = Release; };
-		D021AF083475CBD67493D278 /* DomainTests-Debug */ = { isa = XCBuildConfiguration; buildSettings = { GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = local.wesleyflow.DomainTests; PRODUCT_NAME = DomainTests; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks"; }; name = Debug; };
-		735512160BABA4DC1675C1DC /* DomainTests-Release */ = { isa = XCBuildConfiguration; buildSettings = { GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = local.wesleyflow.DomainTests; PRODUCT_NAME = DomainTests; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks"; }; name = Release; };
-		C0631FFB4C9621A761CD753C /* Project-ConfigList */ = { isa = XCConfigurationList; buildConfigurations = (5667104C1D789661668F969C, BE251B8202E082185B522159); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		25121416BF4936786064FAA1 /* App-ConfigList */ = { isa = XCConfigurationList; buildConfigurations = (F2F023B5618BA20063C1AA94, 72987E080B9C7153F8B81F26); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		36A7E768635CF9AAF302F9D0 /* Tests-ConfigList */ = { isa = XCConfigurationList; buildConfigurations = (A2CCC7869897D2BFF6E974DA, 36FAA52D1DA23358E1CE5160); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		763BAA71742FF7888B562D72 /* DomainTests-ConfigList */ = { isa = XCConfigurationList; buildConfigurations = (D021AF083475CBD67493D278, 735512160BABA4DC1675C1DC); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		985959785319747668373CC6 /* Project */ = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700; TargetAttributes = { BD64E34F3B89E990E8D455E3 = { TestTargetID = 28842F0FBEF7D211F304ACBC; }; }; }; buildConfigurationList = C0631FFB4C9621A761CD753C; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 97A63A01E61FD439E8760B8E; packageReferences = (47520DFBC21476733446881D); productRefGroup = 4EDC8BFAFC6BD936B849F38C; projectDirPath = ""; projectRoot = ""; targets = (28842F0FBEF7D211F304ACBC, BD64E34F3B89E990E8D455E3, 9BA5BA72BC7B907FF73C6137); };
-	};
-	rootObject = 985959785319747668373CC6;
+  "classes" = {
+  };
+  "objectVersion" = "77";
+  "archiveVersion" = "1";
+  "objects" = {
+    "36FAA52D1DA23358E1CE5160" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/Wesley Flow.app/Contents/MacOS/Wesley Flow";
+        "BUNDLE_LOADER" = "$(TEST_HOST)";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.WesleyFlowAppTests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+        "PRODUCT_NAME" = "WesleyFlowAppTests";
+      };
+      "name" = "Release";
+    };
+    "341ED86D476EA7829AA8206A" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Domain";
+    };
+    "F39B12FE27C9E7ED4CB972C7" = {
+      "path" = "AppTests/CompositionTests.swift";
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "429772860090C5C97D909AE9" = {
+      "path" = "DomainTests.xctest";
+      "isa" = "PBXFileReference";
+      "includeInIndex" = "0";
+      "explicitFileType" = "wrapper.cfbundle";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+    };
+    "0D25A9A11793BE91427A3D7D" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "A0AD78130D41429E92255BA8",
+        "D93C06C0F79DE604053E56F0",
+        "78D1F2DC8E6A80231426E768",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "C0631FFB4C9621A761CD753C" = {
+      "isa" = "XCConfigurationList";
+      "defaultConfigurationIsVisible" = "0";
+      "defaultConfigurationName" = "Release";
+      "buildConfigurations" = (
+        "5667104C1D789661668F969C",
+        "BE251B8202E082185B522159",
+      );
+    };
+    "1095002B6AA3B206FA7EBBBF" = {
+      "isa" = "PBXGroup";
+      "name" = "Sources";
+      "children" = (
+        "E51C7513A3AF75FB3E9AC43F",
+        "B9A6734F470A7F7E1B159C92",
+        "B07CE3FCAD7E2E943FC39F7A",
+        "F39B12FE27C9E7ED4CB972C7",
+        "9F80E2F026A1B3FDD4024410",
+        "7B025C4243A9B2CC69B97009",
+        "2964FA281A95F280259BA19B",
+        "FEA00E151562016B0662688C",
+        "7D392C9C04D899BA0139FF8E",
+      );
+      "sourceTree" = "<group>";
+    };
+    "25121416BF4936786064FAA1" = {
+      "isa" = "XCConfigurationList";
+      "defaultConfigurationIsVisible" = "0";
+      "defaultConfigurationName" = "Release";
+      "buildConfigurations" = (
+        "F2F023B5618BA20063C1AA94",
+        "72987E080B9C7153F8B81F26",
+      );
+    };
+    "BFD1C0C722B34895F28C75B4" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "6A8F2FA95101DBACC4BAD5DA";
+    };
+    "D93C06C0F79DE604053E56F0" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "B9A6734F470A7F7E1B159C92";
+    };
+    "6A8F2FA95101DBACC4BAD5DA" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Domain";
+    };
+    "763BAA71742FF7888B562D72" = {
+      "isa" = "XCConfigurationList";
+      "defaultConfigurationIsVisible" = "0";
+      "defaultConfigurationName" = "Release";
+      "buildConfigurations" = (
+        "D021AF083475CBD67493D278",
+        "735512160BABA4DC1675C1DC",
+      );
+    };
+    "EC72F7F6F11429BF60F0270C" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "341ED86D476EA7829AA8206A";
+    };
+    "F4E9F38E16B01050A03B8113" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "FE29802D63C081DF58633D5F",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "97A63A01E61FD439E8760B8E" = {
+      "isa" = "PBXGroup";
+      "sourceTree" = "<group>";
+      "children" = (
+        "1095002B6AA3B206FA7EBBBF",
+        "4EDC8BFAFC6BD936B849F38C",
+      );
+    };
+    "6242BF8ECD5A47A6CC1A8329" = {
+      "isa" = "PBXContainerItemProxy";
+      "containerPortal" = "985959785319747668373CC6";
+      "remoteGlobalIDString" = "28842F0FBEF7D211F304ACBC";
+      "remoteInfo" = "WesleyFlow";
+      "proxyType" = "1";
+    };
+    "9BA5BA72BC7B907FF73C6137" = {
+      "buildConfigurationList" = "763BAA71742FF7888B562D72";
+      "productReference" = "429772860090C5C97D909AE9";
+      "productType" = "com.apple.product-type.bundle.unit-test";
+      "packageProductDependencies" = (
+        "658E5DAD6B81BB44ABADF57E",
+      );
+      "productName" = "DomainTests";
+      "isa" = "PBXNativeTarget";
+      "buildPhases" = (
+        "8C25E4C0CF680EC490165A4B",
+        "4B733A9435BBBA06816BEBAC",
+        "02998C148F39FBB0756142D7",
+      );
+      "dependencies" = (
+      );
+      "name" = "DomainTests";
+      "buildRules" = (
+      );
+    };
+    "E51C7513A3AF75FB3E9AC43F" = {
+      "path" = "App/WesleyFlowApp.swift";
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "4EDC8BFAFC6BD936B849F38C" = {
+      "isa" = "PBXGroup";
+      "name" = "Products";
+      "children" = (
+        "DEF93E8F8AC229A0D98BBEFA",
+        "970FB190220EDCE2E3BBCD1A",
+        "429772860090C5C97D909AE9",
+        "BF8F9E8DF1DC801E5AABC82B",
+      );
+      "sourceTree" = "<group>";
+    };
+    "28842F0FBEF7D211F304ACBC" = {
+      "buildConfigurationList" = "25121416BF4936786064FAA1";
+      "productReference" = "DEF93E8F8AC229A0D98BBEFA";
+      "productType" = "com.apple.product-type.application";
+      "packageProductDependencies" = (
+        "341ED86D476EA7829AA8206A",
+        "92088E23FE4427BE452444D1",
+        "C6E23443E9C9C571D75494EF",
+        "0817D5F97E0FDBB64D1A21E6",
+      );
+      "productName" = "Wesley Flow";
+      "isa" = "PBXNativeTarget";
+      "buildPhases" = (
+        "0D25A9A11793BE91427A3D7D",
+        "609A52E5B24E5BB109D44D04",
+        "DBBFC30291D55CDD50B10B32",
+      );
+      "dependencies" = (
+      );
+      "name" = "WesleyFlow";
+      "buildRules" = (
+      );
+    };
+    "78D1F2DC8E6A80231426E768" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "B07CE3FCAD7E2E943FC39F7A";
+    };
+    "5667104C1D789661668F969C" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "ONLY_ACTIVE_ARCH" = "YES";
+        "DEBUG_INFORMATION_FORMAT" = "dwarf";
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG $(inherited)";
+        "CLANG_ENABLE_MODULES" = "YES";
+        "CODE_SIGN_IDENTITY" = "-";
+        "MACOSX_DEPLOYMENT_TARGET" = "26.0";
+        "ENABLE_TESTABILITY" = "YES";
+        "ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+        "SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+        "SWIFT_DEFAULT_ACTOR_ISOLATION" = "nonisolated";
+        "ARCHS" = "arm64";
+        "CODE_SIGN_STYLE" = "Manual";
+        "SDKROOT" = "macosx";
+        "SWIFT_VERSION" = "6.0";
+        "SWIFT_STRICT_CONCURRENCY" = "complete";
+        "CLANG_ENABLE_OBJC_ARC" = "YES";
+      };
+      "name" = "Debug";
+    };
+    "9F80E2F026A1B3FDD4024410" = {
+      "path" = "Packages/WesleyFlowCore/Tests/DomainTests/TaskLifecycleTests.swift";
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "90D72B864BC8FE860C0FCBAF" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "9F80E2F026A1B3FDD4024410";
+    };
+    "A2CCC7869897D2BFF6E974DA" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/Wesley Flow.app/Contents/MacOS/Wesley Flow";
+        "BUNDLE_LOADER" = "$(TEST_HOST)";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.WesleyFlowAppTests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+        "PRODUCT_NAME" = "WesleyFlowAppTests";
+      };
+      "name" = "Debug";
+    };
+    "BE251B8202E082185B522159" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "ONLY_ACTIVE_ARCH" = "YES";
+        "DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+        "CLANG_ENABLE_MODULES" = "YES";
+        "CODE_SIGN_IDENTITY" = "-";
+        "MACOSX_DEPLOYMENT_TARGET" = "26.0";
+        "SWIFT_COMPILATION_MODE" = "wholemodule";
+        "ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+        "SWIFT_OPTIMIZATION_LEVEL" = "-O";
+        "SWIFT_DEFAULT_ACTOR_ISOLATION" = "nonisolated";
+        "ARCHS" = "arm64";
+        "CODE_SIGN_STYLE" = "Manual";
+        "SDKROOT" = "macosx";
+        "SWIFT_VERSION" = "6.0";
+        "SWIFT_STRICT_CONCURRENCY" = "complete";
+        "CLANG_ENABLE_OBJC_ARC" = "YES";
+      };
+      "name" = "Release";
+    };
+    "72987E080B9C7153F8B81F26" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "ENABLE_HARDENED_RUNTIME" = "NO";
+        "MARKETING_VERSION" = "0.1.0";
+        "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
+        "PRODUCT_MODULE_NAME" = "WesleyFlow";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.WesleyFlow";
+        "ENABLE_APP_SANDBOX" = "NO";
+        "INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks";
+        "CURRENT_PROJECT_VERSION" = "1";
+        "PRODUCT_NAME" = "Wesley Flow";
+      };
+      "name" = "Release";
+    };
+    "FE29802D63C081DF58633D5F" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "F39B12FE27C9E7ED4CB972C7";
+    };
+    "02998C148F39FBB0756142D7" = {
+      "isa" = "PBXResourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "970FB190220EDCE2E3BBCD1A" = {
+      "path" = "WesleyFlowAppTests.xctest";
+      "isa" = "PBXFileReference";
+      "includeInIndex" = "0";
+      "explicitFileType" = "wrapper.cfbundle";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+    };
+    "B07CE3FCAD7E2E943FC39F7A" = {
+      "path" = "App/FoundationView.swift";
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "BD64E34F3B89E990E8D455E3" = {
+      "buildConfigurationList" = "36A7E768635CF9AAF302F9D0";
+      "productReference" = "970FB190220EDCE2E3BBCD1A";
+      "productType" = "com.apple.product-type.bundle.unit-test";
+      "packageProductDependencies" = (
+        "6A8F2FA95101DBACC4BAD5DA",
+        "65D1E8A99502EC2B79436F83",
+        "D2C341703AA1E186EEDD157C",
+        "FA2DD0CD8FA1EAED35CA946C",
+      );
+      "productName" = "WesleyFlowAppTests";
+      "isa" = "PBXNativeTarget";
+      "buildPhases" = (
+        "F4E9F38E16B01050A03B8113",
+        "376CB33734054840C2006334",
+        "F3450B63233CC3F0A1670847",
+      );
+      "dependencies" = (
+        "73A0CC76AB02677EEB916893",
+      );
+      "name" = "WesleyFlowAppTests";
+      "buildRules" = (
+      );
+    };
+    "47520DFBC21476733446881D" = {
+      "isa" = "XCLocalSwiftPackageReference";
+      "relativePath" = "Packages/WesleyFlowCore";
+    };
+    "D021AF083475CBD67493D278" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.DomainTests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks";
+        "PRODUCT_NAME" = "DomainTests";
+      };
+      "name" = "Debug";
+    };
+    "735512160BABA4DC1675C1DC" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.DomainTests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks";
+        "PRODUCT_NAME" = "DomainTests";
+      };
+      "name" = "Release";
+    };
+    "73A0CC76AB02677EEB916893" = {
+      "isa" = "PBXTargetDependency";
+      "target" = "28842F0FBEF7D211F304ACBC";
+      "targetProxy" = "6242BF8ECD5A47A6CC1A8329";
+    };
+    "A0AD78130D41429E92255BA8" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "E51C7513A3AF75FB3E9AC43F";
+    };
+    "8C25E4C0CF680EC490165A4B" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "90D72B864BC8FE860C0FCBAF",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "376CB33734054840C2006334" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "BFD1C0C722B34895F28C75B4",
+        "6063813958A7445DC516842D",
+        "0A0765B7884D015D279249B3",
+        "7DC3E4904726068E6016C457",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "985959785319747668373CC6" = {
+      "buildConfigurationList" = "C0631FFB4C9621A761CD753C";
+      "packageReferences" = (
+        "47520DFBC21476733446881D",
+      );
+      "targets" = (
+        "28842F0FBEF7D211F304ACBC",
+        "BD64E34F3B89E990E8D455E3",
+        "9BA5BA72BC7B907FF73C6137",
+        "712188CCD283119B755F1D3B",
+      );
+      "developmentRegion" = "en";
+      "knownRegions" = (
+        "en",
+        "Base",
+      );
+      "isa" = "PBXProject";
+      "compatibilityVersion" = "Xcode 16.0";
+      "productRefGroup" = "4EDC8BFAFC6BD936B849F38C";
+      "projectDirPath" = "";
+      "attributes" = {
+        "LastSwiftUpdateCheck" = "2700";
+        "BuildIndependentTargetsInParallel" = "YES";
+        "LastUpgradeCheck" = "2700";
+        "TargetAttributes" = {
+          "BD64E34F3B89E990E8D455E3" = {
+            "TestTargetID" = "28842F0FBEF7D211F304ACBC";
+          };
+        };
+      };
+      "hasScannedForEncodings" = "0";
+      "projectRoot" = "";
+      "mainGroup" = "97A63A01E61FD439E8760B8E";
+    };
+    "36A7E768635CF9AAF302F9D0" = {
+      "isa" = "XCConfigurationList";
+      "defaultConfigurationIsVisible" = "0";
+      "defaultConfigurationName" = "Release";
+      "buildConfigurations" = (
+        "A2CCC7869897D2BFF6E974DA",
+        "36FAA52D1DA23358E1CE5160",
+      );
+    };
+    "9EB8C027048A605433C1874A" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "658E5DAD6B81BB44ABADF57E";
+    };
+    "609A52E5B24E5BB109D44D04" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "EC72F7F6F11429BF60F0270C",
+        "9C33D42162A80F6D89B306F3",
+        "B36451B8943B67E0C1E55631",
+        "3B1CE024A75020EF956DF2E8",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "F2F023B5618BA20063C1AA94" = {
+      "isa" = "XCBuildConfiguration";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "ENABLE_HARDENED_RUNTIME" = "NO";
+        "MARKETING_VERSION" = "0.1.0";
+        "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
+        "PRODUCT_MODULE_NAME" = "WesleyFlow";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.WesleyFlow";
+        "ENABLE_APP_SANDBOX" = "NO";
+        "INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks";
+        "CURRENT_PROJECT_VERSION" = "1";
+        "PRODUCT_NAME" = "Wesley Flow";
+      };
+      "name" = "Debug";
+    };
+    "B9A6734F470A7F7E1B159C92" = {
+      "path" = "App/AppComposition.swift";
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "F3450B63233CC3F0A1670847" = {
+      "isa" = "PBXResourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "4B733A9435BBBA06816BEBAC" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "9EB8C027048A605433C1874A",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "658E5DAD6B81BB44ABADF57E" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Domain";
+    };
+    "DBBFC30291D55CDD50B10B32" = {
+      "isa" = "PBXResourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "DEF93E8F8AC229A0D98BBEFA" = {
+      "path" = "Wesley Flow.app";
+      "isa" = "PBXFileReference";
+      "includeInIndex" = "0";
+      "explicitFileType" = "wrapper.application";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+    };
+    "92088E23FE4427BE452444D1" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "TaskExecution";
+    };
+    "9C33D42162A80F6D89B306F3" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "92088E23FE4427BE452444D1";
+    };
+    "C6E23443E9C9C571D75494EF" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Persistence";
+    };
+    "B36451B8943B67E0C1E55631" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "C6E23443E9C9C571D75494EF";
+    };
+    "0817D5F97E0FDBB64D1A21E6" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "SystemOperations";
+    };
+    "3B1CE024A75020EF956DF2E8" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "0817D5F97E0FDBB64D1A21E6";
+    };
+    "65D1E8A99502EC2B79436F83" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "TaskExecution";
+    };
+    "6063813958A7445DC516842D" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "65D1E8A99502EC2B79436F83";
+    };
+    "D2C341703AA1E186EEDD157C" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Persistence";
+    };
+    "0A0765B7884D015D279249B3" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "D2C341703AA1E186EEDD157C";
+    };
+    "FA2DD0CD8FA1EAED35CA946C" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "SystemOperations";
+    };
+    "7DC3E4904726068E6016C457" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "FA2DD0CD8FA1EAED35CA946C";
+    };
+    "7B025C4243A9B2CC69B97009" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/Phase1ATests/CoordinatorTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "EBB9415BD5A21456D1755E23" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "7B025C4243A9B2CC69B97009";
+    };
+    "2964FA281A95F280259BA19B" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/Phase1ATests/PermissionTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "E7D84F8D33D7FB502EC36A22" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "2964FA281A95F280259BA19B";
+    };
+    "FEA00E151562016B0662688C" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/Phase1ATests/PersistenceTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "D2F5900C5788079BF5EFD5A2" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "FEA00E151562016B0662688C";
+    };
+    "7D392C9C04D899BA0139FF8E" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "Packages/WesleyFlowCore/Tests/Phase1ATests/TestSupport.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "58A54A4B233D098D6BA6BFAB" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "7D392C9C04D899BA0139FF8E";
+    };
+    "DD057D9AD96251F5FE3D23E9" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "EBB9415BD5A21456D1755E23",
+        "E7D84F8D33D7FB502EC36A22",
+        "D2F5900C5788079BF5EFD5A2",
+        "58A54A4B233D098D6BA6BFAB",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "C27CC5794AB7E21218950045" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+        "029CF3818892CBBB57AB9059",
+        "D923C44FF02B27C7B2218BBC",
+        "0D9815939FF36718917A452E",
+        "5D923782F20A31B7E5FB2376",
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "5808382C5F208B0C55BED1A8" = {
+      "isa" = "PBXResourcesBuildPhase";
+      "buildActionMask" = "2147483647";
+      "files" = (
+      );
+      "runOnlyForDeploymentPostprocessing" = "0";
+    };
+    "FE424A860A5D9291398BB811" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_NAME" = "Phase1ATests";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.Phase1ATests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks";
+      };
+    };
+    "E971FA915361FFF127225E4F" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Release";
+      "buildSettings" = {
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_NAME" = "Phase1ATests";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.Phase1ATests";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks";
+      };
+    };
+    "ECE1C9F5E3B237E368D5A522" = {
+      "isa" = "XCConfigurationList";
+      "buildConfigurations" = (
+        "FE424A860A5D9291398BB811",
+        "E971FA915361FFF127225E4F",
+      );
+      "defaultConfigurationIsVisible" = "0";
+      "defaultConfigurationName" = "Release";
+    };
+    "BF8F9E8DF1DC801E5AABC82B" = {
+      "isa" = "PBXFileReference";
+      "explicitFileType" = "wrapper.cfbundle";
+      "includeInIndex" = "0";
+      "path" = "Phase1ATests.xctest";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+    };
+    "712188CCD283119B755F1D3B" = {
+      "isa" = "PBXNativeTarget";
+      "name" = "Phase1ATests";
+      "productName" = "Phase1ATests";
+      "productReference" = "BF8F9E8DF1DC801E5AABC82B";
+      "productType" = "com.apple.product-type.bundle.unit-test";
+      "buildConfigurationList" = "ECE1C9F5E3B237E368D5A522";
+      "buildPhases" = (
+        "DD057D9AD96251F5FE3D23E9",
+        "C27CC5794AB7E21218950045",
+        "5808382C5F208B0C55BED1A8",
+      );
+      "buildRules" = (
+      );
+      "dependencies" = (
+      );
+      "packageProductDependencies" = (
+        "5199C205CBF4F41EC942BC78",
+        "F49BF61A3327B930B5F41E28",
+        "99AB7975A06A248B17D992B3",
+        "185DECB4B4FE4E45AEFC3789",
+      );
+    };
+    "5199C205CBF4F41EC942BC78" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Domain";
+    };
+    "029CF3818892CBBB57AB9059" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "5199C205CBF4F41EC942BC78";
+    };
+    "F49BF61A3327B930B5F41E28" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "TaskExecution";
+    };
+    "D923C44FF02B27C7B2218BBC" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "F49BF61A3327B930B5F41E28";
+    };
+    "99AB7975A06A248B17D992B3" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "Persistence";
+    };
+    "0D9815939FF36718917A452E" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "99AB7975A06A248B17D992B3";
+    };
+    "185DECB4B4FE4E45AEFC3789" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "SystemOperations";
+    };
+    "5D923782F20A31B7E5FB2376" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "185DECB4B4FE4E45AEFC3789";
+    };
+  };
+  "rootObject" = "985959785319747668373CC6";
 }

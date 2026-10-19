@@ -4,10 +4,19 @@ import PackageDescription
 let package = Package(
     name: "WesleyFlowCore",
     platforms: [.macOS("26.0")],
-    products: [.library(name: "Domain", targets: ["Domain"])],
+    products: [
+        .library(name: "Domain", targets: ["Domain"]),
+        .library(name: "TaskExecution", targets: ["TaskExecution"]),
+        .library(name: "Persistence", targets: ["Persistence"]),
+        .library(name: "SystemOperations", targets: ["SystemOperations"])
+    ],
     targets: [
         .target(name: "Domain"),
-        .testTarget(name: "DomainTests", dependencies: ["Domain"])
+        .target(name: "TaskExecution", dependencies: ["Domain"]),
+        .target(name: "Persistence", dependencies: ["Domain"]),
+        .target(name: "SystemOperations", dependencies: ["Domain"]),
+        .testTarget(name: "DomainTests", dependencies: ["Domain"]),
+        .testTarget(name: "Phase1ATests", dependencies: ["Domain", "TaskExecution", "Persistence", "SystemOperations"])
     ],
     swiftLanguageModes: [.v6]
 )

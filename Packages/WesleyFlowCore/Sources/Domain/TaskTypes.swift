@@ -1,20 +1,20 @@
 /// An application-assigned identifier; this value grants no authority.
-public struct TaskIdentifier: RawRepresentable, Equatable, Hashable, Sendable {
+public struct TaskIdentifier: RawRepresentable, Equatable, Hashable, Sendable, Codable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
 }
 
-public enum VerificationRequirement: Equatable, Sendable {
+public enum VerificationRequirement: Equatable, Sendable, Codable {
     case none
     case required
 }
 
-public enum TaskPhase: Equatable, Sendable {
+public enum TaskPhase: Equatable, Sendable, Codable {
     case running
     case verifying
 }
 
-public enum TaskFailure: Equatable, Sendable {
+public enum TaskFailure: Equatable, Sendable, Codable {
     case setup
     case approvalExpired
     case approvalRevoked
@@ -24,14 +24,15 @@ public enum TaskFailure: Equatable, Sendable {
     case storage
     case interrupted
     case cleanupIncomplete
+    case policyDenied, conflict, limitExceeded
 }
 
-public enum CancellationIntent: Equatable, Sendable {
+public enum CancellationIntent: Equatable, Sendable, Codable {
     case cancelled
     case failed(TaskFailure)
 }
 
-public enum TaskState: Equatable, Sendable {
+public enum TaskState: Equatable, Sendable, Codable {
     case queued
     case planning
     case awaitingApproval(resumePhase: TaskPhase)
@@ -42,7 +43,7 @@ public enum TaskState: Equatable, Sendable {
     case failed(TaskFailure)
     case cancelled
 
-    public enum Kind: String, CaseIterable, Sendable {
+    public enum Kind: String, CaseIterable, Sendable, Codable {
         case queued, planning, awaitingApproval, running, verifying
         case cancelling, succeeded, failed, cancelled
     }
@@ -69,7 +70,7 @@ public enum TaskState: Equatable, Sendable {
     }
 }
 
-public enum TaskEvent: Equatable, Sendable {
+public enum TaskEvent: Equatable, Sendable, Codable {
     case start
     case requestApproval
     case approveExecution
@@ -84,7 +85,7 @@ public enum TaskEvent: Equatable, Sendable {
     case failure(TaskFailure)
     case interrupted
 
-    public enum Kind: String, CaseIterable, Sendable {
+    public enum Kind: String, CaseIterable, Sendable, Codable {
         case start, requestApproval, approveExecution, approveVerification, planReady
         case executionDone, noVerificationDone, verificationPassed, cancel
         case cleanupCancelled, cleanupFailed, failure, interrupted
@@ -111,7 +112,7 @@ public enum TaskEvent: Equatable, Sendable {
 
 /// Facts to be established by a future coordinator/broker. This pure value is
 /// not an approval token, verifier, resource lease, or execution capability.
-public struct TransitionFacts: Equatable, Sendable {
+public struct TransitionFacts: Equatable, Sendable, Codable {
     public var isQueueHead = false
     public var hasExecutionLease = false
     public var hasPendingExactOperation = false
@@ -131,7 +132,7 @@ public struct TransitionFacts: Equatable, Sendable {
     public init() {}
 }
 
-public enum TransitionCondition: Equatable, Sendable {
+public enum TransitionCondition: Equatable, Sendable, Codable {
     case queueHead, executionLease, pendingExactOperation, noActiveEffect
     case approvalValid, approvalResumePhase, planningComplete, noPendingApproval
     case executionComplete, verificationRequired, verificationNotRequired
@@ -140,7 +141,7 @@ public enum TransitionCondition: Equatable, Sendable {
     case startupRecovery, previousSessionRevoked, uncertainEffects
 }
 
-public enum TaskTransitionError: Error, Equatable, Sendable {
+public enum TaskTransitionError: Error, Equatable, Sendable, Codable {
     case invalidTransition(state: TaskState.Kind, event: TaskEvent.Kind)
     case unmetCondition(TransitionCondition)
     case retryRequiresTerminalState

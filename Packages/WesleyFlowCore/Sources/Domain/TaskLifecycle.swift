@@ -100,16 +100,16 @@ public enum TaskTransitions {
     }
 }
 
-public struct TaskLifecycle: Equatable, Sendable {
+public struct TaskLifecycle: Equatable, Sendable, Codable {
     public let id: TaskIdentifier
     public let retryOf: TaskIdentifier?
     public let verification: VerificationRequirement
     public private(set) var state: TaskState = .queued
 
-    public init(id: TaskIdentifier, verification: VerificationRequirement) {
+    public init(id: TaskIdentifier, verification: VerificationRequirement, retryOf: TaskIdentifier? = nil) {
         self.id = id
         self.verification = verification
-        self.retryOf = nil
+        self.retryOf = retryOf
     }
 
     private init(id: TaskIdentifier, verification: VerificationRequirement, retryOf: TaskIdentifier) {

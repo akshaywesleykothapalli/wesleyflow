@@ -1,42 +1,32 @@
 # Wesley Flow
 
-A greenfield native macOS foundation, implemented from the approved Phase 0A architecture. Phase 0B is complete on the recorded development host. **Stop here; Phase 1 needs separate authorization.**
+A greenfield native macOS 26+ Apple Silicon application foundation using SwiftUI, AppKit and Swift 6. **Phase 1A remediation is complete on the recorded development host. Stop here pending separately authorized work.** No legacy application source was inspected or reused.
 
-## Included
+The foundation includes guarded Domain lifecycle values, immutable workflow snapshots, a single-active-task FIFO coordinator, scoped one-use approvals, local SwiftData state/event transactions, interrupted recovery, cancellation/deadlines/quarantine and revision-bound verification ports. Composition requires an explicit store URL and injected executor/verifier. The native window remains a foundation shell; real task workflows and approval controls are not enabled. There are no agents, speech/model integrations, filesystem/process executors or external packages.
 
-- Minimal SwiftUI window with AppKit application-close lifecycle.
-- Local Domain package with Sendable task identifiers, typed states/events/failures, guarded pure transitions and retry linkage.
-- MainActor shell composition through one injected status-provider protocol.
-- Domain and composition tests in the shared `WesleyFlow` scheme.
+Cancellation preserves unknown operation disposition. Result acceptance rechecks monotonic deadlines; stored deadlines never resume across restart. Shutdown closes admission before suspension and bounds status reporting at five seconds. Pending storage remains owned and explicitly uncertain; bounded return does not claim a stuck backend was killed.
 
-There is no task executor, history store, speech, model, agent, automation or subprocess facility in this foundation. No permission prompts or external package dependencies are added. No previous application implementation was inspected or reused; only approved architecture documentation was copied.
+## Verification
 
-## Open and verify
-
-Open `WesleyFlow.xcodeproj` in the selected full Xcode installation. Run the shared `WesleyFlow` scheme on My Mac. Current settings: macOS 26.0 minimum, arm64 app, Swift 6 mode, strict concurrency, nonisolated core/default isolation and explicit MainActor UI. Package tools minimum is 6.2; Swift 6.2.3 compatibility remains unverified.
-
-The recorded development lane is Xcode 27.0 beta build 27A5237l, Swift 6.4 and macOS 27 SDK. Local ad-hoc signing uses no signing team; `local.wesleyflow.WesleyFlow` is a development identifier, not a shipping identity.
-
-From the repository root, use an explicit full-Xcode directory without changing the global selection:
+Open `WesleyFlow.xcodeproj` and use shared scheme `WesleyFlow` on My Mac. Select the full Xcode installation explicitly; do not substitute Command Line Tools. The recorded lane is Xcode 27.0 beta (27A5237l), Swift 6.4, macOS SDK 27.0 and host macOS 27.2. Swift tools 6.2, language mode 6, nonisolated core and deployment target 26.0 remain configured. Actual macOS 26 and Swift 6.2.3 compatibility are unverified. Signing is local ad-hoc, not production distribution.
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Xcode -configuration Debug build
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Xcode -configuration Release build
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Xcode -configuration Debug -resultBundlePath Evidence/manual-tests.xcresult test
-open 'DerivedData/Xcode/Build/Products/Debug/Wesley Flow.app'
+xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Debug build
+xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Release build
+xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Debug -resultBundlePath Evidence/local-tests.xcresult test
 ```
 
-Use a new result-bundle path for each run; Xcode does not overwrite existing bundles. The shared scheme contains both native test bundles. `DomainTests` compiles the test source in the package's Tests directory without duplicating it. Swift Package Manager can also run that same source with `xcrun swift test --package-path Packages/WesleyFlowCore --scratch-path DerivedData/SwiftPackage`.
+Choose a fresh result path per run. For `test-without-building`, run immediately after `test` or `build-for-testing`; an ordinary app build may remove the hosted test bundle. The shared scheme runs Domain, composition and Phase1A bundles, referencing the package test sources without copying them.
 
-## Actual results and documentation
+Debug and Release builds passed. The final suite and separate replay each passed 63 functions/258 concrete cases with zero failures or skips. A fresh-process abrupt-exit probe recovered interrupted work without executor replay or restored approval. These results establish the authorized service foundation on this host, not production effect containment or minimum-OS compatibility.
 
-Final Debug and Release builds passed. Both test bundles passed: 15 test functions, 178 concrete cases, zero failures/skips; a separate test-without-building replay also passed. Launch was verified by the actual process and an on-screen window titled “Wesley Flow”. These results establish the foundation on macOS 27.2; they do not prove macOS 26.0 runtime or production release compatibility.
-
-- [Phase 0B implementation notes](Docs/PHASE0B-FOUNDATION.md)
-- [Phase 0B completion and gate report](Docs/PHASE0B-COMPLETION.md)
+- [Phase 1A remediation and final verification](Docs/PHASE1A-REMEDIATION.md)
+- [Phase 1A historical completion and execution evidence](Docs/PHASE1A-COMPLETION.md)
+- [Phase 1A implementation decisions and limits](Docs/PHASE1A-IMPLEMENTATION.md)
+- [Phase 0B historical completion](Docs/PHASE0B-COMPLETION.md)
 - [Preserved approved architecture](Docs/WesleyFlow-Phase0/README.md)
-- [Amendment traceability](Docs/PHASE0A-TRACEABILITY.md)
+- [Architecture amendment traceability](Docs/PHASE0A-TRACEABILITY.md)
 - [Original risk register](Docs/PHASE0A-RISKS.md)
 
-Actual local logs, command/exit metadata, result bundles, launch observations, source hashes and final Git status are retained in `Evidence/Phase0B/`. Build products and raw evidence are ignored by Git; report summaries are versioned. Do not publish raw evidence without reviewing device identifiers and local paths.
+Current command metadata, logs, result bundles, probes and source hashes are in `Evidence/Phase1A-Remediation/`; earlier records remain in `Evidence/Phase1A/` and `Evidence/Phase1A-Audit-2026-10-19/`. Raw evidence/build products are Git-ignored. Verified source and reports are recorded in the local remediation commit.
