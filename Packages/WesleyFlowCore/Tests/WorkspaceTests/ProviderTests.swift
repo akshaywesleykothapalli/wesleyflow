@@ -1,7 +1,7 @@
 import Domain
 @testable import ModelProviders
 import Workspace
-import SystemOperations
+@testable import SystemOperations
 import TaskExecution
 import Foundation
 import Testing
@@ -326,5 +326,86 @@ private struct UnavailableProviderTransport: OllamaHTTPTransport {
         let service = ProposalGenerator(provider:try makeProvider(t),context:context,clock:clock)
         #expect(throws:TaskServiceError.unsupportedOperation) { try ProposalTaskExecutor(taskID:.init(rawValue:"task"),operation:.init(id:"write",kind:.fileWrite,digest:fixtureDigest,workspaceID:"fixture",revision:fixtureDigest),request:request,service:service) }
         #expect(await t.requests.isEmpty)
+    }
+}
+
+
+private struct UnavailableMemoryCounters: InferenceMemorySource {
+    func sample() throws -> InferenceMemorySample { throw InferenceFailure.memoryAdmissionDenied }
+}
+@Suite(.serialized) struct MemoryAccountingTests {
+    @Test func speculativeSubsetIsNotAddedAgain() throws {
+        // Raw Mach observation: free=9078 already includes 1144 speculative pages.
+        let bytes = try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:9078,inactivePages:276771,pageSize:16384)
+        #expect(bytes == 4_683_350_016)
+        #expect(bytes != 4_702_093_312) // Previous duplicate-inclusive result.
+    }
+    @Test func zeroFreeAndSpeculativePagesRetainInactiveCapacity() throws {
+        #expect(try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:0,inactivePages:1500,pageSize:16384) == 24_576_000)
+        #expect(try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:0,inactivePages:0,pageSize:16384) == 0)
+    }
+    @Test(arguments:[(UInt64(1),UInt64(1500)),(4096,6_144_000),(16384,24_576_000),(65536,98_304_000)])
+    func pageUnitsArePreserved(_ input: (UInt64,UInt64)) throws {
+        #expect(try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:1000,inactivePages:500,pageSize:input.0) == input.1)
+    }
+    @Test func largeCountsDoNotNarrowTo32Bits() throws {
+        #expect(try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:UInt64(UInt32.max),inactivePages:UInt64(UInt32.max),pageSize:16384) == 140_737_488_322_560)
+        #expect(try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:UInt64.max,inactivePages:0,pageSize:1) == UInt64.max)
+    }
+    @Test(arguments:[(UInt64.max,UInt64(1),UInt64(1)),(UInt64.max,0,2),(1,1,UInt64.max),(0,0,0),(0,UInt64.max,2)])
+    func overflowOrInvalidUnitFailsClosed(_ input: (UInt64,UInt64,UInt64)) {
+        #expect(throws:InferenceFailure.memoryAdmissionDenied) { try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:input.0,inactivePages:input.1,pageSize:input.2) }
+    }
+    @Test func calculationsAreStable() throws {
+        for _ in 0..<100 {
+            #expect(try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:9078,inactivePages:276771,pageSize:16384) == 4_683_350_016)
+        }
+    }
+    @Test func correctedBoundaryRejectsAndReleasesRequestOwnership() async throws {
+        let required: UInt64 = 11_667_839_108
+        let pagesBelowBoundary = (required - 1) / 16384
+        let corrected = try SystemInferenceMemory.availableBytes(freePagesIncludingSpeculative:1000,inactivePages:pagesBelowBoundary-1000,pageSize:16384)
+        #expect(corrected < required)
+        #expect(corrected + 1000 * 16384 >= required) // Duplicate count would falsely cross admission.
+        let t = ProviderTransport(), memory = ProviderMemory(), p = try makeProvider(t,memory:memory)
+        await memory.set(.init(conservativeAvailableBytes:corrected,pressureNormal:true))
+        for id in ["denied_one","denied_two"] {
+            await providerFailure(.memoryAdmissionDenied) { _ = try await p.generate(basicRequest(id)) }
+        }
+        await memory.set(.init(conservativeAvailableBytes:required,pressureNormal:false))
+        await providerFailure(.memoryAdmissionDenied) { _ = try await p.generate(basicRequest("pressure_denial")) }
+        #expect(await t.requests.allSatisfy { $0.route != .chat })
+        await memory.set(.init(conservativeAvailableBytes:required,pressureNormal:true))
+        let response = try await p.generate(basicRequest("explicit_retry"))
+        #expect(response.requestID == "explicit_retry")
+        #expect(await t.requests.filter { $0.route == .chat }.count == 1)
+    }
+    @Test func unavailableCountersNeverStartChat() async throws {
+        let t = ProviderTransport()
+        let p = try OllamaProvider(endpoint:OllamaEndpoint(),transport:t,memory:UnavailableMemoryCounters(),clock:ProviderClock(),gate:OllamaLeaseGate())
+        await providerFailure(.memoryAdmissionDenied) { _ = try await p.generate(basicRequest()) }
+        #expect(await t.requests.allSatisfy { $0.route != .chat })
+    }
+    @Test @MainActor func coordinatorAdmissionDenialIsTerminalFailureWithoutProposal() async throws {
+        let context = try generationContext(), t = ProviderTransport(), clock = ProviderClock(), memory = ProviderMemory()
+        await memory.set(.init(conservativeAvailableBytes:1,pressureNormal:true))
+        let provider = try makeProvider(t,memory:memory,clock:clock), service = ProposalGenerator(provider:provider,context:context,clock:clock)
+        let request = try ProposalGenerator.makeRequest(id:"memory_denied_task",model:providerModel(),taskInstruction:"Create Sources/New.swift",syntheticContext:"synthetic",context:context,deadline:121000)
+        let operation = ScopedOperation(id:"prepare",kind:.inspection,digest:fixtureDigest,workspaceID:context.expectedProjectID.rawValue,revision:context.expectedSnapshotDigest)
+        let id = TaskIdentifier(rawValue:"memory_task"), executor = try ProposalTaskExecutor(taskID:id,operation:operation,request:request,service:service)
+        let history = GenerationHistory(), pair = PermissionBroker.compose(clock:clock)
+        let coordinator = TaskCoordinator(history:history,policy:pair.policy,executor:executor,verifier:NoGenerationVerifier(),clock:clock)
+        try await coordinator.start()
+        try await coordinator.submit(.init(id:id,workspaceID:operation.workspaceID,revision:operation.revision,steps:[operation]))
+        let waiting = try await coordinator.waitForState(id,.awaitingApproval)
+        let approval = try #require(waiting.pendingApproval)
+        try await pair.authority.approve(approval.id); try await coordinator.resumeApproval(id)
+        let failed = try await coordinator.waitForState(id,.failed)
+        #expect(failed.lifecycle.state.kind == .failed)
+        #expect(failed.pendingApproval == nil)
+        #expect(await executor.takePreparedProposal() == nil)
+        #expect(await t.requests.allSatisfy { $0.route != .chat })
+        await coordinator.shutdown()
+        #expect(await t.requests.allSatisfy { $0.route != .chat })
     }
 }

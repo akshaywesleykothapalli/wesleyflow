@@ -1,7 +1,8 @@
 import Domain
 import Darwin
 
-/// Conservative immediately free + inactive + speculative pages. Does not add compressed/swap capacity.
+/// Free (already including speculative) + inactive page proxy; reclaim is not guaranteed.
+/// Does not add compressed/swap capacity.
 public struct SystemInferenceMemory: InferenceMemorySource {
     public init() {}
     public func sample() throws -> InferenceMemorySample {
@@ -14,7 +15,19 @@ public struct SystemInferenceMemory: InferenceMemorySource {
         guard status == KERN_SUCCESS, sysctlbyname("kern.memorystatus_vm_pressure_level", &pressure, &length, nil, 0) == 0 else { throw InferenceFailure.memoryAdmissionDenied }
         var swap = xsw_usage(); var swapLength = MemoryLayout<xsw_usage>.size
         guard sysctlbyname("vm.swapusage", &swap, &swapLength, nil, 0) == 0 else { throw InferenceFailure.memoryAdmissionDenied }
-        let pages = UInt64(stats.free_count) + UInt64(stats.inactive_count) + UInt64(stats.speculative_count)
-        return .init(conservativeAvailableBytes: pages * UInt64(getpagesize()), pressureNormal: pressure == 1, swapUsedBytes: swap.xsu_used)
+        let pageSize = getpagesize()
+        guard pageSize > 0 else { throw InferenceFailure.memoryAdmissionDenied }
+        let bytes = try Self.availableBytes(freePagesIncludingSpeculative: UInt64(stats.free_count),
+                                            inactivePages: UInt64(stats.inactive_count), pageSize: UInt64(pageSize))
+        return .init(conservativeAvailableBytes: bytes, pressureNormal: pressure == 1, swapUsedBytes: swap.xsu_used)
+    }
+    /// Mach free_count already includes speculative_count. Keep this arithmetic independently testable.
+    static func availableBytes(freePagesIncludingSpeculative: UInt64, inactivePages: UInt64, pageSize: UInt64) throws -> UInt64 {
+        guard pageSize > 0 else { throw InferenceFailure.memoryAdmissionDenied }
+        let (pages, additionOverflow) = freePagesIncludingSpeculative.addingReportingOverflow(inactivePages)
+        guard !additionOverflow else { throw InferenceFailure.memoryAdmissionDenied }
+        let (bytes, multiplicationOverflow) = pages.multipliedReportingOverflow(by: pageSize)
+        guard !multiplicationOverflow else { throw InferenceFailure.memoryAdmissionDenied }
+        return bytes
     }
 }

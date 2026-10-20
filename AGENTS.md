@@ -51,3 +51,7 @@ The current user authorizes local Ollama0.33.0 metadata/conformance inspection, 
 ## Phase1B.3A engineering review and foundation checkpoint
 
 The current user authorizes engineering review, narrow Phase1B.3A defect fixes/regression verification if necessary, explicit staging of reviewed source/tests/configuration/documentation and one local commit named `feat(models): add guarded local Ollama provider foundation`. This supersedes the previous no-staging/no-commit rule only for this foundation checkpoint. Do not start inference, change safety thresholds, claim live-provider acceptance, push, create a remote, or begin a later milestone. Preserve the measured40 BLOCKED model rows and all live inference/cancellation/unload limitations. Stop after the checkpoint.
+
+## Phase1B.3A memory accounting remediation
+
+The user authorizes the confirmed speculative-page accounting fix, overflow-safe arithmetic, regression tests, read-only resource and official-model analysis, documentation/build/full-suite/replay verification and one reviewed local commit named `fix(models): correct macOS memory admission accounting`, including the preserved prior diagnosis. This supersedes the preceding checkpoint-only stop for this remediation only. No threshold reduction, model download/inference, daemon configuration, application termination, OpenCode, productive effects, push/remote creation or Phase1B.4. Stop after remediation and the local checkpoint.
