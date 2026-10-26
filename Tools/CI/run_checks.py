@@ -19,6 +19,25 @@ MANUAL_TESTS = [
 ]
 
 
+# Baseline 1,025 expanded local cases minus the four graphical checks above.
+MIN_APP_CASES = 1021
+MIN_MODEL_LAB_TESTS = 152
+REQUIRED_APP_TESTS = {
+    'OfflineQualityV2Tests/spokenPromptUsesRelevantSectionsWithoutNewContent()',
+    'OfflineQualityV2Tests/opaqueSpansAreNotSplitAndWordsAreRetained()',
+    'OfflineQualityV2Tests/boundedSegmentationAndInvalidPlanFailClosed()',
+    'OfflineQualityV2Tests/toneGatePreservesNegationAndRejectsInventedRequirements(_:)',
+    'OfflineQualityV2Tests/evaluationDatasetIsVersionedAndContractsAreAdmissible()',
+    'QualityPreviewRejectionTests/rejectingCompletedPreviewRetainsInputAndNeverCopies()',
+    'GlobalPreviewDeliveryTests/repeatsAndConsecutiveGestures(_:)',
+    'GlobalPreviewDeliveryTests/invalidationCannotCompleteOldPress(_:)',
+    'GlobalPreviewDeliveryTests/cancelledGestureAndUnknownOriginFailClosed()',
+    'GlobalAIShortcutWorkflowTests/emptyInputOpensCorrectPreviewWithoutEffects(_:)',
+    'GlobalAIShortcutWorkflowTests/rapidChordsSleepAndLateResultsNeverReplaceSource()',
+    'GlobalAIShortcutWorkflowTests/nativePanelNeverBecomesKeyOrMain()',
+}
+
+
 def version(text):
     match = re.search(r'(\d+)\.(\d+)', text)
     if not match:
@@ -71,6 +90,28 @@ def gui_executed(node):
     return isinstance(node, list) and any(gui_executed(value) for value in node)
 
 
+def passed_identifiers(node):
+    if isinstance(node, dict):
+        result = {node['nodeIdentifier']} if node.get('result') == 'Passed' and 'nodeIdentifier' in node else set()
+        for value in node.values():
+            result.update(passed_identifiers(value))
+        return result
+    if isinstance(node, list):
+        return set().union(*(passed_identifiers(value) for value in node))
+    return set()
+
+
+def require_test_results(data, tree):
+    cases = sum(item['passedTests'] for item in data['devicesAndConfigurations'])
+    if cases < MIN_APP_CASES or data['failedTests'] or data['result'] != 'Passed':
+        raise ValueError('test-count-or-result')
+    if gui_executed(tree):
+        raise ValueError('manual-test-exclusion-not-honored')
+    if not REQUIRED_APP_TESTS.issubset(passed_identifiers(tree)):
+        raise ValueError('required-integration-regressions-not-passed')
+    return cases
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['preflight', 'test', 'debug', 'release', 'concurrency', 'model-lab'])
@@ -102,7 +143,7 @@ def main():
                 match = re.search(r'^Ran (\d+) tests? in ', (directory / f'{args.action}-{index}.log').read_text(errors='replace'), re.MULTILINE)
                 count = int(match.group(1)) if match else 0
                 summary['modelLabTests' if index == 1 else 'resourceGuardTests'] = count
-                if count < (143 if index == 1 else 7):
+                if count < (MIN_MODEL_LAB_TESTS if index == 1 else 7):
                     code = 1
             if code:
                 break
@@ -114,15 +155,10 @@ def main():
             if result.returncode:
                 raise ValueError('test-summary-unavailable')
             data = json.loads(result.stdout)
-            configurations = data['devicesAndConfigurations']
-            cases = sum(item['passedTests'] for item in configurations)
-            if cases < 999 or data['failedTests'] or data['result'] != 'Passed':
-                raise ValueError('test-count-or-result')
             tree_result = subprocess.run(['/usr/bin/xcrun', 'xcresulttool', 'get', 'test-results', 'tests', '--path', str(directory / 'tests.xcresult')], env=env, capture_output=True, timeout=60)
             if tree_result.returncode:
                 raise ValueError('test-selection-unavailable')
-            if gui_executed(json.loads(tree_result.stdout)):
-                raise ValueError('manual-test-exclusion-not-honored')
+            cases = require_test_results(data, json.loads(tree_result.stdout))
             summary.update(passedCases=cases, passedDeclarations=data['passedTests'], failed=data['failedTests'], result='PASSED')
         else:
             summary['result'] = 'PASSED'

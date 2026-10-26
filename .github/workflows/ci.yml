@@ -29,6 +29,7 @@ jobs:
         run: |
           yamllint --strict -d '{extends: relaxed, rules: {line-length: disable}}' .github/workflows/ci.yml
           python3 -m unittest discover -s Tools/CI/tests -v
+          python3 -m unittest discover -s Tools/OfflineQuality -v
           python3 Tools/CI/repository_checks.py
 
   macos:

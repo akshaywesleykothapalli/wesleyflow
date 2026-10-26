@@ -80,5 +80,39 @@ class BuildPlanTests(unittest.TestCase):
             runner.version('unavailable')
 
 
+class IntegratedRegressionGateTests(unittest.TestCase):
+    def summary(self, cases=1021):
+        return {'devicesAndConfigurations':[{'passedTests':cases}], 'failedTests':0, 'result':'Passed'}
+
+    def tree(self):
+        return {'children':[{'nodeIdentifier':name, 'result':'Passed'} for name in runner.REQUIRED_APP_TESTS]}
+
+    def test_old_floor_is_not_current_coverage(self):
+        with self.assertRaises(ValueError):
+            runner.require_test_results(self.summary(999), self.tree())
+        self.assertEqual(runner.require_test_results(self.summary(), self.tree()), 1021)
+
+    def test_enough_cases_cannot_hide_missing_or_skipped_new_regression(self):
+        tree = self.tree()
+        tree['children'][0]['result'] = 'Skipped'
+        with self.assertRaises(ValueError):
+            runner.require_test_results(self.summary(2000), tree)
+        with self.assertRaises(ValueError):
+            runner.require_test_results(self.summary(2000), {'children':[]})
+
+    def test_integrated_checks_cannot_be_removed_from_workflow(self):
+        original = checks.workflow_data(checks.ROOT / '.github/workflows/ci.yml')
+        for lane in ['repository', 'macos']:
+            value = copy.deepcopy(original)
+            value['jobs'][lane]['steps'] = value['jobs'][lane]['steps'][:1]
+            self.assertIn('workflow-required-check-missing', checks.workflow_issues(value))
+
+    def test_gui_exclusions_still_reject_accidental_execution(self):
+        tree = self.tree()
+        tree['children'].append({'nodeIdentifier':runner.MANUAL_TESTS[0], 'result':'Passed'})
+        with self.assertRaises(ValueError):
+            runner.require_test_results(self.summary(), tree)
+
+
 if __name__ == '__main__':
     unittest.main()

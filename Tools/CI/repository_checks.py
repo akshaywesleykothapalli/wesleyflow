@@ -78,6 +78,17 @@ def workflow_issues(value):
                 issues.append('workflow-shell-input')
         if 'secrets' in json.dumps(job).lower() or 'environment' in job:
             issues.append('workflow-privileged-context')
+    commands = {name: '\n'.join(step.get('run', '') for step in job.get('steps', [])) for name, job in jobs.items()}
+    required = {
+        'repository': ['python3 -m unittest discover -s Tools/CI/tests -v',
+                       'python3 -m unittest discover -s Tools/OfflineQuality -v',
+                       'python3 Tools/CI/repository_checks.py'],
+        'macos': ['python3 Tools/CI/run_checks.py ' + action for action in
+                  ['preflight', 'test', 'debug', 'release', 'concurrency', 'model-lab']],
+    }
+    for name, required_commands in required.items():
+        if any(command not in commands.get(name, '').splitlines() for command in required_commands):
+            issues.append('workflow-required-check-missing')
     mac = jobs.get('macos', {})
     if mac.get('env') != {'DEVELOPER_DIR': '/Applications/Xcode_27.0.app/Contents/Developer'} or mac.get('needs') != 'repository':
         issues.append('workflow-toolchain-or-order')
@@ -113,9 +124,18 @@ def main():
     for item in sources['files']:
         if hashlib.sha256((ROOT / 'ModelLab/provenance' / item['path']).read_bytes()).hexdigest() != item['sha256']:
             issues.append('upstream-notice-or-provenance')
+    research = ROOT / 'ModelLab/provenance/milestone30'
+    metadata = json.loads((research / 'SOURCES.json').read_text())
+    for item in metadata['sources']:
+        name = item['file']
+        if Path(name).name != name or name in {'.', '..'}:
+            issues.append('research-provenance-path')
+        elif hashlib.sha256((research / name).read_bytes()).hexdigest() != item['sha256']:
+            issues.append('research-upstream-provenance')
     for required in ['THIRD_PARTY_NOTICES.md', 'Docs/Phase1B/Contracts/OpenCode-1.18.25/LICENSE',
                      'ModelLab/provenance/MLX-LM-LICENSE', 'ModelLab/provenance/upstream-LICENSE',
-                     'ModelLab/provenance/model-lab2a/upstream-LICENSE.txt']:
+                     'ModelLab/provenance/model-lab2a/upstream-LICENSE.txt',
+                     'ModelLab/provenance/milestone30/qwen3-LICENSE']:
         if not (ROOT / required).is_file():
             issues.append('required-notice')
     try:
