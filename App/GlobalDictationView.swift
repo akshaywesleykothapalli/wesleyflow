@@ -324,7 +324,7 @@ import Domain
                 Button("Preview latest dictation") { coordinator.startRewritePreview() }.disabled(!coordinator.canPreviewRewrite)
             }
             FlowSettingsGroup("Prompt engineering") {
-                FlowSettingsRow("Enable Prompt Engineering preview",description:"Organize supplied lines under relevant headings. Original words remain intact; missing requirements are never invented.") { Toggle("Enable Prompt Engineering preview",isOn:$coordinator.preferences.promptEngineeringEnabled) }
+                FlowSettingsRow("Enable Prompt Engineering preview",description:"Organize supplied sentences under relevant headings. Original words remain intact; missing requirements are never invented.") { Toggle("Enable Prompt Engineering preview",isOn:$coordinator.preferences.promptEngineeringEnabled) }
             }
             Button("Preview structured prompt") { coordinator.startSuppliedPreview(.promptEngineering) }.disabled(!coordinator.canPreviewSupplied(.promptEngineering))
             if coordinator.isPreviewingRewrite { Button("Cancel preview") { coordinator.cancelRewritePreview() } }
@@ -337,6 +337,7 @@ import Domain
                 Text(result.status == .rewritten ? "Suggested preview" : "Retained original").font(.caption)
                 Text(result.text).textSelection(.enabled)
                 Button("Copy reviewed preview") { _ = coordinator.copyReviewedText(result.text) }.disabled(!coordinator.historyCopyAllowed)
+                Button("Reject preview") { coordinator.rejectRewritePreview() }
             }
             Text("Review every preview. Tone requests never override preservation checks or memory admission. Nothing is automatically inserted or submitted.").font(.caption).foregroundStyle(.secondary)
         }

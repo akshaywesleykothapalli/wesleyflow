@@ -1,7 +1,7 @@
 import Foundation
 
 /// Extractive planning: the model supplies section indices, never new requirements or commands.
-/// The renderer retains every source line exactly once and in original order.
+/// The renderer retains every source unit exactly once and in original order.
 public struct PromptEngineeringContract: Sendable {
     public let numberedMaskedText: String
     private let lines: [String]
@@ -27,8 +27,8 @@ public struct PromptEngineeringContract: Sendable {
     }
     public init(_ request:OfflineRewriteRequest) throws {
         let protected = try ProtectedRewriteText(request)
-        func units(_ text:String) -> [String] { text.components(separatedBy:"\n").filter { !$0.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty } }
-        let original = units(request.text), masked = units(protected.masked)
+        let units = try protected.promptUnits()
+        let original = units.map(\.original), masked = units.map(\.masked)
         guard !original.isEmpty, original.count <= 16, original.count == masked.count,
               !request.text.contains("```"),
               !original.contains(where:{ $0.trimmingCharacters(in:.whitespaces).hasPrefix("$") || $0.range(of:#"^\s*(?:sudo|rm|curl|bash|sh|python3?|swift|git|npm)\s"#,options:.regularExpression) != nil }) else { throw ProtectedRewriteText.Failure.invalidInput }

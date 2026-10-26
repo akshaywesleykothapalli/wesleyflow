@@ -7,11 +7,11 @@ public enum OfflineRewriteTone: String, Codable, CaseIterable, Sendable {
     case natural, professional, concise, friendly, direct
     public var instruction: String {
         switch self {
-        case .natural: "Natural: retain conversational rhythm; use ordinary sentence punctuation and remove only isolated um/uh/erm fillers."
-        case .professional: "Professional: use restrained complete-sentence punctuation and sentence capitalization; remove hesitation fillers. No greetings, emphasis or added wording."
-        case .concise: "Concise: remove all um/uh/erm hesitation fillers and prefer minimal sentence punctuation. Do not shorten requirements or content words."
-        case .friendly: "Friendly: retain conversational phrasing with gentle punctuation; isolated hesitation fillers may remain. Never add enthusiasm, sentiment or greetings."
-        case .direct: "Direct: use clear statement boundaries, avoid exclamation marks and remove hesitation fillers. Do not add imperative wording or change politeness."
+        case .natural: "Natural: make everyday speech easy to read with normal sentence boundaries. Remove isolated um/uh/erm; retain conversational wording."
+        case .professional: "Professional: use workplace-appropriate sentence capitalization and restrained punctuation. Remove um/uh/erm; no greetings, emphasis or added wording."
+        case .concise: "Concise: remove every isolated um/uh/erm and redundant whitespace; use minimal punctuation. Preserve every requirement and all content words."
+        case .friendly: "Friendly: keep an approachable conversational rhythm with gentle punctuation; retain informal wording. No invented enthusiasm, sentiment or greetings."
+        case .direct: "Direct: separate requests into clear statements; remove um/uh/erm and avoid exclamation marks. Preserve politeness, negations and requirements."
         }
     }
 }
@@ -83,6 +83,20 @@ public struct ProtectedRewriteText: Sendable {
         // while exact protected vocabulary/code may contain any valid Unicode.
         guard !masked.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) && $0.value > 127 }) else { throw Failure.unsupportedLanguage }
         self.masked = masked; self.spans = spans; original = request.text; self.prefix = prefix
+    }
+    /// Segment only visible prose boundaries: code, URLs, decimal values and
+    /// protected vocabulary are opaque markers before splitting. No source words
+    /// are generated, removed or reordered. Conservative missed splits are safe.
+    func promptUnits() throws -> [(original: String, masked: String)] {
+        let expression = try NSRegularExpression(pattern: #"(?<=[.!?;])[^\S\n]+|\n+"#)
+        let separated = expression.stringByReplacingMatches(in: masked, range: NSRange(masked.startIndex..., in: masked), withTemplate: "\n")
+        let units = separated.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !units.isEmpty, units.count <= 16 else { throw Failure.invalidInput }
+        return units.map { unit in
+            var restored = unit
+            for span in spans { restored = restored.replacingOccurrences(of: span.marker, with: span.text) }
+            return (restored, unit)
+        }
     }
     public enum Failure: Error, Equatable { case invalidInput, unsupportedLanguage, invalidOutput }
     public func restoreAndValidate(_ output: String) throws -> String {

@@ -109,6 +109,10 @@ import VoiceInput
         isPreviewingRewrite = false; rewritePreview = nil; promptPreview = nil
         if let token, let offlineRewriter { Task { await offlineRewriter.cancel(requestID:token) } }
     }
+    func rejectRewritePreview() {
+        cancelRewritePreview()
+        previewNotice = "Preview rejected. Original input retained; nothing was copied or inserted."
+    }
     func configurePreviewShortcuts() {
         guard !closed, preferences.previewShortcutsEnabled, let previewRegistrar else {
             self.previewRegistrar?.disable(); registeredPreviewKinds = []; previewShortcutStatus = "Preview shortcuts are disabled."; return

@@ -747,3 +747,55 @@ private actor PromptPlanFixture: NativeRewriteGenerating {
         #expect(await generator.calls == 2)
     }
 }
+
+
+@Suite("Offline quality V2") struct OfflineQualityV2Tests {
+    @Test func spokenPromptUsesRelevantSectionsWithoutNewContent() throws {
+        let text = "Improve the button animation. Preserve keyboard access. Do not download models. Return a short explanation."
+        let contract = try PromptEngineeringContract(.init(id:"quality",text:text,localeIdentifier:"en-US",kind:.promptEngineering))
+        #expect(contract.numberedMaskedText.components(separatedBy:"\n").count == 4)
+        let result = try contract.render(#"{"objective":[0],"context":[],"requirements":[1],"constraints":[2],"expectedOutput":[3]}"#)
+        #expect(result == "## Objective\nImprove the button animation.\n\n## Requirements\nPreserve keyboard access.\n\n## Constraints\nDo not download models.\n\n## Expected output\nReturn a short explanation.")
+        #expect(!result.contains("## Context"))
+    }
+    @Test func opaqueSpansAreNotSplitAndWordsAreRetained() throws {
+        let text = "review `first. second` please; keep https://example.test/a.swift and 1.5 unchanged. return a summary."
+        let contract = try PromptEngineeringContract(.init(id:"quality",text:text,localeIdentifier:"en-US",kind:.promptEngineering))
+        let output = try contract.render(#"{"objective":[0],"context":[],"requirements":[1],"constraints":[],"expectedOutput":[2]}"#)
+        #expect(output.contains("`first. second`")); #expect(output.contains("https://example.test/a.swift")); #expect(output.contains("1.5"))
+        #expect(output.replacingOccurrences(of:"## Objective\n",with:"").replacingOccurrences(of:"\n\n## Requirements\n",with:" ").replacingOccurrences(of:"\n\n## Expected output\n",with:" ") == text)
+    }
+    @Test func boundedSegmentationAndInvalidPlanFailClosed() throws {
+        #expect(throws:(any Error).self) { try PromptEngineeringContract(.init(id:"quality",text:String(repeating:"do this. ",count:17),localeIdentifier:"en-US",kind:.promptEngineering)) }
+        let contract = try PromptEngineeringContract(.init(id:"quality",text:"fix this. do not delete tests.",localeIdentifier:"en-US",kind:.promptEngineering))
+        for plan in [#"{"objective":[0],"context":[],"requirements":[],"constraints":[],"expectedOutput":[]}"#, #"{"objective":[1],"context":[],"requirements":[0],"constraints":[],"expectedOutput":[]}"#] {
+            #expect(throws:(any Error).self) { try contract.render(plan) }
+        }
+    }
+    @Test(arguments:OfflineRewriteTone.allCases) func toneGatePreservesNegationAndRejectsInventedRequirements(_ tone:OfflineRewriteTone) throws {
+        let protected = try ProtectedRewriteText(.init(id:"quality",text:"um do not delete tests or add dependencies",localeIdentifier:"en-US",tone:tone))
+        #expect(try protected.restoreAndValidate("Do not delete tests or add dependencies.") == "Do not delete tests or add dependencies.")
+        #expect(throws:(any Error).self) { try protected.restoreAndValidate("Delete tests or add dependencies.") }
+        #expect(throws:(any Error).self) { try protected.restoreAndValidate("Do not delete tests or add dependencies and deploy.") }
+        #expect(try protected.restoreAndValidate(protected.masked) == "um do not delete tests or add dependencies")
+    }
+    @Test func evaluationDatasetIsVersionedAndContractsAreAdmissible() throws {
+        struct Dataset:Decodable { let version:Int; let syntheticOnly:Bool; let cases:[Item] }
+        struct Item:Decodable { let id:String; let text:String; let kind:OfflinePreviewKind; let vocabulary:[String]; let expectedBoundary:String }
+        var root = URL(fileURLWithPath:#filePath)
+        for _ in 0..<5 { root.deleteLastPathComponent() }
+        let data = try JSONDecoder().decode(Dataset.self,from:Data(contentsOf:root.appendingPathComponent("Docs/Phase1F/QUALITY-EVALUATION-V2.json")))
+        #expect(data.version == 2 && data.syntheticOnly && data.cases.count == 20)
+        #expect(Set(data.cases.map(\.id)).count == 20)
+        for item in data.cases {
+            let request = OfflineRewriteRequest(id:item.id,text:item.text,localeIdentifier:"en-US",vocabulary:item.vocabulary,kind:item.kind)
+            if item.expectedBoundary == "unsupportedLanguage" {
+                #expect(throws:ProtectedRewriteText.Failure.unsupportedLanguage) { try ProtectedRewriteText(request) }
+            } else {
+                let protected = try ProtectedRewriteText(request)
+                #expect(try protected.restoreAndValidate(protected.masked) == item.text)
+                if item.kind == .promptEngineering { _ = try PromptEngineeringContract(request) }
+            }
+        }
+    }
+}

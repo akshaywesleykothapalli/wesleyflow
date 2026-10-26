@@ -1779,3 +1779,19 @@ struct HandDrawnInsightsTests {
         #expect(c.latest?.insertion.status == .insertedVerified); #expect(try await history.load().count == 3); c.close()
     }
 }
+
+
+@Suite("Quality preview rejection",.serialized) @MainActor struct QualityPreviewRejectionTests {
+    @Test func rejectingCompletedPreviewRetainsInputAndNeverCopies() async throws {
+        let driver = GOfflineRewrite()
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver)
+        coordinator.preferences.offlineAIRewriting = true; coordinator.previewInputText = "Check the button"
+        let task = try #require(coordinator.startSuppliedPreview(.polish)); await task.value
+        #expect(coordinator.rewritePreview != nil)
+        coordinator.rejectRewritePreview()
+        #expect(coordinator.rewritePreview == nil && coordinator.promptPreview == nil)
+        #expect(coordinator.previewInputText == "Check the button" && coordinator.previewOriginalText == "Check the button")
+        #expect(coordinator.previewNotice.contains("rejected")); #expect(!coordinator.isPreviewingRewrite)
+        coordinator.rejectRewritePreview(); coordinator.close()
+    }
+}
