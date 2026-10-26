@@ -52,6 +52,8 @@ import VoiceInput
     @Published private(set) var previewKind: OfflinePreviewKind = .polish
     @Published private(set) var previewOriginalText = ""
     @Published private(set) var previewNotice = "Supply text or select a completed saved dictation. No external app text is read."
+    @Published private(set) var previewPresented = false
+    @Published private(set) var previewOriginProcessIdentifier: Int32?
     @Published private(set) var previewShortcutStatus = "Preview shortcuts are disabled."
     @Published var previewInputText = "" { didSet { if oldValue != previewInputText { cancelRewritePreview() } } }
     @Published var previewUseSaved = false { didSet { if oldValue != previewUseSaved { cancelRewritePreview() } } }
@@ -113,9 +115,22 @@ import VoiceInput
         cancelRewritePreview()
         previewNotice = "Preview rejected. Original input retained; nothing was copied or inserted."
     }
+    func dismissShortcutPreview() {
+        cancelRewritePreview(); previewPresented = false; previewOriginProcessIdentifier = nil
+    }
+    func invokeShortcutPreview(_ kind: OfflinePreviewKind, originProcessIdentifier: Int32? = nil) {
+        guard !closed else { return }
+        previewPresented = true
+        // A rapid second chord cannot replace the pending session's source/kind.
+        guard !isPreviewingRewrite else { return }
+        previewOriginProcessIdentifier = originProcessIdentifier
+        previewKind = kind; rewritePreview = nil; promptPreview = nil
+        previewOriginalText = permittedPreviewText ?? ""
+        _ = startSuppliedPreview(kind)
+    }
     func configurePreviewShortcuts() {
         guard !closed, preferences.previewShortcutsEnabled, let previewRegistrar else {
-            self.previewRegistrar?.disable(); registeredPreviewKinds = []; previewShortcutStatus = "Preview shortcuts are disabled."; return
+            self.previewRegistrar?.disable(); registeredPreviewKinds = []; if previewPresented { dismissShortcutPreview() }; previewShortcutStatus = "Preview shortcuts are disabled."; return
         }
         guard !(preferences.activationKey == .rightOption && preferences.holdFnEnabled) else {
             previewRegistrar.disable(); registeredPreviewKinds = []; previewShortcutStatus = "Conflict with right-Option hold-to-talk. Choose Fn or right Command first."; return
@@ -128,7 +143,10 @@ import VoiceInput
             try previewRegistrar.enable(kinds:kinds) { [weak self] signal in
                 guard let self, !self.closed, self.preferences.previewShortcutsEnabled else { return }
                 switch signal {
-                case .invoke(let kind): _ = self.startSuppliedPreview(kind)
+                case .invoke(let kind): self.invokeShortcutPreview(kind)
+                case .invokeFrom(let kind, let process): self.invokeShortcutPreview(kind,originProcessIdentifier:process)
+                case .suspended: self.cancelRewritePreview(); self.previewShortcutStatus = "Mac sleeping: pending preview cancelled; shortcuts suspended."
+                case .resumed: self.previewShortcutStatus = "Shortcuts re-registered after wake. Physical delivery remains unverified."
                 case .secureInput: self.cancelRewritePreview(); self.previewShortcutStatus = "Secure Input active: preview gesture ignored."
                 case .unavailable: self.cancelRewritePreview(); self.registeredPreviewKinds = []; self.previewShortcutStatus = "Shortcut delivery or keyboard layout became unavailable. Disable and re-enable to retry."
                 }
@@ -485,6 +503,7 @@ import VoiceInput
         return true
     }
     func close() {
+        previewPresented = false; previewOriginProcessIdentifier = nil
         cancelRewritePreview(); previewRegistrar?.disable(); registeredPreviewKinds = []; closed = true; commandArmed = false; stopShortcutMonitoring(); cancel(); work?.cancel(); timer?.cancel()
         let store = history
         Task { await store?.close() }

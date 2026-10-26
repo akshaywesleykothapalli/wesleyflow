@@ -1,6 +1,35 @@
 import Domain
 import AppKit
 import Carbon
+import Synchronization
+
+// C callbacks cannot touch MainActor AppKit state. The small metadata bridge is
+// shared across that boundary; the actor owns registration and all UI work.
+private final class PreviewFocusIdentity: Sendable {
+    private let value: Mutex<(process:Int32, epoch:UUID)>
+    init(_ process: Int32) { value = Mutex((process, UUID())) }
+    func update(_ process: Int32) { value.withLock { $0 = (process, UUID()) } }
+    func snapshot() -> (process:Int32, epoch:UUID) { value.withLock { $0 } }
+}
+private struct PreviewHotkeySample: Sendable {
+    let signal: PreviewShortcutSignal
+    let secure: Bool
+    let focus: Int32
+    let focusEpoch: UUID
+    let invalidModifiers: Bool
+    let time: TimeInterval
+}
+/// Exercises the actual delivery state machine without native key injection.
+struct PreviewHotkeyDelivery {
+    private var gesture = PreviewShortcutGesture()
+    mutating func accept(_ signal: PreviewShortcutSignal, originFocus: Int32, currentFocus: Int32, age: TimeInterval, blocked: Bool) -> OfflinePreviewKind? {
+        guard !blocked, originFocus > 0, originFocus == currentFocus, age >= 0, age <= 1 else {
+            _ = gesture.accept(.cancelled, secureInput:false, focus:currentFocus)
+            return nil
+        }
+        return gesture.accept(signal, secureInput:false, focus:originFocus)
+    }
+}
 
 private final class PreviewHotkeyContext: Sendable {
     let send: @Sendable (PreviewShortcutSignal,Bool) -> Void
@@ -25,7 +54,9 @@ private let previewHotkeyCallback: EventHandlerUPP = { _, event, pointer in
     private var context: PreviewHotkeyContext?
     private var delivery: Task<Void,Never>?
     private var finish: (@Sendable () -> Void)?
-    private var wake: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
+    private var suspended = false
+    private var epoch = UUID()
     public init() {}
     public static func secureInputEnabled() -> Bool { IsSecureEventInputEnabled() }
     public static func numericLayoutSupported() -> Bool {
@@ -62,9 +93,15 @@ private let previewHotkeyCallback: EventHandlerUPP = { _, event, pointer in
         guard !IsSecureEventInputEnabled() else { throw PreviewShortcutFailure.secureInput }
         guard Self.numericLayoutSupported() else { throw PreviewShortcutFailure.layoutUnsupported }
         guard try !Self.conflictsWithSystem(kinds:kinds) else { throw PreviewShortcutFailure.systemConflict }
-        let pair = AsyncThrowingStream<(PreviewShortcutSignal,Bool),any Error>.makeStream(bufferingPolicy:.bufferingOldest(16))
+        let focusIdentity = PreviewFocusIdentity(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1)
+        let ticket = epoch
+        let pair = AsyncThrowingStream<PreviewHotkeySample,any Error>.makeStream(bufferingPolicy:.bufferingOldest(16))
         let context = PreviewHotkeyContext { signal,secure in
-            if case .dropped = pair.continuation.yield((signal,secure)) { pair.continuation.finish(throwing:PreviewShortcutFailure.registration(-1)) }
+            let flags = CGEventSource.flagsState(.combinedSessionState)
+            let invalid = !flags.intersection([.maskCommand,.maskControl,.maskShift,.maskSecondaryFn]).isEmpty
+            let identity = focusIdentity.snapshot()
+            let sample = PreviewHotkeySample(signal:signal, secure:secure, focus:identity.process, focusEpoch:identity.epoch, invalidModifiers:invalid, time:GetCurrentEventTime())
+            if case .dropped = pair.continuation.yield(sample) { pair.continuation.finish(throwing:PreviewShortcutFailure.registration(-1)) }
         }
         var types = [EventTypeSpec(eventClass:OSType(kEventClassKeyboard),eventKind:UInt32(kEventHotKeyPressed)),EventTypeSpec(eventClass:OSType(kEventClassKeyboard),eventKind:UInt32(kEventHotKeyReleased))]
         self.context = context
@@ -78,27 +115,57 @@ private let previewHotkeyCallback: EventHandlerUPP = { _, event, pointer in
         }
         finish = { pair.continuation.finish() }
         delivery = Task { [weak self] in
-            var gesture = PreviewShortcutGesture()
+            var state = PreviewHotkeyDelivery()
             do {
-                for try await (signal,secure) in pair.stream {
-                    guard let self, !Task.isCancelled else { return }
+                for try await sample in pair.stream {
+                    guard let self, self.epoch == ticket, !Task.isCancelled else { return }
                     guard Self.numericLayoutSupported() else { receive(.unavailable); self.disable(); return }
                     let flags = CGEventSource.flagsState(.combinedSessionState)
                     let invalidModifiers = !flags.intersection([.maskCommand,.maskControl,.maskShift,.maskSecondaryFn]).isEmpty
-                    let blocked = secure || IsSecureEventInputEnabled() || invalidModifiers
+                    let secure = sample.secure || IsSecureEventInputEnabled()
+                    let blocked = secure || invalidModifiers || sample.invalidModifiers || self.suspended || sample.focusEpoch != focusIdentity.snapshot().epoch
                     let focus = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
-                    let action = gesture.accept(signal,secureInput:blocked,focus:focus)
+                    let action = state.accept(sample.signal,originFocus:sample.focus,currentFocus:focus,age:GetCurrentEventTime()-sample.time,blocked:blocked)
                     if secure || IsSecureEventInputEnabled() { receive(.secureInput) }
-                    if let action, kinds.contains(action) { receive(.invoke(action)) }
+                    if let action, kinds.contains(action) {
+                        guard (try? Self.conflictsWithSystem(kinds:kinds)) == false else { receive(.unavailable); self.disable(); return }
+                        receive(.invokeFrom(action,processIdentifier:sample.focus))
+                    }
                 }
-            } catch { if !Task.isCancelled { receive(.unavailable); self?.disable() } }
+            } catch { if let self, self.epoch == ticket, !Task.isCancelled { receive(.unavailable); self.disable() } }
         }
-        wake = NSWorkspace.shared.notificationCenter.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main) { _ in context.send(.cancelled,false) }
+        let center = NSWorkspace.shared.notificationCenter
+        observers.append(center.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main) { [weak self] _ in
+            // Invalidate synchronously before hopping actors: queued old key
+            // events cannot be rebound to the newly active app.
+            focusIdentity.update(-1); context.send(.cancelled,false)
+            Task { @MainActor [weak self] in
+                guard let self, self.epoch == ticket else { return }
+                focusIdentity.update(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1)
+            }
+        })
+        observers.append(center.addObserver(forName:NSWorkspace.willSleepNotification,object:nil,queue:.main) { [weak self] _ in
+            focusIdentity.update(-1)
+            Task { @MainActor [weak self] in
+                guard let self, self.epoch == ticket else { return }
+                self.suspended = true; context.send(.cancelled,false); receive(.suspended)
+            }
+        })
+        observers.append(center.addObserver(forName:NSWorkspace.didWakeNotification,object:nil,queue:.main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.epoch == ticket else { return }
+                // Revalidate layout, Secure Input and conflicts before acquiring
+                // fresh native refs. Old stream events are fenced by the epoch.
+                do { try self.enable(kinds:kinds,receive:receive); receive(.resumed) }
+                catch { self.disable(); receive(.unavailable) }
+            }
+        })
     }
     public func disable() {
+        epoch = UUID(); suspended = false
         refs.forEach { UnregisterEventHotKey($0) }; refs.removeAll()
         if let handler { RemoveEventHandler(handler) }; handler = nil
-        if let wake { NSWorkspace.shared.notificationCenter.removeObserver(wake) }; wake = nil
+        for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }; observers.removeAll()
         finish?(); finish = nil; delivery?.cancel(); delivery = nil; context = nil
     }
 }

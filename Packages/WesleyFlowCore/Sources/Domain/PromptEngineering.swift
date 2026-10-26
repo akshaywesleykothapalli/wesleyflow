@@ -73,7 +73,7 @@ public struct PreviewShortcutGesture: Sendable {
     }
 }
 public enum PreviewShortcutFailure: Error, Sendable { case systemConflict, registration(Int32), layoutUnsupported, secureInput, holdToTalkConflict }
-public enum PreviewShortcutNotification: Sendable { case invoke(OfflinePreviewKind), unavailable, secureInput }
+public enum PreviewShortcutNotification: Sendable { case invoke(OfflinePreviewKind), invokeFrom(OfflinePreviewKind, processIdentifier: Int32), unavailable, secureInput, suspended, resumed }
 @MainActor public protocol PreviewShortcutRegistering: AnyObject {
     func enable(kinds:Set<OfflinePreviewKind>,receive:@escaping @MainActor @Sendable (PreviewShortcutNotification) -> Void) throws
     func disable()

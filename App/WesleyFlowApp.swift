@@ -1,17 +1,19 @@
 import AppKit
 import SwiftUI
 import Combine
+import Domain
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var dictation: DictationModel?
     private var pill: ClickableDictationPill?
+    private var aiPreview: ShortcutPreviewPanel?
     private weak var global: SystemWideDictationCoordinator?
     func connect(_ model: DictationModel) { dictation = model }
-    func connectGlobal(_ coordinator: SystemWideDictationCoordinator) { global = coordinator; if pill == nil { pill = ClickableDictationPill(coordinator:coordinator) } }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { if let global, global.preferences.holdFnEnabled || global.preferences.idlePillEnabled || global.busy { return false }; return !(dictation?.shortcutEnabled ?? false) }
+    func connectGlobal(_ coordinator: SystemWideDictationCoordinator) { global = coordinator; if pill == nil { pill = ClickableDictationPill(coordinator:coordinator) }; if aiPreview == nil { aiPreview = ShortcutPreviewPanel(coordinator:coordinator) } }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { if let global, global.preferences.holdFnEnabled || global.preferences.idlePillEnabled || global.preferences.previewShortcutsEnabled || global.busy { return false }; return !(dictation?.shortcutEnabled ?? false) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { (global?.canTerminateSafely() ?? true) ? .terminateNow : .terminateCancel }
-    func applicationWillTerminate(_ notification: Notification) { dictation?.disableShortcut(); dictation?.close(); global?.close(); pill?.close() }
+    func applicationWillTerminate(_ notification: Notification) { dictation?.disableShortcut(); dictation?.close(); global?.close(); pill?.close(); aiPreview?.close() }
 }
 
 @main
@@ -47,5 +49,73 @@ struct WesleyFlowApp: App {
             Divider()
             Button("Quit Wesley Flow") { NSApplication.shared.terminate(nil) }
         } label: { Image(systemName:global.phase == .recording ? "mic.fill" : "waveform") }
+    }
+}
+
+
+/// Display-only, nonactivating preview: shortcut delivery never steals the
+/// external editor's key focus. Input is selected/entered in Wesley Flow first.
+@MainActor final class ShortcutPreviewPanel: NSObject, NSWindowDelegate {
+    private final class Panel: NSPanel {
+        override var canBecomeKey: Bool { false }
+        override var canBecomeMain: Bool { false }
+    }
+    private let panel: NSPanel
+    private weak var coordinator: SystemWideDictationCoordinator?
+    private var observation: AnyCancellable?
+    init(coordinator: SystemWideDictationCoordinator) {
+        self.coordinator = coordinator
+        panel = Panel(contentRect:NSRect(x:0,y:0,width:480,height:380),styleMask:[.titled,.closable,.nonactivatingPanel],backing:.buffered,defer:false)
+        super.init()
+        panel.title = "Wesley Flow · AI Preview"; panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false; panel.becomesKeyOnlyIfNeeded = true
+        panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
+        panel.contentView = NSHostingView(rootView:ShortcutPreviewContents(coordinator:coordinator))
+        panel.delegate = self; panel.center()
+        observation = coordinator.$previewPresented.sink { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refresh() }
+        }
+    }
+    private func refresh() {
+        if coordinator?.previewPresented == true { panel.orderFrontRegardless() }
+        else { panel.orderOut(nil) }
+    }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        coordinator?.dismissShortcutPreview(); panel.orderOut(nil); return false
+    }
+    func close() { observation?.cancel(); observation = nil; panel.orderOut(nil); panel.delegate = nil; panel.close() }
+    // Test visibility/identity without dispatching any keys or reading app text.
+    var isVisible: Bool { panel.isVisible }
+    var canBecomeKey: Bool { panel.canBecomeKey }
+}
+@MainActor private struct ShortcutPreviewContents: View {
+    @ObservedObject var coordinator: SystemWideDictationCoordinator
+    var body: some View {
+        VStack(alignment:.leading,spacing:12) {
+            Text(coordinator.previewKind == .polish ? "Smart Polish" : "Prompt Engineering").font(.headline)
+            Text("Preview only · original app focus is preserved").font(.caption).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment:.leading,spacing:10) {
+                    if coordinator.previewOriginalText.isEmpty {
+                        Text("No permitted input. Enter text or explicitly select a saved dictation in Smart Formatting, then try the shortcut again.")
+                    } else {
+                        Text("Original").font(.caption).foregroundStyle(.secondary)
+                        Text(coordinator.previewOriginalText)
+                    }
+                    Text(coordinator.previewNotice).font(.caption).foregroundStyle(.secondary)
+                    if let result = coordinator.previewKind == .polish ? coordinator.rewritePreview : coordinator.promptPreview {
+                        Text(coordinator.rewritePreviewMessage).font(.caption)
+                        Text(result.text)
+                        Button("Copy reviewed preview") { _ = coordinator.copyReviewedText(result.text) }.disabled(!coordinator.historyCopyAllowed)
+                        Button("Reject preview") { coordinator.rejectRewritePreview() }
+                    }
+                }.frame(maxWidth:.infinity,alignment:.leading)
+            }
+            HStack {
+                if coordinator.isPreviewingRewrite { ProgressView().controlSize(.small); Button("Cancel") { coordinator.cancelRewritePreview() } }
+                Spacer()
+                Button("Close") { coordinator.dismissShortcutPreview() }
+            }
+        }.padding(18).frame(width:480,height:380).background(Color(nsColor:.windowBackgroundColor))
     }
 }

@@ -1795,3 +1795,38 @@ struct HandDrawnInsightsTests {
         coordinator.rejectRewritePreview(); coordinator.close()
     }
 }
+
+@Suite("Global AI shortcut workflow",.serialized) @MainActor struct GlobalAIShortcutWorkflowTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering]) func emptyInputOpensCorrectPreviewWithoutEffects(_ kind:OfflinePreviewKind) async {
+        let driver = GOfflineRewrite(), registrar = GPreviewRegistrar(), capture = GCapture()
+        var copied = false
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar,historyCopy:{ _ in copied = true; return true })
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.previewShortcutsEnabled = true
+        registrar.receive?(.invokeFrom(kind,processIdentifier:42))
+        #expect(coordinator.previewPresented && coordinator.previewKind == kind)
+        #expect(coordinator.previewOriginProcessIdentifier == 42)
+        #expect(coordinator.previewOriginalText.isEmpty && coordinator.previewNotice.contains("No permitted"))
+        #expect(await driver.calls == 0); #expect(capture.count == 0 && !copied)
+        coordinator.dismissShortcutPreview(); #expect(!coordinator.previewPresented); coordinator.close()
+    }
+    @Test func rapidChordsSleepAndLateResultsNeverReplaceSource() async throws {
+        let driver = GOfflineRewrite(), registrar = GPreviewRegistrar(); await driver.setHold()
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar)
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.previewShortcutsEnabled = true
+        coordinator.previewInputText = "Check the button"
+        registrar.receive?(.invokeFrom(.polish,processIdentifier:42)); await driver.waitForStart()
+        for _ in 0..<10 { registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:99)) }
+        #expect(await driver.calls == 1); #expect(coordinator.previewKind == .polish && coordinator.previewOriginProcessIdentifier == 42)
+        registrar.receive?(.suspended); #expect(!coordinator.isPreviewingRewrite && coordinator.previewShortcutStatus.contains("sleeping"))
+        coordinator.dismissShortcutPreview(); await driver.release()
+        #expect(coordinator.rewritePreview == nil && coordinator.promptPreview == nil)
+        registrar.receive?(.resumed); #expect(coordinator.previewShortcutStatus.contains("re-registered"))
+        coordinator.close()
+    }
+    @Test func nativePanelNeverBecomesKeyOrMain() {
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        let panel = ShortcutPreviewPanel(coordinator:coordinator)
+        #expect(!panel.canBecomeKey && !panel.isVisible)
+        panel.close(); coordinator.close()
+    }
+}

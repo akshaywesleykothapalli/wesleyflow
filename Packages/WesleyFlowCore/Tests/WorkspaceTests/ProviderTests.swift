@@ -799,3 +799,34 @@ private actor PromptPlanFixture: NativeRewriteGenerating {
         }
     }
 }
+
+@Suite("Global preview delivery lifecycle") struct GlobalPreviewDeliveryTests {
+    @Test(arguments: [OfflinePreviewKind.polish, .promptEngineering]) func repeatsAndConsecutiveGestures(_ kind: OfflinePreviewKind) {
+        var delivery = PreviewHotkeyDelivery()
+        for _ in 0..<10 {
+            #expect(delivery.accept(.pressed(kind),originFocus:42,currentFocus:42,age:0,blocked:false) == nil)
+            #expect(delivery.accept(.pressed(kind),originFocus:42,currentFocus:42,age:0.01,blocked:false) == nil)
+            #expect(delivery.accept(.released(kind),originFocus:42,currentFocus:42,age:0.02,blocked:false) == kind)
+            #expect(delivery.accept(.released(kind),originFocus:42,currentFocus:42,age:0.03,blocked:false) == nil)
+        }
+    }
+    @Test(arguments:["focus","stale","future","secure-or-modifiers","sleep"]) func invalidationCannotCompleteOldPress(_ reason:String) {
+        var delivery = PreviewHotkeyDelivery()
+        _ = delivery.accept(.pressed(.polish),originFocus:42,currentFocus:42,age:0,blocked:false)
+        let focus: Int32 = reason == "focus" ? 43 : 42
+        let age: TimeInterval = reason == "stale" ? 1.01 : reason == "future" ? -0.01 : 0
+        let blocked = reason == "secure-or-modifiers" || reason == "sleep"
+        #expect(delivery.accept(.released(.polish),originFocus:42,currentFocus:focus,age:age,blocked:blocked) == nil)
+        #expect(delivery.accept(.released(.polish),originFocus:42,currentFocus:42,age:0,blocked:false) == nil)
+        _ = delivery.accept(.pressed(.promptEngineering),originFocus:43,currentFocus:43,age:0,blocked:false)
+        #expect(delivery.accept(.released(.promptEngineering),originFocus:43,currentFocus:43,age:0,blocked:false) == .promptEngineering)
+    }
+    @Test func cancelledGestureAndUnknownOriginFailClosed() {
+        var delivery = PreviewHotkeyDelivery()
+        _ = delivery.accept(.pressed(.polish),originFocus:42,currentFocus:42,age:0,blocked:false)
+        _ = delivery.accept(.cancelled,originFocus:42,currentFocus:42,age:0,blocked:false)
+        #expect(delivery.accept(.released(.polish),originFocus:42,currentFocus:42,age:0,blocked:false) == nil)
+        _ = delivery.accept(.pressed(.polish),originFocus:-1,currentFocus:-1,age:0,blocked:false)
+        #expect(delivery.accept(.released(.polish),originFocus:42,currentFocus:42,age:0,blocked:false) == nil)
+    }
+}
