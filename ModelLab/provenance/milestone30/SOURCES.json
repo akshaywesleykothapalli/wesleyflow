@@ -1,0 +1,49 @@
+{
+  "observedUTC": "2026-10-26T16:38:33.534126+00:00",
+  "weightsDownloaded": false,
+  "tokenizersDownloaded": false,
+  "sources": [
+    {
+      "url": "https://huggingface.co/api/models/Qwen/Qwen3-0.6B?blobs=true",
+      "file": "qwen3-api.json",
+      "sha256": "7baf5efee9da54008514b319987bca24550a1ac3f7092dcdaa10c7f1794cc7a9",
+      "bytes": 9933
+    },
+    {
+      "url": "https://huggingface.co/Qwen/Qwen3-0.6B/resolve/c1899de289a04d12100db370d81485cdf75e47ca/config.json",
+      "file": "qwen3-config.json",
+      "sha256": "660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd",
+      "bytes": 726
+    },
+    {
+      "url": "https://huggingface.co/Qwen/Qwen3-0.6B/resolve/c1899de289a04d12100db370d81485cdf75e47ca/README.md",
+      "file": "qwen3-README.md",
+      "sha256": "1ab64a26fcb3b461423b89a433a8c858f1bf8d4086f979cbb3ff878d47cf20e9",
+      "bytes": 13965
+    },
+    {
+      "url": "https://huggingface.co/api/models/HuggingFaceTB/SmolLM2-360M-Instruct?blobs=true",
+      "file": "smollm2-api.json",
+      "sha256": "15b399b746d63573fdb63011f5eebaf416d7397bb52b74ecfd8c19755e6b7b48",
+      "bytes": 9625
+    },
+    {
+      "url": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/a10cc1512eabd3dde888204e902eca88bddb4951/config.json",
+      "file": "smollm2-config.json",
+      "sha256": "224f72354f10d617a359cc82ad15a3c96e866b9b2ffadb81997eeea9e88e22ee",
+      "bytes": 846
+    },
+    {
+      "url": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/a10cc1512eabd3dde888204e902eca88bddb4951/README.md",
+      "file": "smollm2-README.md",
+      "sha256": "6b88794416ac9da8f254ebb0bec228967a2bdd0badf9a2853863928b25facd95",
+      "bytes": 7304
+    },
+    {
+      "url": "https://huggingface.co/Qwen/Qwen3-0.6B/resolve/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE",
+      "file": "qwen3-LICENSE",
+      "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
+      "bytes": 11343
+    }
+  ]
+}

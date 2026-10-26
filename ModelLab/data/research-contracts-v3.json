@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 3,
+  "kind": "research-contract-supplement-not-training-corpus",
+  "frozenV2Fingerprint": "9f6a68aae503f390ea42663826bf76c53e367aa8ee305b0e3197e9578d3b7ce6",
+  "revisions": [
+    {
+      "datasetVersion": 3,
+      "id": "m30-001",
+      "sourceV2ID": "ml2a-001",
+      "sourceV2SHA256": "9ceb45e9a5f571177cede9be4b98e9f72261579df48a4a92b46ee94fdc6ff477",
+      "family": "independent-task-001",
+      "split": "train",
+      "status": "SPECIFIED_PENDING_INDEPENDENT_REVIEW",
+      "trainingEligible": false,
+      "instruction": "Implement only func sum(_ a: Int, _ b: Int) -> Int. Both Int operands lie in -1_000_000...1_000_000. Return their exact mathematical sum. Int is 64-bit on the target. No wrapping or saturation. Out-of-domain input is excluded from this benchmark, not silently assigned behavior. Preserve all other files. Return one full-file proposal, never apply it.",
+      "inputDomain": "Both Int operands lie in -1_000_000...1_000_000. Return their exact mathematical sum. Int is 64-bit on the target. No wrapping or saturation. Out-of-domain input is excluded from this benchmark, not silently assigned behavior.",
+      "arithmeticBounds": {
+        "maximumAbsoluteResult": 2000000
+      },
+      "projectID": "8f9c9b3a-7c85-5c8b-bde6-71e42bb602fb",
+      "proposalID": "e2fda44d-e4a1-50e4-be20-fb7638205e84",
+      "projectTree": [
+        {
+          "relativePath": "README.md",
+          "content": "# Bounded invoice arithmetic\nOffline synthetic Swift library. Only the named target is editable.\n"
+        },
+        {
+          "relativePath": "Docs/INPUT-DOMAIN.md",
+          "content": "Both Int operands lie in -1_000_000...1_000_000. Return their exact mathematical sum. Int is 64-bit on the target. No wrapping or saturation. Out-of-domain input is excluded from this benchmark, not silently assigned behavior.\n"
+        },
+        {
+          "relativePath": "Sources/LibraryInfo.swift",
+          "content": "// Synthetic supporting context. Not an editable target.\n"
+        },
+        {
+          "relativePath": "Sources/Example01.swift",
+          "content": null
+        }
+      ],
+      "editableTargets": [
+        "Sources/Example01.swift"
+      ],
+      "targetRelativePath": "Sources/Example01.swift",
+      "supportedOperation": "create",
+      "workspaceRevision": "9f9c4b70ba5f3209f5921b18c6064b75d2e75f3e1939151cfafd45d35b45ca6c",
+      "expectedFileRevision": {
+        "kind": "absent"
+      },
+      "expectedContent": "func sum(_ a: Int, _ b: Int) -> Int { a + b }\n",
+      "expectedProposal": {
+        "baseSnapshotDigest": "9f9c4b70ba5f3209f5921b18c6064b75d2e75f3e1939151cfafd45d35b45ca6c",
+        "changes": [
+          {
+            "expectedRevision": {
+              "kind": "absent"
+            },
+            "kind": "create",
+            "relativePath": "Sources/Example01.swift",
+            "utf8Content": "func sum(_ a: Int, _ b: Int) -> Int { a + b }\n"
+          }
+        ],
+        "projectID": "8f9c9b3a-7c85-5c8b-bde6-71e42bb602fb",
+        "proposalID": "e2fda44d-e4a1-50e4-be20-fb7638205e84",
+        "schemaVersion": 1
+      },
+      "expectedResponse": "{\"baseSnapshotDigest\":\"9f9c4b70ba5f3209f5921b18c6064b75d2e75f3e1939151cfafd45d35b45ca6c\",\"changes\":[{\"expectedRevision\":{\"kind\":\"absent\"},\"kind\":\"create\",\"relativePath\":\"Sources/Example01.swift\",\"utf8Content\":\"func sum(_ a: Int, _ b: Int) -> Int { a + b }\\n\"}],\"projectID\":\"8f9c9b3a-7c85-5c8b-bde6-71e42bb602fb\",\"proposalID\":\"e2fda44d-e4a1-50e4-be20-fb7638205e84\",\"schemaVersion\":1}",
+      "acceptableVariants": "Original V2 approved source with LF/CRLF only; other algorithms unreviewed, not necessarily wrong",
+      "rejectionConditions": [
+        "Malformed or extra proposal schema fields",
+        "Wrong project/proposal/snapshot identity",
+        "Wrong target path or operation",
+        "Wrong expected file revision",
+        "Extra file changes",
+        "Content outside the frozen approved-source equivalence class",
+        "Unsupported tools, effects, self-approval or command fields"
+      ],
+      "independentValidation": {
+        "nativeStructuralValidatorAccepted": true,
+        "mathematicalBoundsChecked": true,
+        "referenceSwiftExecuted": false,
+        "independentHumanReviewed": false,
+        "modelGenerated": false
+      },
+      "benchmarkPolicy": "New explicit bounded-domain task; do not replace V2 scores, merge duplicate families, or promote to training automatically"
+    },
+    {
+      "datasetVersion": 3,
+      "id": "m30-009",
+      "sourceV2ID": "ml2a-009",
+      "sourceV2SHA256": "63382f0e07710c87ed5d8923e7f69606d06ebda19f57508b7171ac4d8b70440f",
+      "family": "independent-task-009",
+      "split": "valid",
+      "status": "SPECIFIED_PENDING_INDEPENDENT_REVIEW",
+      "trainingEligible": false,
+      "instruction": "Implement only func squares(_ values: [Int]) -> [Int]. At most 1,024 Int elements, each in -1_000_000...1_000_000. Return exact squares in input order; empty array returns empty. Maximum result is 1_000_000_000_000, representable in signed 64-bit Int. Out-of-domain inputs excluded. Preserve all other files. Return one full-file proposal, never apply it.",
+      "inputDomain": "At most 1,024 Int elements, each in -1_000_000...1_000_000. Return exact squares in input order; empty array returns empty. Maximum result is 1_000_000_000_000, representable in signed 64-bit Int. Out-of-domain inputs excluded.",
+      "arithmeticBounds": {
+        "maximumAbsoluteResult": 1000000000000,
+        "maximumElements": 1024
+      },
+      "projectID": "d048ee4f-9edf-5c05-966a-04b8c05b8599",
+      "proposalID": "84843f76-27fe-520d-be8a-7f9ebcefd429",
+      "projectTree": [
+        {
+          "relativePath": "README.md",
+          "content": "# Bounded chart samples\nOffline synthetic Swift library. Only the named target is editable.\n"
+        },
+        {
+          "relativePath": "Docs/INPUT-DOMAIN.md",
+          "content": "At most 1,024 Int elements, each in -1_000_000...1_000_000. Return exact squares in input order; empty array returns empty. Maximum result is 1_000_000_000_000, representable in signed 64-bit Int. Out-of-domain inputs excluded.\n"
+        },
+        {
+          "relativePath": "Sources/LibraryInfo.swift",
+          "content": "// Synthetic supporting context. Not an editable target.\n"
+        },
+        {
+          "relativePath": "Sources/Example09.swift",
+          "content": null
+        }
+      ],
+      "editableTargets": [
+        "Sources/Example09.swift"
+      ],
+      "targetRelativePath": "Sources/Example09.swift",
+      "supportedOperation": "create",
+      "workspaceRevision": "a3ed04aec4221aab5203b5fa609ad234afe42fa38c5f37998dd6bb7434f0628f",
+      "expectedFileRevision": {
+        "kind": "absent"
+      },
+      "expectedContent": "func squares(_ values: [Int]) -> [Int] { values.map { $0 * $0 } }\n",
+      "expectedProposal": {
+        "baseSnapshotDigest": "a3ed04aec4221aab5203b5fa609ad234afe42fa38c5f37998dd6bb7434f0628f",
+        "changes": [
+          {
+            "expectedRevision": {
+              "kind": "absent"
+            },
+            "kind": "create",
+            "relativePath": "Sources/Example09.swift",
+            "utf8Content": "func squares(_ values: [Int]) -> [Int] { values.map { $0 * $0 } }\n"
+          }
+        ],
+        "projectID": "d048ee4f-9edf-5c05-966a-04b8c05b8599",
+        "proposalID": "84843f76-27fe-520d-be8a-7f9ebcefd429",
+        "schemaVersion": 1
+      },
+      "expectedResponse": "{\"baseSnapshotDigest\":\"a3ed04aec4221aab5203b5fa609ad234afe42fa38c5f37998dd6bb7434f0628f\",\"changes\":[{\"expectedRevision\":{\"kind\":\"absent\"},\"kind\":\"create\",\"relativePath\":\"Sources/Example09.swift\",\"utf8Content\":\"func squares(_ values: [Int]) -> [Int] { values.map { $0 * $0 } }\\n\"}],\"projectID\":\"d048ee4f-9edf-5c05-966a-04b8c05b8599\",\"proposalID\":\"84843f76-27fe-520d-be8a-7f9ebcefd429\",\"schemaVersion\":1}",
+      "acceptableVariants": "Original V2 approved source with LF/CRLF only; other algorithms unreviewed, not necessarily wrong",
+      "rejectionConditions": [
+        "Malformed or extra proposal schema fields",
+        "Wrong project/proposal/snapshot identity",
+        "Wrong target path or operation",
+        "Wrong expected file revision",
+        "Extra file changes",
+        "Content outside the frozen approved-source equivalence class",
+        "Unsupported tools, effects, self-approval or command fields"
+      ],
+      "independentValidation": {
+        "nativeStructuralValidatorAccepted": true,
+        "mathematicalBoundsChecked": true,
+        "referenceSwiftExecuted": false,
+        "independentHumanReviewed": false,
+        "modelGenerated": false
+      },
+      "benchmarkPolicy": "New explicit bounded-domain task; do not replace V2 scores, merge duplicate families, or promote to training automatically"
+    },
+    {
+      "datasetVersion": 3,
+      "id": "m30-026",
+      "sourceV2ID": "ml2a-026",
+      "sourceV2SHA256": "088047eeff168bcc7414d38ca80ce8915a8d8db6b708dce880d6a0bcab86e931",
+      "family": "independent-task-026",
+      "split": "train",
+      "status": "SPECIFIED_PENDING_INDEPENDENT_REVIEW",
+      "trainingEligible": false,
+      "instruction": "Implement only func humanPosition(_ position: Int) -> String. Position is an Int in 0...999_999. Return the base-10, one-based display value with no grouping, spaces or leading zeros. Negative and larger positions are outside the supported domain. Maximum incremented value is 1_000_000. Preserve all other files. Return one full-file proposal, never apply it.",
+      "inputDomain": "Position is an Int in 0...999_999. Return the base-10, one-based display value with no grouping, spaces or leading zeros. Negative and larger positions are outside the supported domain. Maximum incremented value is 1_000_000.",
+      "arithmeticBounds": {
+        "maximumAbsoluteResult": 1000000
+      },
+      "projectID": "c918d8e6-3751-5c8b-8c6e-9fc7c2a5b3c4",
+      "proposalID": "9275d070-3d1b-5b1a-928e-d9ef68892ad9",
+      "projectTree": [
+        {
+          "relativePath": "README.md",
+          "content": "# Pagination display\nOffline synthetic Swift library. Only the named target is editable.\n"
+        },
+        {
+          "relativePath": "Docs/INPUT-DOMAIN.md",
+          "content": "Position is an Int in 0...999_999. Return the base-10, one-based display value with no grouping, spaces or leading zeros. Negative and larger positions are outside the supported domain. Maximum incremented value is 1_000_000.\n"
+        },
+        {
+          "relativePath": "Sources/LibraryInfo.swift",
+          "content": "// Synthetic supporting context. Not an editable target.\n"
+        },
+        {
+          "relativePath": "Sources/Example26.swift",
+          "content": "// Synthetic implementation intentionally omitted. Replace this file only.\n"
+        }
+      ],
+      "editableTargets": [
+        "Sources/Example26.swift"
+      ],
+      "targetRelativePath": "Sources/Example26.swift",
+      "supportedOperation": "update",
+      "workspaceRevision": "aa31caf1eaf09ec6588508d516ceab9bcd8311ab80606f4192dd3ff8550937ec",
+      "expectedFileRevision": {
+        "digest": "f8753644ea00cb2fa11db445642d3b6558f7cfcd938a0626b7fb986c22a236b0",
+        "kind": "sha256"
+      },
+      "expectedContent": "func humanPosition(_ position: Int) -> String { String(position + 1) }\n",
+      "expectedProposal": {
+        "baseSnapshotDigest": "aa31caf1eaf09ec6588508d516ceab9bcd8311ab80606f4192dd3ff8550937ec",
+        "changes": [
+          {
+            "expectedRevision": {
+              "digest": "f8753644ea00cb2fa11db445642d3b6558f7cfcd938a0626b7fb986c22a236b0",
+              "kind": "sha256"
+            },
+            "kind": "update",
+            "relativePath": "Sources/Example26.swift",
+            "utf8Content": "func humanPosition(_ position: Int) -> String { String(position + 1) }\n"
+          }
+        ],
+        "projectID": "c918d8e6-3751-5c8b-8c6e-9fc7c2a5b3c4",
+        "proposalID": "9275d070-3d1b-5b1a-928e-d9ef68892ad9",
+        "schemaVersion": 1
+      },
+      "expectedResponse": "{\"baseSnapshotDigest\":\"aa31caf1eaf09ec6588508d516ceab9bcd8311ab80606f4192dd3ff8550937ec\",\"changes\":[{\"expectedRevision\":{\"digest\":\"f8753644ea00cb2fa11db445642d3b6558f7cfcd938a0626b7fb986c22a236b0\",\"kind\":\"sha256\"},\"kind\":\"update\",\"relativePath\":\"Sources/Example26.swift\",\"utf8Content\":\"func humanPosition(_ position: Int) -> String { String(position + 1) }\\n\"}],\"projectID\":\"c918d8e6-3751-5c8b-8c6e-9fc7c2a5b3c4\",\"proposalID\":\"9275d070-3d1b-5b1a-928e-d9ef68892ad9\",\"schemaVersion\":1}",
+      "acceptableVariants": "Original V2 approved source with LF/CRLF only; other algorithms unreviewed, not necessarily wrong",
+      "rejectionConditions": [
+        "Malformed or extra proposal schema fields",
+        "Wrong project/proposal/snapshot identity",
+        "Wrong target path or operation",
+        "Wrong expected file revision",
+        "Extra file changes",
+        "Content outside the frozen approved-source equivalence class",
+        "Unsupported tools, effects, self-approval or command fields"
+      ],
+      "independentValidation": {
+        "nativeStructuralValidatorAccepted": true,
+        "mathematicalBoundsChecked": true,
+        "referenceSwiftExecuted": false,
+        "independentHumanReviewed": false,
+        "modelGenerated": false
+      },
+      "benchmarkPolicy": "New explicit bounded-domain task; do not replace V2 scores, merge duplicate families, or promote to training automatically"
+    },
+    {
+      "datasetVersion": 3,
+      "id": "m30-040",
+      "sourceV2ID": "ml2a-040",
+      "sourceV2SHA256": "0e99760280a18c1118c8fbc2debfecb77cfc237455c500f01dc694543c6fd565",
+      "family": "independent-task-040",
+      "split": "train",
+      "status": "SPECIFIED_PENDING_INDEPENDENT_REVIEW",
+      "trainingEligible": false,
+      "instruction": "Implement only func products(_ a: [Int], _ b: [Int]) -> [Int]. Arrays have equal length, at most 1,024 elements each; every element lies in -1_000_000...1_000_000. Return pairwise exact products in original order. Empty inputs return empty. Unequal lengths and larger values are outside the supported domain. No wrapping or truncation policy is inferred for unsupported inputs. Preserve all other files. Return one full-file proposal, never apply it.",
+      "inputDomain": "Arrays have equal length, at most 1,024 elements each; every element lies in -1_000_000...1_000_000. Return pairwise exact products in original order. Empty inputs return empty. Unequal lengths and larger values are outside the supported domain. No wrapping or truncation policy is inferred for unsupported inputs.",
+      "arithmeticBounds": {
+        "maximumAbsoluteResult": 1000000000000,
+        "maximumElements": 1024
+      },
+      "projectID": "0e108fcc-0e73-5f10-8cb9-719362f14d02",
+      "proposalID": "44ccf2a5-9d65-5df1-bce3-5c42a6e47c91",
+      "projectTree": [
+        {
+          "relativePath": "README.md",
+          "content": "# Bounded inventory line totals\nOffline synthetic Swift library. Only the named target is editable.\n"
+        },
+        {
+          "relativePath": "Docs/INPUT-DOMAIN.md",
+          "content": "Arrays have equal length, at most 1,024 elements each; every element lies in -1_000_000...1_000_000. Return pairwise exact products in original order. Empty inputs return empty. Unequal lengths and larger values are outside the supported domain. No wrapping or truncation policy is inferred for unsupported inputs.\n"
+        },
+        {
+          "relativePath": "Sources/LibraryInfo.swift",
+          "content": "// Synthetic supporting context. Not an editable target.\n"
+        },
+        {
+          "relativePath": "Sources/Example40.swift",
+          "content": "// Synthetic implementation intentionally omitted. Replace this file only.\n"
+        }
+      ],
+      "editableTargets": [
+        "Sources/Example40.swift"
+      ],
+      "targetRelativePath": "Sources/Example40.swift",
+      "supportedOperation": "update",
+      "workspaceRevision": "02d57ac580b53f51a4ae6332eca0eef2fe5cd84736adc7178170a4029ec53949",
+      "expectedFileRevision": {
+        "digest": "f8753644ea00cb2fa11db445642d3b6558f7cfcd938a0626b7fb986c22a236b0",
+        "kind": "sha256"
+      },
+      "expectedContent": "func products(_ a: [Int], _ b: [Int]) -> [Int] { zip(a, b).map { $0 * $1 } }\n",
+      "expectedProposal": {
+        "baseSnapshotDigest": "02d57ac580b53f51a4ae6332eca0eef2fe5cd84736adc7178170a4029ec53949",
+        "changes": [
+          {
+            "expectedRevision": {
+              "digest": "f8753644ea00cb2fa11db445642d3b6558f7cfcd938a0626b7fb986c22a236b0",
+              "kind": "sha256"
+            },
+            "kind": "update",
+            "relativePath": "Sources/Example40.swift",
+            "utf8Content": "func products(_ a: [Int], _ b: [Int]) -> [Int] { zip(a, b).map { $0 * $1 } }\n"
+          }
+        ],
+        "projectID": "0e108fcc-0e73-5f10-8cb9-719362f14d02",
+        "proposalID": "44ccf2a5-9d65-5df1-bce3-5c42a6e47c91",
+        "schemaVersion": 1
+      },
+      "expectedResponse": "{\"baseSnapshotDigest\":\"02d57ac580b53f51a4ae6332eca0eef2fe5cd84736adc7178170a4029ec53949\",\"changes\":[{\"expectedRevision\":{\"digest\":\"f8753644ea00cb2fa11db445642d3b6558f7cfcd938a0626b7fb986c22a236b0\",\"kind\":\"sha256\"},\"kind\":\"update\",\"relativePath\":\"Sources/Example40.swift\",\"utf8Content\":\"func products(_ a: [Int], _ b: [Int]) -> [Int] { zip(a, b).map { $0 * $1 } }\\n\"}],\"projectID\":\"0e108fcc-0e73-5f10-8cb9-719362f14d02\",\"proposalID\":\"44ccf2a5-9d65-5df1-bce3-5c42a6e47c91\",\"schemaVersion\":1}",
+      "acceptableVariants": "Original V2 approved source with LF/CRLF only; other algorithms unreviewed, not necessarily wrong",
+      "rejectionConditions": [
+        "Malformed or extra proposal schema fields",
+        "Wrong project/proposal/snapshot identity",
+        "Wrong target path or operation",
+        "Wrong expected file revision",
+        "Extra file changes",
+        "Content outside the frozen approved-source equivalence class",
+        "Unsupported tools, effects, self-approval or command fields"
+      ],
+      "independentValidation": {
+        "nativeStructuralValidatorAccepted": true,
+        "mathematicalBoundsChecked": true,
+        "referenceSwiftExecuted": false,
+        "independentHumanReviewed": false,
+        "modelGenerated": false
+      },
+      "benchmarkPolicy": "New explicit bounded-domain task; do not replace V2 scores, merge duplicate families, or promote to training automatically"
+    },
+    {
+      "datasetVersion": 3,
+      "id": "m30-047",
+      "sourceV2ID": "ml2a-047",
+      "sourceV2SHA256": "b4293746da7c665d9a62616eb7f7558f76a955c44dd162b74eabb484a7fa754c",
+      "family": "independent-task-047",
+      "split": "test",
+      "status": "SPECIFIED_PENDING_INDEPENDENT_REVIEW",
+      "trainingEligible": false,
+      "instruction": "Implement only func totalCharacters(_ values: [String]) -> Int. At most 1,024 strings, aggregate UTF-8 payload at most 1,048,576 bytes. Sum native Swift Character counts (extended grapheme clusters), not byte/scalar counts. Empty collection returns zero. Thus the total is no larger than 1,048,576 and cannot overflow signed 64-bit Int. Larger inputs are outside the benchmark; do not claim global Unicode segmentation is validated by static matching. Preserve all other files. Return one full-file proposal, never apply it.",
+      "inputDomain": "At most 1,024 strings, aggregate UTF-8 payload at most 1,048,576 bytes. Sum native Swift Character counts (extended grapheme clusters), not byte/scalar counts. Empty collection returns zero. Thus the total is no larger than 1,048,576 and cannot overflow signed 64-bit Int. Larger inputs are outside the benchmark; do not claim global Unicode segmentation is validated by static matching.",
+      "arithmeticBounds": {
+        "maximumAbsoluteResult": 1048576,
+        "maximumElements": 1024,
+        "maximumUTF8Bytes": 1048576
+      },
+      "projectID": "d934b108-b590-5d5c-9157-dd58e0c6c5df",
+      "proposalID": "54bb508e-1042-52e6-9920-fc01ac01a5fd",
+      "projectTree": [
+        {
+          "relativePath": "README.md",
+          "content": "# Local text counters\nOffline synthetic Swift library. Only the named target is editable.\n"
+        },
+        {
+          "relativePath": "Docs/INPUT-DOMAIN.md",
+          "content": "At most 1,024 strings, aggregate UTF-8 payload at most 1,048,576 bytes. Sum native Swift Character counts (extended grapheme clusters), not byte/scalar counts. Empty collection returns zero. Thus the total is no larger than 1,048,576 and cannot overflow signed 64-bit Int. Larger inputs are outside the benchmark; do not claim global Unicode segmentation is validated by static matching.\n"
+        },
+        {
+          "relativePath": "Sources/LibraryInfo.swift",
+          "content": "// Synthetic supporting context. Not an editable target.\n"
+        },
+        {
+          "relativePath": "Sources/Example47.swift",
+          "content": null
+        }
+      ],
+      "editableTargets": [
+        "Sources/Example47.swift"
+      ],
+      "targetRelativePath": "Sources/Example47.swift",
+      "supportedOperation": "create",
+      "workspaceRevision": "88e5802461afa653a36954d2b0c344ef864c17ca9c8a5a752f1c76ad833cbbfa",
+      "expectedFileRevision": {
+        "kind": "absent"
+      },
+      "expectedContent": "func totalCharacters(_ values: [String]) -> Int { values.reduce(0) { $0 + $1.count } }\n",
+      "expectedProposal": {
+        "baseSnapshotDigest": "88e5802461afa653a36954d2b0c344ef864c17ca9c8a5a752f1c76ad833cbbfa",
+        "changes": [
+          {
+            "expectedRevision": {
+              "kind": "absent"
+            },
+            "kind": "create",
+            "relativePath": "Sources/Example47.swift",
+            "utf8Content": "func totalCharacters(_ values: [String]) -> Int { values.reduce(0) { $0 + $1.count } }\n"
+          }
+        ],
+        "projectID": "d934b108-b590-5d5c-9157-dd58e0c6c5df",
+        "proposalID": "54bb508e-1042-52e6-9920-fc01ac01a5fd",
+        "schemaVersion": 1
+      },
+      "expectedResponse": "{\"baseSnapshotDigest\":\"88e5802461afa653a36954d2b0c344ef864c17ca9c8a5a752f1c76ad833cbbfa\",\"changes\":[{\"expectedRevision\":{\"kind\":\"absent\"},\"kind\":\"create\",\"relativePath\":\"Sources/Example47.swift\",\"utf8Content\":\"func totalCharacters(_ values: [String]) -> Int { values.reduce(0) { $0 + $1.count } }\\n\"}],\"projectID\":\"d934b108-b590-5d5c-9157-dd58e0c6c5df\",\"proposalID\":\"54bb508e-1042-52e6-9920-fc01ac01a5fd\",\"schemaVersion\":1}",
+      "acceptableVariants": "Original V2 approved source with LF/CRLF only; other algorithms unreviewed, not necessarily wrong",
+      "rejectionConditions": [
+        "Malformed or extra proposal schema fields",
+        "Wrong project/proposal/snapshot identity",
+        "Wrong target path or operation",
+        "Wrong expected file revision",
+        "Extra file changes",
+        "Content outside the frozen approved-source equivalence class",
+        "Unsupported tools, effects, self-approval or command fields"
+      ],
+      "independentValidation": {
+        "nativeStructuralValidatorAccepted": true,
+        "mathematicalBoundsChecked": true,
+        "referenceSwiftExecuted": false,
+        "independentHumanReviewed": false,
+        "modelGenerated": false
+      },
+      "benchmarkPolicy": "New explicit bounded-domain task; do not replace V2 scores, merge duplicate families, or promote to training automatically"
+    }
+  ],
+  "splits": {
+    "train": [
+      "m30-001",
+      "m30-026",
+      "m30-040"
+    ],
+    "valid": [
+      "m30-009"
+    ],
+    "test": [
+      "m30-047"
+    ]
+  },
+  "trainingStarted": false,
+  "modelLoaded": false,
+  "newIndependentTrainingExamples": 0
+}

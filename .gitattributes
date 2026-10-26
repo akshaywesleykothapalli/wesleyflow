@@ -1,2 +1,6 @@
 # Preserve the exact hash-verified upstream Markdown snapshot, including its whitespace.
 ModelLab/provenance/LORA.md -whitespace
+
+# Exact pinned public model cards retain upstream Markdown hard-break whitespace.
+ModelLab/provenance/milestone30/qwen3-README.md -whitespace
+ModelLab/provenance/milestone30/smollm2-README.md -whitespace
