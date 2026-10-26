@@ -4,7 +4,7 @@ import hashlib,json,os,shutil,subprocess
 from pathlib import Path
 root=Path(__file__).resolve().parent;repo=root.parent;out=root/'artifacts';modules=out/'Modules';modules.mkdir(parents=True,exist_ok=True)
 if shutil.disk_usage(root).free<256*1024**2:raise SystemExit('BLOCKED: insufficient disk for bridge compilation')
-env=os.environ.copy();env['DEVELOPER_DIR']='/Applications/Xcode-beta.app/Contents/Developer';env.pop('SDKROOT',None)
+env=os.environ.copy();env.setdefault('DEVELOPER_DIR','/Applications/Xcode-beta.app/Contents/Developer');env.pop('SDKROOT',None)
 commands=[];source_hashes={};artifact_hashes={}
 def run(args):
     result=subprocess.run(args,env=env,text=True,capture_output=True);commands.append({'argv':args,'exit_code':result.returncode,'stdout':result.stdout,'stderr':result.stderr})

@@ -47,6 +47,10 @@ Choose a fresh result-bundle path per test run. For `test-without-building`, run
 
 The native application has no third-party Swift package dependency. Xcode references the local package under `Packages/WesleyFlowCore`; keep that directory and its fixtures in the checkout. Optional [Model Lab](ModelLab/README.md) Python dependencies are separate and are not required to build the app. Model weights, virtual environments, private screenshots, raw evidence and generated artifacts are deliberately excluded. The synthetic datasets and pinned provenance/licensing are retained; preparation is not proof of training or inference feasibility.
 
+## Continuous integration
+
+See the [CI baseline and contribution guide](Docs/Engineering/CI-BASELINE.md) for local checks, hosted test selection, manual verification gates and safe branch/review practices. Hosted execution remains pending until the CI checkpoint is separately authorized for push and a real run succeeds.
+
 ## Engineering records
 
 - [Core voice reliability and user-operated acceptance checklist](Docs/Phase1E/CORE-VOICE-RELIABILITY.md)

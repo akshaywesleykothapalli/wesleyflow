@@ -1,0 +1,58 @@
+name: Wesley Flow CI
+
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'ci/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository:
+    name: Repository quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate checks and repository
+        run: |
+          yamllint --strict -d '{extends: relaxed, rules: {line-length: disable}}' .github/workflows/ci.yml
+          python3 -m unittest discover -s Tools/CI/tests -v
+          python3 Tools/CI/repository_checks.py
+
+  macos:
+    name: macOS deterministic
+    needs: repository
+    runs-on: xcode-27
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - name: Checkout reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify compiler and SDK
+        run: python3 Tools/CI/run_checks.py preflight
+      - name: Deterministic tests
+        run: python3 Tools/CI/run_checks.py test
+      - name: Debug build
+        run: python3 Tools/CI/run_checks.py debug
+      - name: Release build
+        run: python3 Tools/CI/run_checks.py release
+      - name: Complete concurrency build
+        run: python3 Tools/CI/run_checks.py concurrency
+      - name: Synthetic Model Lab contracts
+        run: python3 Tools/CI/run_checks.py model-lab
