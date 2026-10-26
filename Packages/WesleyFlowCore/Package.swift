@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: [
         .library(name: "Domain", targets: ["Domain"]),
+        .library(name: "VoiceInput", targets: ["VoiceInput"]),
         .library(name: "TaskExecution", targets: ["TaskExecution"]),
         .library(name: "Persistence", targets: ["Persistence"]),
         .library(name: "SystemOperations", targets: ["SystemOperations"]),
@@ -17,6 +18,7 @@ let package = Package(
     targets: [
         .executableTarget(name: "OllamaEvaluation", dependencies: ["Domain", "ModelProviders", "Workspace", "SystemOperations"], path: "Tools/OllamaEvaluation", resources: [.copy("Corpus.json")]),
         .target(name: "Domain"),
+        .target(name: "VoiceInput", dependencies: ["Domain"]),
         .target(name: "ModelProviders", dependencies: ["Domain"]),
         .target(name: "Workspace", dependencies: ["Domain"]),
         .target(name: "CodingAgents", dependencies: ["Domain"]),

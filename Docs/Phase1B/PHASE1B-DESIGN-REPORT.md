@@ -18,7 +18,7 @@ Read-only inspection in this task; no installs, launches, agent sessions or infe
 | Check | Actual observation |
 |---|---|
 | Git at start | main, clean; HEAD 686a0af7aebdfb270ef3cfefc51ecb703d017e4a |
-| OpenCode | CLI/package opencode-ai 1.18.25, **V1**; resolved CLI `/Users/akshaywesley/.nvm/versions/node/v20.20.0/bin/opencode` |
+| OpenCode | CLI/package opencode-ai 1.18.25, **V1**; resolved CLI `$HOME/.nvm/versions/node/v20.20.0/bin/opencode` |
 | Ollama | `/opt/homebrew/bin/ollama`; client 0.33.0; existing daemon local version API 0.33.0 |
 | Installed models | qwen3:8b Q4_K_M 5,225,388,164 bytes; qwen2.5-coder:7b Q4_K_M 4,683,087,561 bytes; full hashes/context metadata in [provider](MODEL-PROVIDER.md) |
 | Loaded models | Local `/api/ps`: empty; no model loaded by this task |
@@ -78,7 +78,7 @@ Each milestone's modules/interfaces/dependencies/security/scope/tests/acceptance
 
 ## Historical verification and this task's delivery checks
 
-Inspected existing remediation execution records: final-debug.json, final-release.json, final-full.json and final-replay.json report exit0. Remediation report records 63 functions/258 concrete cases, zero failed/skipped, plus six crash seeds and 12 recovery/reopen runs. Those are **historical Phase1A evidence**, not new Phase1B tests. [Remediation report](../PHASE1A-REMEDIATION.md), [existing evidence](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Remediation).
+Inspected existing remediation execution records: final-debug.json, final-release.json, final-full.json and final-replay.json report exit0. Remediation report records 63 functions/258 concrete cases, zero failed/skipped, plus six crash seeds and 12 recovery/reopen runs. Those are **historical Phase1A evidence**, not new Phase1B tests. [Remediation report](../PHASE1A-REMEDIATION.md), [existing evidence](../../Evidence/Phase1A-Remediation).
 
 No application build/test, real API integration, inference, containment attack or generated-code execution was run here. Delivery validation checks exactly nine new Markdown files, local links, unchanged pre-existing tracked-file SHA256 hashes and unchanged HEAD. The 54-file baseline was captured before writing; delivery validation exited0: exactly nine new Markdown files, zero broken local links, all 54 pre-existing tracked files byte-identical, unchanged HEAD, and Git status containing only the nine untracked Docs/Phase1B files. Production/test/project/AGENTS/historical docs stay unchanged. No staging, commit, push, new repository, install or Phase1B.1 implementation.
 

@@ -1,0 +1,85 @@
+{
+  "datasetFingerprint": "9f6a68aae503f390ea42663826bf76c53e367aa8ee305b0e3197e9578d3b7ce6",
+  "splits": {
+    "train": {
+      "count": 33,
+      "caseIDs": [
+        "ml2a-002",
+        "ml2a-003",
+        "ml2a-004",
+        "ml2a-005",
+        "ml2a-006",
+        "ml2a-007",
+        "ml2a-008",
+        "ml2a-013",
+        "ml2a-014",
+        "ml2a-015",
+        "ml2a-016",
+        "ml2a-017",
+        "ml2a-018",
+        "ml2a-019",
+        "ml2a-020",
+        "ml2a-025",
+        "ml2a-027",
+        "ml2a-028",
+        "ml2a-029",
+        "ml2a-030",
+        "ml2a-031",
+        "ml2a-032",
+        "ml2a-037",
+        "ml2a-038",
+        "ml2a-039",
+        "ml2a-041",
+        "ml2a-042",
+        "ml2a-043",
+        "ml2a-044",
+        "ml2a-049",
+        "ml2a-052",
+        "ml2a-055",
+        "ml2a-058"
+      ],
+      "sha256": "62314e4ba861b4e44e32dd5287c21a7a06fb20bda868f9fb46fc92461d30a33c",
+      "codingCount": 29,
+      "overSequenceLimit": []
+    },
+    "valid": {
+      "count": 11,
+      "caseIDs": [
+        "ml2a-010",
+        "ml2a-021",
+        "ml2a-022",
+        "ml2a-033",
+        "ml2a-034",
+        "ml2a-045",
+        "ml2a-046",
+        "ml2a-050",
+        "ml2a-053",
+        "ml2a-056",
+        "ml2a-059"
+      ],
+      "sha256": "6a10839a0a2cd3c16abc0bf23571c6d9d984fff7550ab3e3aee675faa8f8e144",
+      "codingCount": 7,
+      "overSequenceLimit": []
+    },
+    "test": {
+      "count": 11,
+      "caseIDs": [
+        "ml2a-011",
+        "ml2a-012",
+        "ml2a-023",
+        "ml2a-024",
+        "ml2a-035",
+        "ml2a-036",
+        "ml2a-048",
+        "ml2a-051",
+        "ml2a-054",
+        "ml2a-057",
+        "ml2a-060"
+      ],
+      "sha256": "8961484fb0dfe460a591f060f1ee7f1e6184f0abcbda3baebd5646d0ec104e66",
+      "codingCount": 7,
+      "overSequenceLimit": []
+    }
+  },
+  "purpose": "Frozen synthetic prepared-message fixtures for split/hash regression; no personal data or model output"
+}

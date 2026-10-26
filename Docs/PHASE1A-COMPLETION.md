@@ -1,6 +1,6 @@
 # Phase 1A completion report
 
-18 October 2026 · `/Users/akshaywesley/Developer/WesleyFlow`
+18 October 2026 · `$REPO_ROOT`
 
 **Decision: Phase 1A service foundation complete on the recorded development lane. Stop after Phase 1A.** Durable task orchestration, bounded FIFO scheduling, scoped permission policy, persistence, cancellation/timeouts, interrupted recovery, sanitized event logging and revision-bound verification interfaces are implemented and tested. Only deterministic no-effect executors are supplied in tests. See [implementation decisions and limits](PHASE1A-IMPLEMENTATION.md).
 

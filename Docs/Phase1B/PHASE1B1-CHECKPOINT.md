@@ -29,7 +29,7 @@ Regression evidence: disconnected-regression-before exited65. The new disconnect
 
 ## Final execution evidence
 
-All artifacts are under [Evidence/Phase1B1Checkpoint](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1Checkpoint). Each Xcode operation records exact argv/cwd/DEVELOPER_DIR/timestamps/exit/source hashes/log/result bundle. review-results.json derives concrete counts independently from result-tree leaf nodes and confirms final source hashes for all five final runs.
+All artifacts are under [Evidence/Phase1B1Checkpoint](../../Evidence/Phase1B1Checkpoint). Each Xcode operation records exact argv/cwd/DEVELOPER_DIR/timestamps/exit/source hashes/log/result bundle. review-results.json derives concrete counts independently from result-tree leaf nodes and confirms final source hashes for all five final runs.
 
 | Run | Exit | Outcome |
 |---|---:|---|

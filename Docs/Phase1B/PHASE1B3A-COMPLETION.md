@@ -89,7 +89,7 @@ Development failures are retained: initial compiler exit65 from accessing mutabl
 
 ## Commands and evidence
 
-All paths below are relative to `/Users/akshaywesley/Developer/WesleyFlow`. Full argv arrays, exit codes, timestamps, source hashes and logs are in ignored `Evidence/Phase1B3A/`; tests also have xcresult bundles. Use the explicit environment:
+All paths below are relative to `$REPO_ROOT`. Full argv arrays, exit codes, timestamps, source hashes and logs are in ignored `Evidence/Phase1B3A/`; tests also have xcresult bundles. Use the explicit environment:
 
 ```sh
 unset SDKROOT
@@ -99,7 +99,7 @@ export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 The following common invocation plus each table row is the exact Xcode command composition used (replace NAME, DERIVED, CONFIG and TAIL with that row):
 
 ```sh
-/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination platform=macOS,arch=arm64 -derivedDataPath DERIVED -disableAutomaticPackageResolution -skipPackageUpdates -configuration CONFIG -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B3A/NAME.xcresult TAIL
+/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination platform=macOS,arch=arm64 -derivedDataPath DERIVED -disableAutomaticPackageResolution -skipPackageUpdates -configuration CONFIG -resultBundlePath $REPO_ROOT/Evidence/Phase1B3A/NAME.xcresult TAIL
 ```
 
 | NAME | DERIVED | CONFIG | TAIL | Exit |
@@ -194,7 +194,7 @@ Reverification: complete automated suite **613 expanded cases /223 functions**, 
 Exact new Xcode commands use the common command above with NAME `accepted-checkpoint-full`, DERIVED `DerivedData/Phase1B3A-Accepted`, CONFIG Debug, TAIL `test`, then NAME `accepted-checkpoint-replay` with TAIL `test-without-building`. Both exit0. Native probes ran:
 
 ```sh
-python3 Scripts/Phase1B3A/verify-native-transport.py Packages/WesleyFlowCore/.build/debug/OllamaEvaluation /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B3A/Checkpoint
+python3 Scripts/Phase1B3A/verify-native-transport.py Packages/WesleyFlowCore/.build/debug/OllamaEvaluation $REPO_ROOT/Evidence/Phase1B3A/Checkpoint
 ```
 
 Checkpoint logs/source hashes and xcresult bundles are `Evidence/Phase1B3A/accepted-checkpoint-{full,replay}.*`; extracted counts and native command/probe records are under `Evidence/Phase1B3A/Checkpoint/`. Raw evidence/build products remain ignored and are not checkpoint contents. Every staged blob is checked against the reviewed working file before the local commit. The checkpoint contains exactly the19 files listed in this report; no credentials, generated artifacts, external dependencies, unrelated changes or previous source removals were identified. The authorized message is `feat(models): add guarded local Ollama provider foundation`, with parent `8d77088a2bf1e043ad752213d76bd9834b8224ba`; the resulting commit hash and final working-tree status are reported after commit. No push or remote creation is authorized or performed.

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "repository": "mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit",
+  "revision": "b3252a2f97102b1fb1571fec2c9b27219a8536be",
+  "license": "Apache-2.0",
+  "weightBytes": 868628559,
+  "totalDownloadBytes": 880172100,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 1519,
+      "gitBlob": "a6344aac8c09253b3b630fb776ae94478aa0275b"
+    },
+    {
+      "path": "README.md",
+      "size": 863,
+      "gitBlob": "99c3d67a5ecb8e6d2edd32321681d982f1301eb6"
+    },
+    {
+      "path": "added_tokens.json",
+      "size": 605,
+      "gitBlob": "482ced4679301bf287ebb310bdd1790eb4514232"
+    },
+    {
+      "path": "config.json",
+      "size": 785,
+      "gitBlob": "12b73826a0821cfb6cd8d24f83ab5b55b2e2128a"
+    },
+    {
+      "path": "merges.txt",
+      "size": 1671853,
+      "gitBlob": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+    },
+    {
+      "path": "model.safetensors",
+      "size": 868628559,
+      "gitBlob": "4e3aeca747bbdf70b8a21625630ec364c91b9e28",
+      "sha256": "daeab4764fb420d161721791cf2e509e2de81a7af4223646e7bed2bf82c57b58"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "size": 51569,
+      "gitBlob": "87eb58d416654c6c0ef987be30f6981a3176ffae"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "size": 613,
+      "gitBlob": "ac23c0aaa2434523c494330aeb79c58395378103"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 7031673,
+      "gitBlob": "d24314ef7f0afd1b678c2e24c767e19f24f86b0e"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 7228,
+      "gitBlob": "626207741cd3c44516466202246190c6b04bb201"
+    },
+    {
+      "path": "vocab.json",
+      "size": 2776833,
+      "gitBlob": "4783fe10ac3adce15ac8f358ef5462739852c569"
+    }
+  ],
+  "upstreamRepository": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+  "upstreamRevision": "2e1fd397ee46e1388853d2af2c993145b0f1098a",
+  "provenanceLimitations": [
+    "Community card base_model points to non-Instruct while README names Instruct.",
+    "Community chat template differs from the pinned current upstream template; conversion lineage is not independently proven."
+  ],
+  "acquisitionApproved": true
+}

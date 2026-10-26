@@ -44,7 +44,7 @@ SwiftData schema v1/model identities and migration plan are unchanged. New JSON 
 
 ## Actual execution evidence
 
-[Evidence/Phase1A-Remediation](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Remediation) contains exact argv, environment, UTC timestamps, exits, source/log hashes, raw logs and result bundles. `final-proof.json` confirms all 18 app/core/test/project code files match every final build/test run, original test function names remain present, historical architecture/audit bytes are preserved and there are no external package dependencies.
+[Evidence/Phase1A-Remediation](../Evidence/Phase1A-Remediation) contains exact argv, environment, UTC timestamps, exits, source/log hashes, raw logs and result bundles. `final-proof.json` confirms all 18 app/core/test/project code files match every final build/test run, original test function names remain present, historical architecture/audit bytes are preserved and there are no external package dependencies.
 
 | Executed check | Actual result | Artifact prefix |
 |---|---|---|
@@ -115,6 +115,6 @@ The macOS 26 runtime and full Xcode 26.3/Swift 6.2.3 lane remain unverified, as 
 
 ## Git status and local commit
 
-The authorized single local commit is named `fix(core): resolve task lifecycle concurrency defects`. Its full resulting hash and commit exit are recorded in [commit.json](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Remediation/commit.json), and final status is in [git-final.txt](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Remediation/git-final.txt). These sidecars are generated after the commit: this report is itself included in that commit, so embedding its own final hash would be self-referential. The full hash is also reported in the chat handoff.
+The authorized single local commit is named `fix(core): resolve task lifecycle concurrency defects`. Its full resulting hash and commit exit are recorded in [commit.json](../Evidence/Phase1A-Remediation/commit.json), and final status is in [git-final.txt](../Evidence/Phase1A-Remediation/git-final.txt). These sidecars are generated after the commit: this report is itself included in that commit, so embedding its own final hash would be self-referential. The full hash is also reported in the chat handoff.
 
 All staged paths were reviewed for scope and source-hash identity before committing. No remote was added, no push performed, and no unrelated project/user data was changed. Stop after this remediation.

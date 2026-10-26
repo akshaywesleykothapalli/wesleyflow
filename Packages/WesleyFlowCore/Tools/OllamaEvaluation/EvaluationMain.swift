@@ -34,6 +34,10 @@ private func elapsed(_ from: ContinuousClock.Instant) -> Double {
 }
 @main struct OllamaEvaluation {
     static func main() async throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--probe-prompt-rewrite" {
+            try await probePromptRewrite(URL(fileURLWithPath:CommandLine.arguments[2],isDirectory:true))
+            return
+        }
         if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--probe-transport" {
             do {
                 let response = try await LocalOllamaHTTPTransport().send(.init(endpoint:OllamaEndpoint(CommandLine.arguments[2]),route:.version,timeoutSeconds:0.5,responseLimit:128))
@@ -112,5 +116,33 @@ private func elapsed(_ from: ContinuousClock.Instant) -> Double {
             "contextTokens":4096,"outputTokens":768,"keepAlive":0,"regenerationAttempts":0,"shutdown":String(describing:await provider.shutdown())]
         try JSONSerialization.data(withJSONObject:summary,options:[.prettyPrinted,.sortedKeys]).write(to:output.appendingPathComponent("summary.json"))
         print("Evaluation finished; tested=\(rows.filter { $0.state == "TESTED" }.count), blocked=\(rows.filter { $0.state == "BLOCKED" }.count), chatRequests=\(counts["chat",default:0])")
+    }
+}
+
+extension OllamaEvaluation {
+    /// At most two frozen synthetic requests; stops on any denial or uncertain cleanup.
+    static func probePromptRewrite(_ output: URL) async throws {
+        try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true)
+        let memory = SystemInferenceMemory(), transport = EvaluationTransport()
+        let provider = try OllamaProvider(endpoint:OllamaEndpoint(),transport:transport,memory:memory,clock:SystemTaskClock())
+        let service = LocalPromptRewriter(provider:provider,clock:SystemTaskClock())
+        let baseline = try memory.sample()
+        var rows: [[String:Any]] = []
+        for (index,text) in ["I want to improve the animated UI button","I want to check if it is working or not"].enumerated() {
+            do {
+                let result = try await service.rewrite(text,modelName:"qwen2.5-coder:7b",requestID:"synthetic_rewrite_\(index)")
+                let settlement = await service.settle()
+                rows.append(["input":text,"state":"GENERATED","output":result,"settlement":settlement.rawValue])
+                if settlement == .httpCancelledProviderUncertain { break }
+            } catch {
+                rows.append(["input":text,"state":"BLOCKED_OR_FAILED","reason":String(describing:error),"settlement":(await service.settle()).rawValue])
+                break
+            }
+        }
+        let result: [String:Any] = ["model":"qwen2.5-coder:7b","baselineAvailableBytes":baseline.conservativeAvailableBytes,
+            "baselinePressureNormal":baseline.pressureNormal,"baselineSwapUsedBytes":baseline.swapUsedBytes,
+            "rows":rows,"requestCounts":await transport.requestCounts(),"shutdown":(await provider.shutdown()).rawValue]
+        try JSONSerialization.data(withJSONObject:result,options:[.prettyPrinted,.sortedKeys]).write(to:output.appendingPathComponent("result.json"))
+        print("Prompt rewrite probe recorded; generated=\(rows.filter { ($0["state"] as? String) == "GENERATED" }.count)")
     }
 }

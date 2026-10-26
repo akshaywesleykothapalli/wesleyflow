@@ -1,0 +1,16 @@
+{
+  "sample": {
+    "availableBytes": 5959368704,
+    "physicalBytes": 17179869184,
+    "pressureNormal": true,
+    "pressureCode": 1,
+    "swapUsedBytes": 0,
+    "compressorBytes": 2290679808,
+    "swapoutsPages": 0,
+    "pageBytes": 16384,
+    "diskFreeBytes": 40722124800,
+    "residentOllamaModels": 0,
+    "availableMethod": "(free including speculative + inactive) * pageSize; proxy, not guaranteed reclaimable RAM"
+  },
+  "purpose": "Fixed non-sensitive resource regression fixture; not a current host measurement"
+}

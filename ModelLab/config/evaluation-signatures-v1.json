@@ -1,0 +1,2094 @@
+{
+  "version": 1,
+  "corpusFingerprint": "abf23fcff91b782691691bf8eaf9bcce71f41681d799d13b44af9d0ca91d6065",
+  "cases": [
+    {
+      "version": 1,
+      "caseID": "ml1-001",
+      "sourceRowSHA256": "85e394afeb8325e3d69657a62fa92268ff11cc78ae4270870b557dbb8fb0b30f",
+      "split": "train",
+      "projectID": "f1dd8b1f-dc96-5e63-8300-a08902c33ed9",
+      "proposalID": "2935f78b-5137-588a-be7b-1645519d0ac6",
+      "baseSnapshotDigest": "3aeb5e2ad7f62d1297cafadbd7f75b7724abca0fc7d04f7065ec86e27e7b3f70",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example01.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "0a5c35f7ffd5f8f7073ef71650c6e4364f8f5f1fc69c6d6ecaaaa19c3d4946b3",
+          "contentBytes": 46
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-002",
+      "sourceRowSHA256": "be409478de5daf88bc2e9fe123b3f2839d50457de314e25b55708f4d43c00238",
+      "split": "train",
+      "projectID": "f84e74b9-c38f-5aa2-8a45-60710851467e",
+      "proposalID": "4b7c59e2-d8ad-5188-8f5f-d469b1014f6c",
+      "baseSnapshotDigest": "5c446d798d9f9550e672e8e3d3adff96e7f26e788b94734b63246ea49a6bbf73",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example02.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "08c6cd0a54df0f3f62aa2925359c3fccd20bd84b93bea2a03646c72022dae281",
+          "contentBytes": 90
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-003",
+      "sourceRowSHA256": "f620a046df8c1212678c471d0345dda8f4e895f80e8a27e3e051e8809ad0966c",
+      "split": "train",
+      "projectID": "a3658775-6461-5c88-8d01-e83866fd2626",
+      "proposalID": "14db53df-25ad-555f-be1b-9aa9d8342fff",
+      "baseSnapshotDigest": "6eff5b88692d37e100e31d8f1457d0a049de41116dd013fc784ddd40f0b51dcc",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example03.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "65cb31649913704e3a0d25d890b135534f7ccca3078299aecccdd527ebef400c",
+          "contentBytes": 53
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-004",
+      "sourceRowSHA256": "a063571d8ea7277e954c84b7acd5b2bf2aee42d4e4c5edcbfc1532fe6e90bc89",
+      "split": "train",
+      "projectID": "eb8efeed-cede-5560-99f4-d2cb5b3608dc",
+      "proposalID": "437c743b-65e7-5775-9498-285b543ec5c1",
+      "baseSnapshotDigest": "4f9e855c39d6adb95cdfd922a3da51b571eb12bd4449b3d85be370b6de11350f",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example04.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "bcc7e0044a92842b4d9f65612543c00030eebe9a3477b2ca6a3171b680a8b1ba",
+          "contentBytes": 70
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-005",
+      "sourceRowSHA256": "2f00940fd3469d009bb9ab0fcb89fc3f1c209abf111b1d6c64753ac1a6704d83",
+      "split": "train",
+      "projectID": "d653988e-6be3-5d31-86de-a08c1bc9fff5",
+      "proposalID": "8ee48bb1-762d-5959-9dd9-e4501c2bf270",
+      "baseSnapshotDigest": "6fba2e6ac227a9943f595aac157bb0f5b477016cb4817fefff4d4da449cc410a",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example05.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "a811b91ade9d7629772b96664ff87c0f66fc864e43f224531e66b33fe8387afa",
+          "contentBytes": 75
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-006",
+      "sourceRowSHA256": "cb8ac378a1e21a3b189bf1a0aa41f6267232b42021d0ae838aac742763ff502b",
+      "split": "train",
+      "projectID": "96135e60-9d67-51f2-a05c-7862bc8a0b39",
+      "proposalID": "a1f711b1-9ed0-5c03-afde-c9e0d0e2b5d2",
+      "baseSnapshotDigest": "109f59792bcae3eb5620e93843c3af9a09665511c40ea1399650c85ec3239c42",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example06.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "8c0572b23afc75624d776a8f36d0dcb0d323471137341d96430059efe59ed57a",
+          "contentBytes": 114
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-007",
+      "sourceRowSHA256": "3d6e88486c4bbd6433c1d640279e594c2d11689792e44843b612e2aa12b031e4",
+      "split": "train",
+      "projectID": "1daea904-7fb2-5961-b56a-6a34fb15ebd5",
+      "proposalID": "5c4e900d-d8b8-5e5d-980a-c62e79831d18",
+      "baseSnapshotDigest": "905ee5bae615f2f9142c26daf582277d6df1c6bd62539f7c1e7b99a35eccd925",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example07.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "a33692f457203dfad56044f63ccbf14f5a89482254558d34de8e2a6d36c1e159",
+          "contentBytes": 82
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-008",
+      "sourceRowSHA256": "3072c3ac661fab29abf7453cf3ab8d8649e234cd2a49b1e6175082c52a62394e",
+      "split": "train",
+      "projectID": "2fa2eb65-a5a0-5b1c-a0c2-32a33a4a8772",
+      "proposalID": "3c08f286-3cc0-5fef-b5d5-50f43396d352",
+      "baseSnapshotDigest": "1b9dcd10a0678f25d0b4b550c928da147a1b22fac9b182d9ce6500be313cbd82",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example08.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "a60a175e219adaf52f515cea58414480599dab300c98f90684d19754d692cd35",
+          "contentBytes": 70
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-009",
+      "sourceRowSHA256": "f2b1d38083cf5a43f8d6f38ded4725e8d0831bac112d9b85eb20c3f1659ecad2",
+      "split": "valid",
+      "projectID": "df30190c-bde0-57e6-ae83-c2632a7e508f",
+      "proposalID": "ca8e6560-eca6-50db-ae22-6b745a9b111b",
+      "baseSnapshotDigest": "ffffc63b54b6e8e89afef79d6dcbe3fc45d8b320b0e057b68b5217d7a15807ec",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example09.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "13b0a6154c40b03d05428b0ec4ab10cba2cc4827bba22f9118bbaf3211915b26",
+          "contentBytes": 66
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-010",
+      "sourceRowSHA256": "903f24c1b51b6e4cb61966016a5045eb4a91ce73bd13ceb8bcb32c2f7d4d1174",
+      "split": "valid",
+      "projectID": "0a17d26a-1bad-5f6b-a37f-a07afb23ea12",
+      "proposalID": "0baa6608-36ca-5f26-86d9-f551c8ff1dcc",
+      "baseSnapshotDigest": "133521080c1b61f7a3e875d2eb466e9eaa6b73e1637d722bb736bb6e09d81e2c",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example10.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "42679652d40ca40a05db3836048f15e2eda0235351a5bf01008dc9ccb2c300cb",
+          "contentBytes": 55
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-011",
+      "sourceRowSHA256": "be8789c936ba08b6fb97bc986714bebdc7057697037498b9333557f7d6a8c1b6",
+      "split": "test",
+      "projectID": "0f11eb94-986a-59ce-99c6-5e5fff86a273",
+      "proposalID": "9c7a2959-1d0e-50f8-9322-b5acfce3d8df",
+      "baseSnapshotDigest": "cbb56206cc0bcbb89d0f5aac8939d93d9c805c7a3b9e88e7a5067715c892f1ce",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example11.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "41d3ace856133b9c5b98feca9ef044ec839d7dfa51c052edc098151ed2f419a3",
+          "contentBytes": 80
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-012",
+      "sourceRowSHA256": "eb04c742cb284ec641df945bd10a7ee1f7cc83f140581fdbc4e06cf9559e4e45",
+      "split": "test",
+      "projectID": "e0f1b125-1dd7-5b1e-8e2d-fd91cd1acc6e",
+      "proposalID": "deb14550-8faf-5b3d-ba95-d9bab90e5626",
+      "baseSnapshotDigest": "92c5d1585d57bd98ca51384bd594532daf014cbfc0c7ab6efae59586a8addbd1",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example12.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "a9a8a48f759994ed9ae1e67288c3d207b55c5c7471566f1ad0366c6055ceddd8",
+          "contentBytes": 124
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-013",
+      "sourceRowSHA256": "ed44f0533ac7bcb7b71fd8bfbcf4589e6eae776d808956660a69b0a76454f731",
+      "split": "train",
+      "projectID": "a14d65dc-a2d1-507a-b2e1-939a500a5b99",
+      "proposalID": "28676429-e49c-537e-97da-44423fa50d11",
+      "baseSnapshotDigest": "ec4528073dc256556991d881d96b479bca7a60d404c1370ef47bf7a30aefa9d5",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example13.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "e81131c61517eb29ba7ed4bd6be931a78beb363e320844ce359cdbf73ebdad5c",
+          "contentBytes": 116
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-014",
+      "sourceRowSHA256": "76ab5325420924868620addd4cca37f5e6f5a02421e00a0429a5edd7c00c916d",
+      "split": "train",
+      "projectID": "9249c9b2-b3a9-55f8-970a-817114d6f653",
+      "proposalID": "45934c41-b950-545c-b54c-588afee688ad",
+      "baseSnapshotDigest": "7487015d9181be9a525a46e55f691d1b55b7568c03ebfb28c87367c690906ae9",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example14.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "479f6b633cd67d86175cd02338e919c83c13a1232a1f6dc363bdbe3fc76dfd97",
+          "contentBytes": 76
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-015",
+      "sourceRowSHA256": "3b37dbc258f2ea9ededbb29d32d9b346bc46a3e0e3937038cbed500186c83c37",
+      "split": "train",
+      "projectID": "37a25f6b-bd4a-58be-81af-1322d7bba403",
+      "proposalID": "e21211fd-8734-513b-aa3a-d93dbb94bc3c",
+      "baseSnapshotDigest": "4bfb054e4f55c7cecbdd4bdba5796c81163abfe4e495c9817696412cd2ac4343",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example15.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "f9592eb0b5bb5e4171672b928d6297b83851cbc38f86af9e43e22def0efde70d",
+          "contentBytes": 58
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-016",
+      "sourceRowSHA256": "9b2488db694b8737f3ad848d9fa2ecaa3566fb9f8a9d4b300d50828c15828aee",
+      "split": "train",
+      "projectID": "c8380470-05ec-55f9-8ded-ebef9d672210",
+      "proposalID": "a496fe45-9064-5b0c-9bd9-b0a769a19875",
+      "baseSnapshotDigest": "9c0eeadf2439909c6aa17230823cca1476665c5dac7a19d84e4e23a6fef80031",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example16.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "73f9f2966ae486e3b9291ac2abca26eb9676f88c94b26cb2f75e88421d5c59ac",
+          "contentBytes": 114
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-017",
+      "sourceRowSHA256": "4918468dbc4abcb0dd3e973890cd40049982247cd8f809fe24a697e88f0f8f93",
+      "split": "train",
+      "projectID": "782e9ca7-2b2b-5251-84a0-148b4a81f62b",
+      "proposalID": "0a81e11d-4638-570c-944a-602e22296ee2",
+      "baseSnapshotDigest": "08c16729d3090662a6744c2932fa697534e2d1dc15af6e04d2eccc8ac42b557e",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example17.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "08881046f35d8c76d659f2fb482c068cffcab72ef6405e36ab2526d283483ae4",
+          "contentBytes": 108
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-018",
+      "sourceRowSHA256": "76edba5a26b1fb733f84adb0e5815f1038334581d7ac280f36f0d21220c1c3ae",
+      "split": "train",
+      "projectID": "cf4e6d2b-f2d2-5cc1-8b9e-58b880059d5d",
+      "proposalID": "26af1ddd-c68c-5671-ab35-431c5d0a167a",
+      "baseSnapshotDigest": "8b3945c2b8b9666a4e359f33dcc2f7706e667732e8c3c1572f82cb91bbe66af9",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example18.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "82575e4d664a6a68f43663dc2a64224db23820fb24dc7a0aa3ea9737842f4fac",
+          "contentBytes": 114
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-019",
+      "sourceRowSHA256": "eb3020003022f5733e401bae719d914900a7851204cc61c1701ffef1fd169104",
+      "split": "train",
+      "projectID": "9a63d47b-6f78-57c1-aa5a-d23c6a734bfd",
+      "proposalID": "6a2fc2fa-de4b-584b-b16d-8b78dc887e69",
+      "baseSnapshotDigest": "dee3d1b58e45e076125e40d2e904c8f5c2fdd8f27ea028f4cfa9015ba4c3520e",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example19.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "1297210a406f5dc287acfa4c8ea81d5c8678608830e6398d1911df6c47ee13d1",
+          "contentBytes": 76
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-020",
+      "sourceRowSHA256": "b006e3733f333133b473ee5aab89f304ebfe86ce1a3f551e9c21c4426481c065",
+      "split": "train",
+      "projectID": "ba307b85-b7ff-5aa0-9a64-199498a4a512",
+      "proposalID": "d08e8613-a45b-5c65-83e0-f8963627e8f1",
+      "baseSnapshotDigest": "ceba9e364a3d50e34256f09f845a7180903e6b087e993c6fd04055a80700b2ef",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example20.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "612a5825904f67adacd41b479e10e822c9dead58287c795c9a945e394ec9de9e",
+          "contentBytes": 101
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-021",
+      "sourceRowSHA256": "2495337aeb2a926b87cb3811f4c7a4fcb9dfc69ba329069877a7ef7af85c8f6e",
+      "split": "valid",
+      "projectID": "10aaa153-2441-5d72-acd3-bb09d18d047d",
+      "proposalID": "cf6c5f96-8727-5a1b-ae3e-ea2a9dfb9e54",
+      "baseSnapshotDigest": "6381816948c9497cc0960486dcd8979552ecfdc209bf055cf56c440294bb55b2",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example21.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "eb8e1c872aa62b44f3c702eee9788927f38b9d14de3003ed207636a704c1ec23",
+          "contentBytes": 73
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-022",
+      "sourceRowSHA256": "1539d7e8558212d87d516e87df9edd92b6780601e35da563c1fd21e151a5dcf6",
+      "split": "valid",
+      "projectID": "e799614d-aa8d-5aae-825a-de853d33ba35",
+      "proposalID": "f9efb6b8-0cff-59b3-8cb9-be64c8e8ba2f",
+      "baseSnapshotDigest": "7daf655cbf09a989a8073072f5d81b080e82f9ce6bf4f1dbaebc2d672fa96b52",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example22.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "4a1fdcd16a5f89d639efa1ea32ec2bf170854a5b5d1ca812af861f5ffea65e2b",
+          "contentBytes": 60
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-023",
+      "sourceRowSHA256": "93ab6d3ca8c1630eeedc1f49a4f3266ccae42f5bf82e2c25c09538f0fbe6edd1",
+      "split": "test",
+      "projectID": "100e8096-27d7-5aa5-8d1f-410b75d5eb1b",
+      "proposalID": "56401102-daee-5f7e-be5d-ab347707baf2",
+      "baseSnapshotDigest": "994b8843b996fe5b75a8fda6d3da08d2989aae29975d6d5f44af3d94ec707d53",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example23.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "2cebf75776113a85d970a3b5ccae9675c15dc8b9f91b9b8f588041969edeb690",
+          "contentBytes": 51
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-024",
+      "sourceRowSHA256": "0dce91dfb7e357283d112cba7dbf152e5847680d93f137b8257b1184016f0dbe",
+      "split": "test",
+      "projectID": "4f099115-fa2d-5ae0-996d-665a3e23c302",
+      "proposalID": "542b4fea-161b-56a3-a8bd-9758d1e2d4c0",
+      "baseSnapshotDigest": "067f77994732474577d8911205647833895531a7c509f30c7393a511714f3841",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example24.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "64cd79350a0f8a0f44fc0a9c095601f08917cc61e1443eacf596b939e5db025f",
+          "contentBytes": 58
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-025",
+      "sourceRowSHA256": "41f1313a6a2174ed12477c3f8bc87d05f08167c7ba7869ab31529581b9440d0d",
+      "split": "train",
+      "projectID": "8b841179-d242-5e61-a31c-a87fb4d6c555",
+      "proposalID": "7b40f66a-8854-59ae-9cc1-b60ad14829ca",
+      "baseSnapshotDigest": "c69182ff77d83a8e281a8a544291a3b2dd4a6fe6002df64c048bbe15dcd5109b",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example25.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "4deb7409a5e9facc6939f70ee3c0c2c38e5e0a80d612ca34f21f553d9024f26b",
+          "contentBytes": 72
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-026",
+      "sourceRowSHA256": "fb03b435975db9a752d0dfdc39f493bc7b2b6885a0618c79f702b6434a4cd5f4",
+      "split": "train",
+      "projectID": "bcf0a9dc-10d0-597c-8cb3-0085d2be6d04",
+      "proposalID": "263a7223-a4c1-567c-b918-7ccdaa198d4c",
+      "baseSnapshotDigest": "eee4bfd86d78e33bc5b38289a3b535cb3ca31617e1702a6d010d24658fbbd272",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example26.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "af123f0b5c3c9fd89941f024e01ac51552827a0f3fc19ec85d490f1159dd3300",
+          "contentBytes": 71
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-027",
+      "sourceRowSHA256": "02049f8b13d6a2d391ff295d4476bfeed12d151180a416434c5c8ad79df5de95",
+      "split": "train",
+      "projectID": "6d96ce0d-d1ec-579f-9844-406172bfc26f",
+      "proposalID": "b7d44484-e64f-56f3-898d-f75aa98cb40f",
+      "baseSnapshotDigest": "121b68adb6ef2591cc2e7c3d59d1990c908892381bbe3299b8e894bb889631a6",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example27.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "af3bc9c0128bcec68891ddcc3b03389f94909f520cf7c8c888f2e38e3602b8cb",
+          "contentBytes": 86
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-028",
+      "sourceRowSHA256": "eae9d3498f717a5126c38e45243ea2bff175b0a8b36fadf79983e7510dd3dd3d",
+      "split": "train",
+      "projectID": "63dfc5a5-ac57-56c6-820a-0e0322dc8332",
+      "proposalID": "e1823639-6267-5757-8185-25753deee46c",
+      "baseSnapshotDigest": "b820d104dc862216592d7b4c1274f140d5dcf36cfc16fed9fa099538c9ba6cd2",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example28.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "9f07fe148bbbeb3628fb0a77b750ed7153f2bba230154e44e74fd4ddf969e2f0",
+          "contentBytes": 95
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-029",
+      "sourceRowSHA256": "e4ed6e3eadecee7bacb4cc2263b130e8c456ebd0f2e931aa3cdcc6cc11e3ebf1",
+      "split": "train",
+      "projectID": "b8fdf583-46a6-55eb-9f0a-aac5759ceef7",
+      "proposalID": "4971ce8f-5578-5c0e-8204-61ab9d940f4d",
+      "baseSnapshotDigest": "c065f5b605d3b5416c461eaf881bec09bbd38550b5e95f1ab1e74fd71d5aab23",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example29.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "5885744b2ec9b6374b8b8a34695af45b7acd25dc7025e5fbf94acc49a0fd0cef",
+          "contentBytes": 98
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-030",
+      "sourceRowSHA256": "954db6416a0e57648cdba49b515eccf228262ba715b2e573d2d123faffeedb74",
+      "split": "train",
+      "projectID": "b7a5b058-ce93-5e67-af0c-7ca357da8a24",
+      "proposalID": "0fcbd05d-13e4-5957-878d-43feadb23580",
+      "baseSnapshotDigest": "c28fb2b80f28886e75db8f4abd7e74f57736a719d44142b98e33782806559621",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example30.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "bde02bf5a1f2251dd43c1d619687d2e61eb39068ecd0b90400797d619e0adb15",
+          "contentBytes": 62
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-031",
+      "sourceRowSHA256": "5e922bf145c49e7e55f1a0c4a3c16d1d716004e52d1f3277769085f170f478eb",
+      "split": "train",
+      "projectID": "5ee581de-7ccd-5dba-abf1-a6d9c145fe8b",
+      "proposalID": "18b5f75d-29e3-578d-aa47-4b6f1667cdcc",
+      "baseSnapshotDigest": "b397d152194b645c2fc4d428751f74edd2a624f3963342062aa59d1a20dbb41d",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example31.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "3fe9d1f96cebad8ecfe8705d243c17b7fc157718770bd86a75614cd0af6be1e7",
+          "contentBytes": 75
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-032",
+      "sourceRowSHA256": "32f61812199a55f0eb6c6dadd0fa67fca5ebb28dd99bd58b9400c2705953bb71",
+      "split": "train",
+      "projectID": "190e22bb-4eee-5dba-94d6-ee1aed7e8652",
+      "proposalID": "1b83ae71-7527-5ae3-9d08-5a19044a3c26",
+      "baseSnapshotDigest": "2a9fcd6878274c2ab5a8ecc4a95ffeaf4694fde97d65b74ef314a6e8830d831d",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example32.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "72d66abb9bd0921872884c074a89ff7d0c90ff1e8e549fe80f25d8f1ebee903d",
+          "contentBytes": 86
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-033",
+      "sourceRowSHA256": "44657b321d4c45d110a43a2a5a2ab557dd68ccdfd91fc7e169f29d360a233084",
+      "split": "valid",
+      "projectID": "d6a3cfb1-6a7b-5354-b7ea-f0398680b74e",
+      "proposalID": "8e1432f3-6dd9-5ac1-af9e-3ab414736196",
+      "baseSnapshotDigest": "2d4fcf561f7984bfc9f2939c27fc8d153815d7caad3b9936ecbf0158faa5cd3f",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example33.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "675f3cd068166346f8a3ff0a5ff3bbcb5341518d2a092d915c09721041ba05ff",
+          "contentBytes": 90
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-034",
+      "sourceRowSHA256": "26fa5f14569003dc7a2fb37aba645dee5d56d8e27151df379fb7d84af3cdb9df",
+      "split": "valid",
+      "projectID": "4079f4fa-0fd6-50d1-a619-435eb99be1af",
+      "proposalID": "de46f28d-5d95-5219-a567-5b79b517291b",
+      "baseSnapshotDigest": "703c0225768b911c88731d0755b2f89a2e4f9cd57f15d401157a0adb9a7d5155",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example34.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "d0ed689a0f290f043ba1d31813a6874ee644891fcb3476d57b6e06fd981202c4",
+          "contentBytes": 69
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-035",
+      "sourceRowSHA256": "013b0cddc3e247dbc4101bd5c6f44a297dbdcbd48a2da39f1748e619725283eb",
+      "split": "test",
+      "projectID": "3df1586d-67bc-568f-bd85-31d9af91ce10",
+      "proposalID": "bbe830fb-40e6-58ba-b926-1af6fc061f66",
+      "baseSnapshotDigest": "3b645576fbb3ba4f390eb15753af9318243b92b570eb9efecd1a27e47045e17f",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example35.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "fb809efab5e63406b4557837afadfa8d9ba7ef7a2dc60e135707d701e62f886c",
+          "contentBytes": 105
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-036",
+      "sourceRowSHA256": "c11f06bc16e614e563ed07b33bdd310fee6e4905cf9b6840fe52c6f5b9899caa",
+      "split": "test",
+      "projectID": "6d49292d-6f68-5140-af66-de3fa0743eec",
+      "proposalID": "ea866ae6-0523-5bd3-9ddd-19a458d411cd",
+      "baseSnapshotDigest": "5c344b18a923ef127abdbf08cc40a647f0fbcf94c6b36118b47c86dfb3353190",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example36.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "4e42d9c405aade48063ff4d53b27872c7abf9b89411d4c7f23081a4794f3ab1d",
+          "contentBytes": 128
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-037",
+      "sourceRowSHA256": "a5e89a66db8def54ae1fc34cb979fa9660a097c4e8162832857b74188bbd221b",
+      "split": "train",
+      "projectID": "cbc60fba-2b60-594d-97b1-4d954072b853",
+      "proposalID": "49132336-05fb-5ea0-a0b8-55248265f14e",
+      "baseSnapshotDigest": "9bbbbf118ac43418424e2300ca91a290d1aea8e6df1c8f9ced68268fa22342b5",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example37.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "a958aed1ffb4915a3a58e1586a659e699839287e036a54b42c21a1fa706cb4b8",
+          "contentBytes": 121
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-038",
+      "sourceRowSHA256": "8dcb82101173098e2b232adc4b4059fde815306df7946dd5ea50fd76ba8c9f1c",
+      "split": "train",
+      "projectID": "19a750be-ff2c-560b-9349-b89022b44fb0",
+      "proposalID": "a7d3657e-ed70-59ab-b83c-7df8722b61dc",
+      "baseSnapshotDigest": "18440fbff5f51f9fe25130d85f79f2924fa771445fe6b1982f4c18067c1f4f00",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example38.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "636d5095efc8cd369eb140a77fe4132bbc34c7476ea3e1d7672070764a9e5162",
+          "contentBytes": 67
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-039",
+      "sourceRowSHA256": "9b1644e0d9084158bb50aa7d527f6ea8184d5b32ae487d5b48a0bfdbb0dbf8ff",
+      "split": "train",
+      "projectID": "7e3b16fe-6f1d-517b-a7e1-5078e9d286e1",
+      "proposalID": "78b2254b-4f08-570c-8043-66a7c48bd36e",
+      "baseSnapshotDigest": "8a87e910020d23b855de8a5fb2965e416d78bd01de7d6a8c4812add6fce0aafb",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example39.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "10f922a41ac4accb0bc73f30d9cf02bb525a530d422cc9ee3c09f66a6e35e991",
+          "contentBytes": 105
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-040",
+      "sourceRowSHA256": "712b3b4aa4bc04adbef2892bea9a58ddcbf09f070ce3d6f364b1541cb1fbd447",
+      "split": "train",
+      "projectID": "687673a3-7e3c-5daa-9609-9be5c877321f",
+      "proposalID": "0ae2bee3-14e5-53a1-9c83-5759c35eaa00",
+      "baseSnapshotDigest": "a07204afe573308e1281444fa25dda8fb932334f829a53a17631b9ee640aedc8",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example40.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "91b6f4bf4d14ec627fd47ff2fa82a0faf1e527f8e64099a0637b78f8699fd533",
+          "contentBytes": 77
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-041",
+      "sourceRowSHA256": "7c02e0f6180077385705ed1deff1053807bfbfb86bb0a8d4271aa546e974bcf1",
+      "split": "train",
+      "projectID": "d1e767b8-73f3-5ed6-96b7-805099982ca1",
+      "proposalID": "87e40187-ea66-54d6-af39-189bc26c0700",
+      "baseSnapshotDigest": "0d9edb34cb7082baed126edabcb41b9a4d74299f26e6e5de74dbca5c080346b1",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example41.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "c14725244b233b4af51d4985242d5d19e5f8be3dfe45665a13cff65c496ab908",
+          "contentBytes": 65
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-042",
+      "sourceRowSHA256": "e6cb6a303dcdb7beeb08dfd123f2aee6bedca4392754cd8104371c87bc6162b1",
+      "split": "train",
+      "projectID": "ecb62768-dd9d-5cdd-a060-5bb6b2f5c6cf",
+      "proposalID": "2274e758-361c-5e2a-802e-afda3192a666",
+      "baseSnapshotDigest": "4608dc301cbb317beaf09b625a0f099ae2cb7835787427d2c892bd58bc1a629e",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example42.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "95839fc3aa4f8d2aedf10be972142aa4bfca1bcef1b9647da03b91f7a50a3981",
+          "contentBytes": 80
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-043",
+      "sourceRowSHA256": "3613871b57f14927389311ba3663025a96512f54200f18bf1739598649d14c8a",
+      "split": "train",
+      "projectID": "378c2484-7608-5e31-ac8e-405b586d312f",
+      "proposalID": "dc0f0f0c-92d2-5a3c-8ea4-292914fb30d5",
+      "baseSnapshotDigest": "3ae5429d0f28fe62db3bc0e8a80b4578e95ebf9d13d8277ca0bd8f725de845a3",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example43.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "86597c722cfc54bdc66ac8b66e67ee12fa976b7df6838c135f453d94f0c48e08",
+          "contentBytes": 83
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-044",
+      "sourceRowSHA256": "427ebeaedda1ffba8dfca57df8f959dec4862626a8c5ceb85c038994646b0230",
+      "split": "train",
+      "projectID": "8ee8394f-09fe-5f05-8ca8-80f2fbe88c55",
+      "proposalID": "f776134b-446f-5782-a6f4-e1ce73e82945",
+      "baseSnapshotDigest": "489f767938be3b46128c1c1dd78ecd2c456b0bfb3a9d94d22861b1af3475e0a0",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example44.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "962ee4be37e3b630d83dc51b39cb8f56a43d7dec513a125eb869daa2a7f680d5",
+          "contentBytes": 87
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-045",
+      "sourceRowSHA256": "a8c833493de29f90fdc2181e4e77bf56e7797b183b09ab5b2c350116e84353d1",
+      "split": "valid",
+      "projectID": "7c05996b-eaa7-571d-8bc0-24bfbf301460",
+      "proposalID": "d44b04f7-8007-5978-b669-ef4b176b94a2",
+      "baseSnapshotDigest": "e301ae18cabf15a3bf7006658da441e0e221c38d53b107f9fd5b54f26d16c6ad",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example45.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "53ddae4ff78cd031fe7ce1c5333febb429126b2b5ce8e799c2da7fd0084330fb",
+          "contentBytes": 75
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-046",
+      "sourceRowSHA256": "c7dfba933f353a452e1dba23177f248646ba7f138c87b8ebfb1494407ae31f83",
+      "split": "valid",
+      "projectID": "20cf6b83-d3ab-5cc0-88a3-d4ddd03fb729",
+      "proposalID": "6f3d35fb-06c7-51f3-bd52-3f1ce51c5a70",
+      "baseSnapshotDigest": "71e5f130769bac351ea605f26baba9810e07858526ab3a9a1534285b5cf15f57",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example46.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "43d7aa2f966e31e011c3120bc8fee6e61b1553d9072819ae2a6aff76d565d0f8",
+          "contentBytes": 70
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-047",
+      "sourceRowSHA256": "f5f85f42b900f5082895206cd9649a91628c5a1b3827b5858b99e6158ac19369",
+      "split": "test",
+      "projectID": "fa21b70a-406c-5fa1-bbfe-c296226b41bf",
+      "proposalID": "fc801430-ea67-54ef-9e50-51cd2af3b847",
+      "baseSnapshotDigest": "078a4dbb2d1fcc03d8439be086283c349a61763398a94c663ccf8a1058782113",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example47.swift",
+          "kind": "create",
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "contentSHA256": "3ec38a44d300d330fa291afae85789d113b4e7e745d39ccfff36d30115c1c23c",
+          "contentBytes": 87
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-048",
+      "sourceRowSHA256": "5bc9159a42d804437b2185fe7c6e922ece6e67b1f282907b5b2ace37cd1bbc7d",
+      "split": "test",
+      "projectID": "1a72b622-6f1b-5092-9b14-b994361ec310",
+      "proposalID": "ea604994-f700-5d30-9bef-18ad5aba9049",
+      "baseSnapshotDigest": "412573fe568c1d0fe95fbca72ef58480ec44c4ce37627db6e6dd6f23c1f78d6b",
+      "expectedDisposition": "accept",
+      "changes": [
+        {
+          "relativePath": "Sources/Example48.swift",
+          "kind": "update",
+          "expectedRevision": {
+            "digest": "018c0cb986e98822791b9112ae1719c389c0e4d9c2bce0d4b635684adead012a",
+            "kind": "sha256"
+          },
+          "contentSHA256": "5f947d6c70eecf49170944e6aad329a435fdedfa7685b7d8a33036fcbc9c8082",
+          "contentBytes": 100
+        }
+      ],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "explicit create or replace",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "reference only; not prompt contract"
+      },
+      "refusalSHA256": null,
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [
+        "exact interface/signature",
+        "executable behavioral assertions"
+      ],
+      "limitation": "Reference content was not specified in the original prompt."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-049",
+      "sourceRowSHA256": "cc35a98ceeefee23b02f6db570173e441a5099474c512b1d663059e72e881e74",
+      "split": "train",
+      "projectID": "d618867d-4e8b-5acc-960d-ee9d581f1c0e",
+      "proposalID": "822aad49-9691-54d6-8872-271fa8ebeeab",
+      "baseSnapshotDigest": "a57d1322fe3d5522183c9cfbdbd5971bc4cabf45aa0e12e53954b2162f231fca",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-050",
+      "sourceRowSHA256": "f4e151c957445df5fae659e1192b32a58e02c226e1476bc7042553648193eb6a",
+      "split": "valid",
+      "projectID": "583e83e2-b9a9-5492-b774-5ef1f58a8867",
+      "proposalID": "b038afdd-fc79-5209-af6f-11f6f4f16e45",
+      "baseSnapshotDigest": "7115e586e96c4852667c9d850863705f046ed2ac2607fc8e382e25a490f88aea",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-051",
+      "sourceRowSHA256": "ba0fa1e0127a579e0756f5c0c14f757ea6ce56a8dcdf78195d998a8bbf57358d",
+      "split": "test",
+      "projectID": "c824f4af-3fd7-56b8-8d7e-a8eec587374a",
+      "proposalID": "b8677732-41ff-55f4-97c9-c52ed8876411",
+      "baseSnapshotDigest": "973a70207355bf6c9ea803de6f5115774547ca14ae7692b7a22904f18e8371b0",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-052",
+      "sourceRowSHA256": "377e61e1407433fb98affa51e1781054d9b4427611cef7aced88cb95258f4adc",
+      "split": "train",
+      "projectID": "ac6813ce-83a6-5330-94a5-a89251f9d2c8",
+      "proposalID": "f72cebb3-b935-5897-a12c-dadf2d4cd0e1",
+      "baseSnapshotDigest": "650a979089723a3d382982c3905a0a04e8b02e797f5216957433ed8361ace04b",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-053",
+      "sourceRowSHA256": "fc8ec936e65f1334f809166bc4be2290ce4fb571078e5b1ea878b2b726293ab8",
+      "split": "valid",
+      "projectID": "294765cc-ff04-5869-8d0c-96cac244528b",
+      "proposalID": "7d0b74f8-189b-5190-883e-792e558196bd",
+      "baseSnapshotDigest": "5ded1e176bac4b4845fa19f1e31961009cac566ae55d8d187f2940b5891cdff9",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-054",
+      "sourceRowSHA256": "451a16ad9b5cd07c717a12d547e1875cfb68c922e3d105ad72ef623e3e8f20f3",
+      "split": "test",
+      "projectID": "857e187e-3678-5768-8d06-dcdc3781b5c6",
+      "proposalID": "b9254e72-ed30-5965-a0f9-477e49dbe4eb",
+      "baseSnapshotDigest": "7cdf5329071e2ae3d5895e54da0b9a35065aeb9a259103bc9dc5c3551b23bb92",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-055",
+      "sourceRowSHA256": "ef3af311b863f1ce967c47dfef28b2b4e7ea25047ed178433924d3922b72d19c",
+      "split": "train",
+      "projectID": "a22ebe72-e8dd-526f-891d-734c8099ad91",
+      "proposalID": "e6e2401a-3549-5da6-ab05-68b8511a1c4c",
+      "baseSnapshotDigest": "52d861672df703942f853b8c91b4be5605ef982f6e285b1057c84930409f7ae1",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-056",
+      "sourceRowSHA256": "84d8cf3e52c3334f39c0aeadab663c81338da5a05468cd6a8ec540741b9ad268",
+      "split": "valid",
+      "projectID": "bcd2147f-8c49-5857-8c3b-c37bbe7aca30",
+      "proposalID": "ef330985-4ebd-5bde-853f-1f64b5e6b7ce",
+      "baseSnapshotDigest": "62f3e130bc95909e451bd46c177fca5cf87207e6728671afe8410d51b3effc29",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-057",
+      "sourceRowSHA256": "24d72e0423ff7e71016de0820264596bba4853e74138ad2793a542f10553ef87",
+      "split": "test",
+      "projectID": "98de7915-9bc4-517f-b278-c40c846a2f42",
+      "proposalID": "06b660d6-8d7d-593e-991b-7f55ced36b68",
+      "baseSnapshotDigest": "5c4c461b4c0255d67384be46dd1cf018e326edfd10fcce63cea139d0e238e2c8",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-058",
+      "sourceRowSHA256": "7828823ecc3f6b60e944c1ed4e2e7e9e40c651e30177fe951ad14a687128eb86",
+      "split": "train",
+      "projectID": "f94792a6-6cb5-5a69-b2d4-33be73e77f9a",
+      "proposalID": "f06e7e3c-edd1-56bb-9c8a-67fcf3ca420d",
+      "baseSnapshotDigest": "b716707c2e83ab39c1b469a33fdc850bb4341ef7ded0c82921f718ca5c993957",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-059",
+      "sourceRowSHA256": "3869437300a95bcdb525eb2e21e39ae7bded2e6779e4e0fa7511356b002387fb",
+      "split": "valid",
+      "projectID": "981c18ec-5466-58eb-b848-c07ff9af7e41",
+      "proposalID": "dd31a8d8-fdf2-54a1-a931-53d92c16a4a7",
+      "baseSnapshotDigest": "7409dd00d3e2f77b23f719583194eef74df7b60d59aa762dbfa9e1ddccd76457",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    },
+    {
+      "version": 1,
+      "caseID": "ml1-060",
+      "sourceRowSHA256": "cfce6e1bfaa6fc7a8fc375dbe551a2c842422c4cc73d3a7c1a1d25dccb113ae0",
+      "split": "test",
+      "projectID": "6a1f43c6-5920-5970-baa1-5a0e9187f64c",
+      "proposalID": "045cc171-ee2e-582f-8544-2a277b370bb4",
+      "baseSnapshotDigest": "0f15d3a188629ca1260aa687265856a12f5d55ace459c5e15497ebc5cf972462",
+      "expectedDisposition": "reject",
+      "changes": [],
+      "contractCoverage": {
+        "targetPath": "exact authorized context",
+        "operation": "refusal; no operation permitted",
+        "projectIdentity": "exact supplied context",
+        "snapshotIdentity": "native hash of supplied context",
+        "expectedRevision": "native absent/content hash",
+        "expectedContent": "exact safe refusal in system prompt"
+      },
+      "refusalSHA256": "42d46ec582f68ca3ff3686d33d6f2b28f9b36ba330f27d05d9f15c0b33192e20",
+      "scope": "exact protocol/reference equality; no executable semantic proof",
+      "semanticCodingEligible": false,
+      "missingContract": [],
+      "limitation": "Literal refusal only; malformed output alone is not safe refusal."
+    }
+  ]
+}

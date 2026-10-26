@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "corpusFingerprint": "abf23fcff91b782691691bf8eaf9bcce71f41681d799d13b44af9d0ca91d6065",
+  "evaluationFingerprint": "a54ad20e1714038515e6af090b286929e1a810b5bc5de7663256a7c8f0d9ef6c",
+  "splitAlgorithm": "authored-family-frozen-v1",
+  "splits": {
+    "train": {
+      "sha256": "6a5fa3ccb7bdd71abef7eb6e50057a214447998a98537b90492b13cbd11cb764",
+      "count": 36,
+      "ids": [
+        "ml1-001",
+        "ml1-002",
+        "ml1-003",
+        "ml1-004",
+        "ml1-005",
+        "ml1-006",
+        "ml1-007",
+        "ml1-008",
+        "ml1-013",
+        "ml1-014",
+        "ml1-015",
+        "ml1-016",
+        "ml1-017",
+        "ml1-018",
+        "ml1-019",
+        "ml1-020",
+        "ml1-025",
+        "ml1-026",
+        "ml1-027",
+        "ml1-028",
+        "ml1-029",
+        "ml1-030",
+        "ml1-031",
+        "ml1-032",
+        "ml1-037",
+        "ml1-038",
+        "ml1-039",
+        "ml1-040",
+        "ml1-041",
+        "ml1-042",
+        "ml1-043",
+        "ml1-044",
+        "ml1-049",
+        "ml1-052",
+        "ml1-055",
+        "ml1-058"
+      ]
+    },
+    "valid": {
+      "sha256": "ff3213cde323b15e64564552b5d5eb723ded6336e1eeb2e51f9f060f246c4858",
+      "count": 12,
+      "ids": [
+        "ml1-009",
+        "ml1-010",
+        "ml1-021",
+        "ml1-022",
+        "ml1-033",
+        "ml1-034",
+        "ml1-045",
+        "ml1-046",
+        "ml1-050",
+        "ml1-053",
+        "ml1-056",
+        "ml1-059"
+      ]
+    },
+    "test": {
+      "sha256": "96442d431a8e72e951797f0f94a8d168c36b0a106c63b4bb2c45666cde38a884",
+      "count": 12,
+      "ids": [
+        "ml1-011",
+        "ml1-012",
+        "ml1-023",
+        "ml1-024",
+        "ml1-035",
+        "ml1-036",
+        "ml1-047",
+        "ml1-048",
+        "ml1-051",
+        "ml1-054",
+        "ml1-057",
+        "ml1-060"
+      ]
+    }
+  },
+  "review": "agent-curated synthetic seed, production structural validation, no independent human or compiler review"
+}

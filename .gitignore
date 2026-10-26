@@ -5,3 +5,27 @@ Evidence/
 .swiftpm/
 xcuserdata/
 *.xcuserstate
+Run/
+
+# Local recordings, caches and credentials are never publication artifacts.
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.mobileprovision
+__pycache__/
+*.pyc
+# Actual UI captures may contain private dictation previews. Preserve them locally.
+Docs/Phase1D/Hand-Drawn-Screenshots/
+Docs/Phase1D/Reference-Screenshots/
+Docs/Phase1D/Settings-Screenshots/
+Docs/Phase1D/UI-Micro-Screenshots/
+# Machine-generated research diagnostics; source/configuration are retained.
+ModelLab/config/environment-versions.json
+ModelLab/config/lora-smoke-v1.json
+ModelLab/provenance/installed-cli.json
+ModelLab/provenance/model-lab2a/metadata-fetch-source.py.txt
+
+# Post-publication local audit includes verification state after the checkpoint.
+/Docs/GitHub/GITHUB-PUBLICATION-REPORT.md

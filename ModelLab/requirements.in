@@ -1,0 +1,4 @@
+# Candidate research pins from official release metadata; not installed/compatibility-verified yet.
+# Resolve a full hash lock in .venv only after disk admission. Never install globally.
+mlx==0.32.4
+mlx-lm==0.32.2

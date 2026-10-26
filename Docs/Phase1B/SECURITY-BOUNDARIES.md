@@ -2,6 +2,10 @@
 
 19 October 2026 · Revised after2A. The tested native helper configuration was insufficient for the complete execution requirements; it did enforce measured restrictions. Proposal-only inference adopted. No live provider/broker activation.
 
+## Current Phase1C.1 narrow UI authorization
+
+The user subsequently authorized human-held Fn dictation and one-shot insertion into the bound focused field, and explicitly requested local AI rewriting of the reviewed draft. These are separate paths: Fn insertion uses deterministic transcript cleanup; AI text reaches only the prompt editor after an explicit Rewrite action. A model output never becomes a command, task submission, filesystem effect or permission grant. No project files are disclosed to inference. The shared-daemon/unauthenticated-provider limitations, unchanged memory admission and cleanup uncertainty still apply. Cancellation is bound to a request ID; local speech is paused until the owned rewrite settles, with an explicit cleanup check after uncertainty. This does not establish cross-process exclusivity or durable provider cleanup across application restarts.
+
 ## Authority separation
 
 | Authority | Exclusive owner | Runtime/model receives |
@@ -82,3 +86,7 @@ Only explicit canonical `http://127.0.0.1:<1024...65535>` endpoints and five fix
 The shared unauthenticated daemon is not attested or isolated: another same-user client can load models between residency samples, alter tags, observe/retain requests, or configure its own network/remote behavior. Empty `/api/ps`, matching hashes reported by metadata, and rejected redirects do not prove daemon identity, zero egress, computation stopped, or memory zeroization. Therefore only frozen synthetic data was admitted by the developer harness; real-source disclosure remains disabled in app composition. Production credential handling/isolated provider ownership and durable unresolved provider-lease recovery are future gates. No claim of secret-free arbitrary source or OS containment is made.
 
 The native framework retried an idempotent metadata GET after an injected connection drop. There is no application retry; transport behavior must not be described as exactly-once delivery. No inference POST retry/cancellation behavior is live-verified when admission blocks it. Post-send uncertainty quarantines the local lease. Requests/prompts are not logged in the provider; evaluation evidence may retain only synthetic response fixtures under ignored Evidence.
+
+## Phase1C.2 dictation-specific boundary
+
+The production dictation root now permits only explicit user speech capture, captured-target text insertion and local transcript history. It has no inference operation; model inspection is metadata only. Separate typed insertion verifies observable target change and retains uncertainty. Clipboard snapshots are transient and ownership-checked; no atomic clipboard/AX transaction or arbitrary-code containment is claimed. Dictation history has an explicit local plaintext, user-deletion retention policy and its own cooperative limits. See [Phase1C.2](../Phase1C/PHASE1C2-GLOBAL-DICTATION.md) for privacy, manual acceptance and platform limitations. Earlier coding-provider evidence/retention rules remain historical and do not imply live dictation acceptance.

@@ -1,6 +1,6 @@
 from pathlib import Path
 import subprocess,datetime,json,sys,hashlib
-root=Path('/Users/akshaywesley/Developer/WesleyFlow');e=root/'Evidence/Phase1B2A'
+root=Path(__file__).resolve().parents[2];e=root/'Evidence/Phase1B2A'
 argv=['/usr/bin/python3',str(root/'Experiments/Containment/test_containment.py')]
 started=datetime.datetime.now(datetime.timezone.utc).isoformat()
 p=subprocess.run(argv,cwd=root,capture_output=True,text=True)

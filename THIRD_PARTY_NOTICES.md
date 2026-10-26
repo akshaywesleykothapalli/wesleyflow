@@ -1,0 +1,10 @@
+# Third-party notices
+
+The root MIT license applies to original Wesley Flow material, not a replacement of upstream ownership or licensing. The native app links Apple system frameworks and the local Swift package; the following preserved research/contract material is separately attributed.
+
+- **OpenCode 1.18.25 contract material** in `Docs/Phase1B/Contracts/OpenCode-1.18.25/`: upstream MIT, copyright (c) 2025 opencode. Its original [LICENSE](Docs/Phase1B/Contracts/OpenCode-1.18.25/LICENSE) and provenance are retained. This is inert contract data, not a live runtime integration.
+- **MLX-LM 0.32.2 research source snapshots** (`lora.py`, `trainer.py`, `datasets.py`, `LORA.md`) in `ModelLab/provenance/`: Apple copyright notices and [MIT terms](ModelLab/provenance/MLX-LM-LICENSE) retained. These are reference snapshots, not claimed as original Wesley Flow implementation. Pinned sources and checksums are in [SOURCES.json](ModelLab/provenance/SOURCES.json).
+- **Qwen2.5-Coder model metadata/model cards** in `ModelLab/provenance/`, including the separate 0.5B feasibility metadata: upstream Apache-2.0 terms preserved in [upstream-LICENSE](ModelLab/provenance/upstream-LICENSE) and [0.5B upstream license](ModelLab/provenance/model-lab2a/upstream-LICENSE.txt). Model repositories, pinned revisions and file identities are recorded in provenance/configuration. Model weights and adapters are not distributed here. Inclusion of metadata is not a claim of ownership, training or measured model performance.
+- Optional Model Lab packages are pinned in `ModelLab/requirements.lock`. Their upstream licenses continue to apply if installed; the environment and wheels are not vendored into this repository.
+
+Apple platform APIs, application names, GitHub and other product references identify dependencies, supported targets or development history. They are not copyright assignments, promotional credits or endorsements. No DailyOps, LocalFlow or legacy Wesley Flow source or assets are distributed as part of this implementation.

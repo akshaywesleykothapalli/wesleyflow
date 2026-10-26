@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "kind": "literal-content protocol calibration, not novel coding benchmark",
+  "sourceCaseID": "ml1-001",
+  "sourceSHA256": "85e394afeb8325e3d69657a62fa92268ff11cc78ae4270870b557dbb8fb0b30f",
+  "promptRow": {
+    "editableTargets": [
+      "Sources/Example01.swift"
+    ],
+    "entries": [
+      {
+        "content": null,
+        "relativePath": "Sources/Example01.swift"
+      }
+    ],
+    "expectedDisposition": "accept",
+    "expectedProposal": {
+      "baseSnapshotDigest": "3aeb5e2ad7f62d1297cafadbd7f75b7724abca0fc7d04f7065ec86e27e7b3f70",
+      "changes": [
+        {
+          "expectedRevision": {
+            "kind": "absent"
+          },
+          "kind": "create",
+          "relativePath": "Sources/Example01.swift",
+          "utf8Content": "func sum(_ a: Int, _ b: Int) -> Int { a + b }\n"
+        }
+      ],
+      "projectID": "f1dd8b1f-dc96-5e63-8300-a08902c33ed9",
+      "proposalID": "2935f78b-5137-588a-be7b-1645519d0ac6",
+      "schemaVersion": 1
+    },
+    "expectedResponse": "{\"baseSnapshotDigest\":\"3aeb5e2ad7f62d1297cafadbd7f75b7724abca0fc7d04f7065ec86e27e7b3f70\",\"changes\":[{\"expectedRevision\":{\"kind\":\"absent\"},\"kind\":\"create\",\"relativePath\":\"Sources/Example01.swift\",\"utf8Content\":\"func sum(_ a: Int, _ b: Int) -> Int { a + b }\\n\"}],\"projectID\":\"f1dd8b1f-dc96-5e63-8300-a08902c33ed9\",\"proposalID\":\"2935f78b-5137-588a-be7b-1645519d0ac6\",\"schemaVersion\":1}",
+    "family": "independent-task-001",
+    "id": "ml1-001",
+    "instruction": "Create exactly the supplied UTF-8 content at the sole editable target; no additions or edits. Required content: \"func sum(_ a: Int, _ b: Int) -> Int { a + b }\\n\"",
+    "projectID": "f1dd8b1f-dc96-5e63-8300-a08902c33ed9",
+    "proposalID": "2935f78b-5137-588a-be7b-1645519d0ac6",
+    "provenance": {
+      "kind": "synthetic",
+      "review": "agent-curated-and-validator-checked",
+      "source": "independently-authored-model-lab1"
+    },
+    "split": "train"
+  },
+  "expectedResponseSHA256": "11ada7914e9435e567e4a8a416952adf73aaca0ea94eb5ea3c34e47f7c7852f8",
+  "addedToTraining": false,
+  "heldOutAnswerChanged": false
+}

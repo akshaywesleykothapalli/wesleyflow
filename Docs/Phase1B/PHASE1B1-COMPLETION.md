@@ -11,7 +11,7 @@ Checkpoint follow-up: the original 349-case evidence below was reproduced. Final
 
 **COMPLETE for the authorized fixture-only Phase 1B.1 implementation and its available-toolchain verification.** Native OpenCode/Ollama execution, effective runtime configuration isolation, physical termination, OS containment and production integration remain **NOT TESTED / BLOCKED for live enablement**. No Phase1B.2 work, commit or push was performed. Separate authorization is required for any next milestone.
 
-Final-source focused tests pass **48 functions / 91 concrete cases**. Complete native tests and independent replay each pass **111 functions / 349 cases**, zero failures or skips. Original 63 functions / 258 cases remain intact. Debug and Release builds pass. Exact commands, timestamps, exits, logs, bundles and matching source hashes are in [Evidence/Phase1B1](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1); accepted-proof.json correlates the final source and bundled fixtures with those five accepted runs.
+Final-source focused tests pass **48 functions / 91 concrete cases**. Complete native tests and independent replay each pass **111 functions / 349 cases**, zero failures or skips. Original 63 functions / 258 cases remain intact. Debug and Release builds pass. Exact commands, timestamps, exits, logs, bundles and matching source hashes are in [Evidence/Phase1B1](../../Evidence/Phase1B1); accepted-proof.json correlates the final source and bundled fixtures with those five accepted runs.
 
 ## Repository inspection and preservation — COMPLETE
 
@@ -103,7 +103,7 @@ Lane: explicit `/Applications/Xcode-beta.app/Contents/Developer`, Xcode27.0 beta
 
 ### Exact build/test commands
 
-Run from `/Users/akshaywesley/Developer/WesleyFlow`, all with `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`. The shared argv prefix is:
+Run from `$REPO_ROOT`, all with `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`. The shared argv prefix is:
 
 ```sh
 /usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1B1 -disableAutomaticPackageResolution -skipPackageUpdates
@@ -113,11 +113,11 @@ Append each row's exact suffix (complete argv arrays also reside in the correspo
 
 | Record | Suffix |
 |---|---|
-| accepted-focused.json | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1/accepted-focused.xcresult -only-testing:CodingAgentsTests test` |
-| accepted-full.json | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1/accepted-full.xcresult test` |
-| accepted-replay.json | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1/accepted-replay.xcresult test-without-building` |
-| accepted-debug.json | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1/accepted-debug.xcresult build` |
-| accepted-release.json | `-configuration Release -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B1/accepted-release.xcresult build` |
+| accepted-focused.json | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B1/accepted-focused.xcresult -only-testing:CodingAgentsTests test` |
+| accepted-full.json | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B1/accepted-full.xcresult test` |
+| accepted-replay.json | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B1/accepted-replay.xcresult test-without-building` |
+| accepted-debug.json | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B1/accepted-debug.xcresult build` |
+| accepted-release.json | `-configuration Release -resultBundlePath $REPO_ROOT/Evidence/Phase1B1/accepted-release.xcresult build` |
 
 Static command argv/exits are in static-verification.json. Each summary/tree extraction has its own command JSON; full source/checksum URLs are in provenance.json. Native approvals were used for project writes, dependency-free static source capture, Xcode verification and result extraction. No prompt was bypassed.
 

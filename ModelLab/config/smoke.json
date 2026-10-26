@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "seed": 42,
+  "batch_size": 1,
+  "max_seq_length": 1024,
+  "num_layers": 2,
+  "iters": 4,
+  "learning_rate": 1e-05,
+  "steps_per_report": 1,
+  "steps_per_eval": 2,
+  "save_every": 2,
+  "val_batches": 1,
+  "grad_checkpoint": true,
+  "mask_prompt": true,
+  "fine_tune_type": "lora",
+  "lora_parameters": {
+    "rank": 4,
+    "dropout": 0.0,
+    "scale": 8.0
+  },
+  "deadline_seconds": 120,
+  "max_output_tokens": 320,
+  "temperature": 0.0
+}

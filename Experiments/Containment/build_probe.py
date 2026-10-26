@@ -1,6 +1,6 @@
 from pathlib import Path
 import subprocess,os,json,plistlib,sys,uuid,hashlib,datetime
-ROOT=Path('/Users/akshaywesley/Developer/WesleyFlow');SRC=ROOT/'Experiments/Containment';E=ROOT/'Evidence/Phase1B2A';E.mkdir(parents=True,exist_ok=True)
+ROOT=Path(__file__).resolve().parents[2];SRC=ROOT/'Experiments/Containment';E=ROOT/'Evidence/Phase1B2A';E.mkdir(parents=True,exist_ok=True)
 runid=uuid.uuid4().hex[:12];out=E/('Build-'+runid);out.mkdir();env=os.environ.copy();env['DEVELOPER_DIR']='/Applications/Xcode-beta.app/Contents/Developer';env.pop('SDKROOT',None);results=[]
 sdk=subprocess.check_output(['/usr/bin/xcrun','--sdk','macosx','--show-sdk-path'],env=env,text=True).strip()
 def run(name,args):

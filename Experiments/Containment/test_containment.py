@@ -1,7 +1,7 @@
 """Standalone characterization; never imports into production targets. Synthetic fixtures only."""
 from pathlib import Path
 import os,sys,json,uuid,subprocess,selectors,socket,shutil,time,signal,fcntl,select,ctypes,hashlib
-ROOT=Path('/Users/akshaywesley/Developer/WesleyFlow'); E=ROOT/'Evidence/Phase1B2A'
+ROOT=Path(__file__).resolve().parents[2]; E=ROOT/'Evidence/Phase1B2A'
 BUILD=Path(json.loads((E/'latest-build.json').read_text())['build'])
 RUN=E/('Run-'+uuid.uuid4().hex[:12]);RUN.mkdir(); records=[];checks=[];fixtures=[]
 lib=ctypes.CDLL('/usr/lib/libproc.dylib');lib.proc_pidpath.argtypes=[ctypes.c_int,ctypes.c_void_p,ctypes.c_uint32]

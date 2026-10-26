@@ -67,7 +67,7 @@ Evidence: ignored `Evidence/Phase1B2B/` holds exact argv/cwd/DEVELOPER_DIR/times
 
 ### Exact verification commands
 
-All run from `/Users/akshaywesley/Developer/WesleyFlow` with DEVELOPER_DIR as above and inherited SDKROOT removed. Common argv prefix:
+All run from `$REPO_ROOT` with DEVELOPER_DIR as above and inherited SDKROOT removed. Common argv prefix:
 
 ```sh
 /usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1B2B-Final -disableAutomaticPackageResolution -skipPackageUpdates
@@ -75,12 +75,12 @@ All run from `/Users/akshaywesley/Developer/WesleyFlow` with DEVELOPER_DIR as ab
 
 | Record | Exact suffix |
 |---|---|
-| verified-focused | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B2B/verified-focused.xcresult -only-testing:WorkspaceTests test` |
-| verified-full | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B2B/verified-full.xcresult test` |
-| verified-replay | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B2B/verified-replay.xcresult test-without-building` |
-| verified-debug | `-configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B2B/verified-debug.xcresult build` |
-| verified-release | `-configuration Release -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B2B/verified-release.xcresult build` |
-| verified-release-tests | `-configuration Release -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B2B/verified-release-tests.xcresult build-for-testing ENABLE_TESTABILITY=YES` |
+| verified-focused | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B2B/verified-focused.xcresult -only-testing:WorkspaceTests test` |
+| verified-full | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B2B/verified-full.xcresult test` |
+| verified-replay | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B2B/verified-replay.xcresult test-without-building` |
+| verified-debug | `-configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1B2B/verified-debug.xcresult build` |
+| verified-release | `-configuration Release -resultBundlePath $REPO_ROOT/Evidence/Phase1B2B/verified-release.xcresult build` |
+| verified-release-tests | `-configuration Release -resultBundlePath $REPO_ROOT/Evidence/Phase1B2B/verified-release-tests.xcresult build-for-testing ENABLE_TESTABILITY=YES` |
 
 The Release QA command uses DerivedData/Phase1B2B-ReleaseTests rather than the common derived path. Initial/intermediate/regression runs use their named result paths and the focused suffix (or recorded full/replay/build actions), in the earlier DerivedData/Phase1B2B directory; actual argv/source hashes are in each named JSON. Result extraction: `/usr/bin/xcrun xcresulttool get test-results summary --path <named.xcresult>` and corresponding `tests`; exact arrays/exits in per-run extraction records. Metadata commands include `xcrun swift package --package-path Packages/WesleyFlowCore dump-package`, `xcodebuild -showBuildSettings -json -project ... -scheme ... -disableAutomaticPackageResolution -skipPackageUpdates`, toolchain and host queries, and Git preservation/diff/status inspection. All are controlled developer verification, not a model command runner.
 

@@ -1,0 +1,76 @@
+{
+  "sources": {
+    "modelMetadata": "https://huggingface.co/api/models/mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit/revision/b3252a2f97102b1fb1571fec2c9b27219a8536be?blobs=true",
+    "upstream": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct/tree/2e1fd397ee46e1388853d2af2c993145b0f1098a",
+    "mlxCode": "https://github.com/ml-explore/mlx-lm/tree/v0.32.2",
+    "license": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct/blob/2e1fd397ee46e1388853d2af2c993145b0f1098a/LICENSE"
+  },
+  "files": [
+    {
+      "path": "LORA.md",
+      "sha256": "305fec69ccbde4c5b8f2c752ab889258bfa7192f2ec7e2b767ad641c57021852",
+      "bytes": 13741
+    },
+    {
+      "path": "datasets.py",
+      "sha256": "dcd675376d68d1813261c8389236b586b16b9a58a5ea80be8eb535bb9d0e9689",
+      "bytes": 9690
+    },
+    {
+      "path": "lora.py",
+      "sha256": "e366eec6ae2f8a72446f1af65faf189a92a01ca509fb0cafb3fa54b89b4291f7",
+      "bytes": 11907
+    },
+    {
+      "path": "model-README.md",
+      "sha256": "f164287c8bb0d595f172a4be0329660c35208249f360e0c84780e1fcc251e29b",
+      "bytes": 863
+    },
+    {
+      "path": "model-config.json",
+      "sha256": "0708e236aa7b7db3c01bf8a46200e1a92d57f20fa668a7c430154bd6a21cdba5",
+      "bytes": 785
+    },
+    {
+      "path": "model-tokenizer_config.json",
+      "sha256": "dced901d401aa828f313a2baec70d0ce164653285812237b5285c7efd5b9e760",
+      "bytes": 7228
+    },
+    {
+      "path": "model.json",
+      "sha256": "a320a779f700f46a69f772979b519ec9cd52cfe24f3201bb8b7cba58aa0e098b",
+      "bytes": 5459
+    },
+    {
+      "path": "trainer.py",
+      "sha256": "0b6027fdb11803e951ceee52c83a81f82daa922ea8c6b7ca6888953461064e8e",
+      "bytes": 12560
+    },
+    {
+      "path": "upstream-LICENSE",
+      "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
+      "bytes": 11343
+    },
+    {
+      "path": "upstream-config.json",
+      "sha256": "88f9a17863c05fb313515d2ff74b1098e0c35579f99068e32beda00618508ae0",
+      "bytes": 660
+    },
+    {
+      "path": "upstream-tokenizer_config.json",
+      "sha256": "959e7f1d9a1b7641a6d6ce05ca97b75c7894fcb66cbe5a040406458fb1128ee4",
+      "bytes": 7305
+    },
+    {
+      "path": "upstream.json",
+      "sha256": "c971bb914bd606d508ae623a568380df0bcaa611478e3a79ec5ffea7af02a38b",
+      "bytes": 8319
+    },
+    {
+      "path": "MLX-LM-LICENSE",
+      "sha256": "ccfab7ccb2ea306f71531c8ca77bb55507606cd90768b1e32b8b52ab5b48cf01",
+      "bytes": 1066,
+      "origin": "Installed official mlx-lm 0.32.2 wheel license"
+    }
+  ]
+}

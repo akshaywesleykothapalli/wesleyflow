@@ -136,10 +136,10 @@ Full Xcode toolchain selected explicitly with `DEVELOPER_DIR=/Applications/Xcode
 
 All test bundles' structured summaries report zero runtime warnings. Logs retain AppIntents metadata-extraction warnings and existing hosted-app linkd.autoShortcut connection messages; no Swift concurrency diagnostic remains. No test failed in this remediation run. The earlier five native HTTP probes are historical foundation evidence, not rerun or presented as new live-provider proof.
 
-Exact command composition, run from `/Users/akshaywesley/Developer/WesleyFlow`, with the explicit environment above:
+Exact command composition, run from `$REPO_ROOT`, with the explicit environment above:
 
 ```sh
-/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination platform=macOS,arch=arm64 -derivedDataPath DERIVED -disableAutomaticPackageResolution -skipPackageUpdates -configuration CONFIG -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1B3A/MemoryRemediation/NAME.xcresult TAIL
+/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination platform=macOS,arch=arm64 -derivedDataPath DERIVED -disableAutomaticPackageResolution -skipPackageUpdates -configuration CONFIG -resultBundlePath $REPO_ROOT/Evidence/Phase1B3A/MemoryRemediation/NAME.xcresult TAIL
 ```
 
 | NAME | DERIVED | CONFIG | TAIL | Exit |

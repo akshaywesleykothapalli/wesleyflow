@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "version": 1,
+      "id": "historical-v1",
+      "contextTokens": 1024,
+      "outputTokens": 320,
+      "maxKVTokens": null,
+      "prefillStepTokens": 2048,
+      "sessions": 1,
+      "simultaneousModels": 1,
+      "draftModel": null,
+      "persistentPromptCache": false,
+      "seed": 42,
+      "temperature": 0.0,
+      "deadlineSeconds": 120,
+      "runtimeAllowanceBytes": 2147483648,
+      "hostReserveBytes": 4294967296,
+      "runtimeIntegrated": false
+    },
+    {
+      "version": 1,
+      "id": "compact-v1",
+      "contextTokens": 768,
+      "outputTokens": 256,
+      "maxKVTokens": 768,
+      "prefillStepTokens": 64,
+      "sessions": 1,
+      "simultaneousModels": 1,
+      "draftModel": null,
+      "persistentPromptCache": false,
+      "seed": 42,
+      "temperature": 0.0,
+      "deadlineSeconds": 120,
+      "runtimeAllowanceBytes": 2147483648,
+      "hostReserveBytes": 4294967296,
+      "runtimeIntegrated": false
+    },
+    {
+      "version": 1,
+      "id": "minimal-v1",
+      "contextTokens": 512,
+      "outputTokens": 128,
+      "maxKVTokens": 512,
+      "prefillStepTokens": 32,
+      "sessions": 1,
+      "simultaneousModels": 1,
+      "draftModel": null,
+      "persistentPromptCache": false,
+      "seed": 42,
+      "temperature": 0.0,
+      "deadlineSeconds": 120,
+      "runtimeAllowanceBytes": 2147483648,
+      "hostReserveBytes": 4294967296,
+      "runtimeIntegrated": false
+    }
+  ],
+  "status": "Assessment only; no reduced profile is wired into the execution runner."
+}

@@ -2,6 +2,10 @@
 
 19 October 2026 · Phase1B.3A implements LocalModelProvider and the bounded Ollama adapter. Metadata and fixture/native HTTP tests were exercised; live generation remains blocked by memory admission. The planning sections below retain their acceptance criteria, not claims that those gates passed. See [current results](PHASE1B3A-COMPLETION.md) and [versioned provenance](Contracts/Ollama-0.33.0/provenance.json).
 
+## Current Phase1C.1 text-rewrite integration
+
+20 October 2026: the user explicitly requested real AI-generated prompt rewriting. The app now composes `LocalPromptRewriter` over the unchanged OllamaProvider after an explicit Rewrite action. Only the edited draft is sent; no repository context, files, tools or task execution is supplied. The `syntheticUserContent` argument retains its historical API label for compatibility; this narrow app path is explicitly authorized user text. Existing memory thresholds, model/version checks, process-local lease and uncertainty handling remain mandatory. A bounded JSON-string schema replaces the removed static template. Input is capped at1,800 UTF-8 bytes, output at8KiB, context4096, output768 tokens and deadline60s. The smaller approved installed model is the default; no model is downloaded. Speech is blocked while rewrite work or cleanup is uncertain. See [current voice/rewrite evidence](../Phase1C/PHASE1C1-COMPLETION.md); historical 1B.3A model-quality results remain unchanged.
+
 ## Observed inventory
 
 Read-only local API metadata confirms Ollama client **0.33.0**, server **0.33.0**, two installed GGUF artifacts and no loaded models (`/api/ps` empty). This establishes inventory, not tool-calling quality, load footprint or speed.
@@ -62,3 +66,7 @@ Observed shared-service admission rejected both models before chat. Forty frozen
 ## Memory accounting remediation — 20 October2026
 
 SystemInferenceMemory now counts the speculative subset only within Mach free_count. The free+inactive sum and page-size conversion use checked UInt64 arithmetic; invalid units or overflow deny observation. The prior2GiB estimate,4GiB reserve, model-name/size restrictions and pressure/swap/lease rules are unchanged. The earlier diagnosis remains a historical record; [the remediation report](PHASE1B3A-MEMORY-REMEDIATION.md) contains current calculations, deterministic regressions and official smaller-model research. No smaller model is enabled or downloaded and no live inference is verified by this correction.
+
+## Phase1C.2 production feature gate
+
+The new system-wide dictation coordinator exposes model metadata inspection only. It does not receive a generation/rewrite port. The existing LocalPromptRewriter implementation/tests are preserved, but its former dashboard is not the production root. No Ollama inference, model load/download, OpenCode or threshold changes were performed for1C.2. Installed metadata never implies Ready. See [the1C.2 report](../Phase1C/PHASE1C2-GLOBAL-DICTATION.md).

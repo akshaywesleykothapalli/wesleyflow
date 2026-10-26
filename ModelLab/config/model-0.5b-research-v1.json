@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "observedUTC": "2026-10-25T12:28:31.579484+00:00",
+  "repository": "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+  "revision": "6b16732e5af5cd9bd600186ad59fa618867ef7a4",
+  "licenseDeclaration": "apache-2.0",
+  "upstreamRepository": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+  "upstreamRevision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 1519,
+      "gitBlob": "a6344aac8c09253b3b630fb776ae94478aa0275b",
+      "lfs": null
+    },
+    {
+      "path": "README.md",
+      "size": 1137,
+      "gitBlob": "3c431282a21b2877b366f8bc6d69ecb70fe1fea1",
+      "lfs": null
+    },
+    {
+      "path": "added_tokens.json",
+      "size": 605,
+      "gitBlob": "482ced4679301bf287ebb310bdd1790eb4514232",
+      "lfs": null
+    },
+    {
+      "path": "config.json",
+      "size": 863,
+      "gitBlob": "62e9eb9c51bfcfbbaa6c4138444c18acea984ec9",
+      "lfs": null
+    },
+    {
+      "path": "merges.txt",
+      "size": 1671853,
+      "gitBlob": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7",
+      "lfs": null
+    },
+    {
+      "path": "model.safetensors",
+      "size": 278064920,
+      "gitBlob": "97d019180a7e85cd248b4e0428002aecf2f13d2a",
+      "lfs": {
+        "sha256": "162e6341bc937d1880cc7f76fbb80831f4fb30684345c59a7b055a5c716d25bd",
+        "size": 278064920,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "size": 44209,
+      "gitBlob": "8831428421e282132532f717fcaba43f8c7f5445",
+      "lfs": null
+    },
+    {
+      "path": "special_tokens_map.json",
+      "size": 613,
+      "gitBlob": "ac23c0aaa2434523c494330aeb79c58395378103",
+      "lfs": null
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 7031673,
+      "gitBlob": "d24314ef7f0afd1b678c2e24c767e19f24f86b0e",
+      "lfs": null
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 7306,
+      "gitBlob": "8adf747ccaf85ff9587338cee6ed6be027b98210",
+      "lfs": null
+    },
+    {
+      "path": "vocab.json",
+      "size": 2776833,
+      "gitBlob": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "lfs": null
+    }
+  ],
+  "totalRepositoryBytes": 289601531,
+  "weightBytes": 278064920,
+  "modelDownloaded": false,
+  "metadataOnly": true,
+  "acquisitionApproved": false,
+  "config": {
+    "architectures": [
+      "Qwen2ForCausalLM"
+    ],
+    "attention_dropout": 0.0,
+    "bos_token_id": 151643,
+    "eos_token_id": 151645,
+    "hidden_act": "silu",
+    "hidden_size": 896,
+    "initializer_range": 0.02,
+    "intermediate_size": 4864,
+    "max_position_embeddings": 32768,
+    "max_window_layers": 21,
+    "model_type": "qwen2",
+    "num_attention_heads": 14,
+    "num_hidden_layers": 24,
+    "num_key_value_heads": 2,
+    "quantization": {
+      "group_size": 64,
+      "bits": 4
+    },
+    "quantization_config": {
+      "group_size": 64,
+      "bits": 4
+    },
+    "rms_norm_eps": 1e-06,
+    "rope_theta": 1000000.0,
+    "sliding_window": 32768,
+    "tie_word_embeddings": true,
+    "torch_dtype": "bfloat16",
+    "transformers_version": "4.43.1",
+    "use_cache": true,
+    "use_sliding_window": false,
+    "vocab_size": 151936
+  },
+  "sources": [
+    {
+      "url": "https://huggingface.co/api/models/mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit?blobs=true",
+      "file": "community-api.json",
+      "bytes": 5617,
+      "sha256": "c65cb350df29a595b70474e7e736e2fef53d8d473c5c2139c681625287f97f25"
+    },
+    {
+      "url": "https://huggingface.co/api/models/mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit/revision/6b16732e5af5cd9bd600186ad59fa618867ef7a4?blobs=true",
+      "file": "community-pinned-api.json",
+      "bytes": 5617,
+      "sha256": "c65cb350df29a595b70474e7e736e2fef53d8d473c5c2139c681625287f97f25"
+    },
+    {
+      "url": "https://huggingface.co/mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit/raw/6b16732e5af5cd9bd600186ad59fa618867ef7a4/config.json",
+      "file": "community-config.json",
+      "bytes": 863,
+      "sha256": "3542f21e28bfe8422fe98249af39a5b7770fa41ca7d60cda1b72906c2c53b998"
+    },
+    {
+      "url": "https://huggingface.co/mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit/raw/6b16732e5af5cd9bd600186ad59fa618867ef7a4/README.md",
+      "file": "community-README.md",
+      "bytes": 1137,
+      "sha256": "edf947c2f10021f57b7382a69ab9f844cd174a6e2a13c31b4658933f54172c94"
+    },
+    {
+      "url": "https://huggingface.co/api/models/Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "file": "upstream-api.json",
+      "bytes": 6788,
+      "sha256": "e3371a6d44a78e5f3da5232b812b74449099279f141ffbdb2c7e90b7d67571b2"
+    },
+    {
+      "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct/raw/ea3f2471cf1b1f0db85067f1ef93848e38e88c25/LICENSE",
+      "file": "upstream-LICENSE.txt",
+      "bytes": 11343,
+      "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e"
+    },
+    {
+      "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct/raw/ea3f2471cf1b1f0db85067f1ef93848e38e88c25/config.json",
+      "file": "upstream-config.json",
+      "bytes": 659,
+      "sha256": "b1e58593cd31852f7da5c2fc31ddf6135b9c066c0fd9177a4bbe95717083adff"
+    }
+  ]
+}

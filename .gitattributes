@@ -1,0 +1,2 @@
+# Preserve the exact hash-verified upstream Markdown snapshot, including its whitespace.
+ModelLab/provenance/LORA.md -whitespace

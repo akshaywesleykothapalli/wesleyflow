@@ -5,6 +5,58 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "EC9505D3F9C24A1C87FCACCB" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "AppTests/GlobalDictationTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "2C77FDDA4D304F5680EC9EA1" = { "isa" = "PBXBuildFile"; "fileRef" = "EC9505D3F9C24A1C87FCACCB"; };
+    "0322194798894536851F84B1" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/DictationPreferences.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "002913EF264047BA8F8D644E" = { "isa" = "PBXBuildFile"; "fileRef" = "0322194798894536851F84B1"; };
+    "E18FE40E6E214967B2903BED" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/SystemWideDictationCoordinator.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "79C8F64D3B5541A38A3212FE" = { "isa" = "PBXBuildFile"; "fileRef" = "E18FE40E6E214967B2903BED"; };
+    "9C88AE59274C409F9605152B" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/ClickableDictationPill.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "C823BA46AF1C417195F68544" = { "isa" = "PBXBuildFile"; "fileRef" = "9C88AE59274C409F9605152B"; };
+    "08F33CD8BC9D4D2394B39F36" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/GlobalDictationView.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "CCFAB5CC993F4DCF8643DFAC" = { "isa" = "PBXBuildFile"; "fileRef" = "08F33CD8BC9D4D2394B39F36"; };
+    "992DACA5DEC047AE8E0B9485" = { "isa" = "XCSwiftPackageProductDependency"; "package" = "47520DFBC21476733446881D"; "productName" = "ModelProviders"; };
+    "F915E3F710264BA39EDBCA29" = { "isa" = "PBXBuildFile"; "productRef" = "992DACA5DEC047AE8E0B9485"; };
+    "43F865E9A885415BB86298E3" = { "isa" = "XCSwiftPackageProductDependency"; "package" = "47520DFBC21476733446881D"; "productName" = "ModelProviders"; };
+    "172D9A476EE74C059E4382D0" = { "isa" = "PBXBuildFile"; "productRef" = "43F865E9A885415BB86298E3"; };
+    "D454A10AE376BEB3DD7DFF1B" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "6FC5A851FFB8CCBF1D6F6AFF";
+    };
+    "6FC5A851FFB8CCBF1D6F6AFF" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "VoiceInput";
+    };
+    "E80886E9BF4361F40AE0A96D" = {
+      "isa" = "PBXBuildFile";
+      "productRef" = "8869B785F88836A6A9E41598";
+    };
+    "8869B785F88836A6A9E41598" = {
+      "isa" = "XCSwiftPackageProductDependency";
+      "package" = "47520DFBC21476733446881D";
+      "productName" = "VoiceInput";
+    };
+    "BAD6E616C87832773A21935D" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "F5D86A826642B1704CC3BA71";
+    };
+    "F5D86A826642B1704CC3BA71" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "AppTests/DictationTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
+    "EC53E2A4C00D49EB935EB777" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "34B9DA293E35A7050763212D";
+    };
+    "34B9DA293E35A7050763212D" = {
+      "isa" = "PBXFileReference";
+      "lastKnownFileType" = "sourcecode.swift";
+      "path" = "App/DictationModel.swift";
+      "sourceTree" = "SOURCE_ROOT";
+    };
     "E9201E34DB01CE257F1B8830" = {
       "isa" = "PBXFileReference";
       "lastKnownFileType" = "sourcecode.swift";
@@ -390,6 +442,11 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "002913EF264047BA8F8D644E",
+        "79C8F64D3B5541A38A3212FE",
+        "C823BA46AF1C417195F68544",
+        "CCFAB5CC993F4DCF8643DFAC",
+        "EC53E2A4C00D49EB935EB777",
         "A0AD78130D41429E92255BA8",
         "D93C06C0F79DE604053E56F0",
         "78D1F2DC8E6A80231426E768",
@@ -409,6 +466,13 @@
       "isa" = "PBXGroup";
       "name" = "Sources";
       "children" = (
+        "EC9505D3F9C24A1C87FCACCB",
+        "0322194798894536851F84B1",
+        "E18FE40E6E214967B2903BED",
+        "9C88AE59274C409F9605152B",
+        "08F33CD8BC9D4D2394B39F36",
+        "F5D86A826642B1704CC3BA71",
+        "34B9DA293E35A7050763212D",
         "E9201E34DB01CE257F1B8830",
         "19CA6BC6250D3A8FFBC14E14",
         "A97B3181A49D1868CD436BC9",
@@ -472,6 +536,8 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "2C77FDDA4D304F5680EC9EA1",
+        "BAD6E616C87832773A21935D",
         "FE29802D63C081DF58633D5F",
       );
       "runOnlyForDeploymentPostprocessing" = "0";
@@ -535,6 +601,8 @@
       "productReference" = "DEF93E8F8AC229A0D98BBEFA";
       "productType" = "com.apple.product-type.application";
       "packageProductDependencies" = (
+        "992DACA5DEC047AE8E0B9485",
+        "8869B785F88836A6A9E41598",
         "341ED86D476EA7829AA8206A",
         "92088E23FE4427BE452444D1",
         "C6E23443E9C9C571D75494EF",
@@ -629,6 +697,9 @@
         "ENABLE_HARDENED_RUNTIME" = "NO";
         "MARKETING_VERSION" = "0.1.0";
         "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
+        "INFOPLIST_KEY_NSHumanReadableCopyright" = "Copyright © 2026 KOTHAPALLI AKSHAY WESLEY";
+        "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone only when you start dictation.";
+        "INFOPLIST_KEY_NSSpeechRecognitionUsageDescription" = "Wesley Flow transcribes your speech on this device into editable text.";
         "PRODUCT_MODULE_NAME" = "WesleyFlow";
         "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.WesleyFlow";
         "ENABLE_APP_SANDBOX" = "NO";
@@ -668,6 +739,8 @@
       "productReference" = "970FB190220EDCE2E3BBCD1A";
       "productType" = "com.apple.product-type.bundle.unit-test";
       "packageProductDependencies" = (
+        "43F865E9A885415BB86298E3",
+        "6FC5A851FFB8CCBF1D6F6AFF",
         "6A8F2FA95101DBACC4BAD5DA",
         "65D1E8A99502EC2B79436F83",
         "D2C341703AA1E186EEDD157C",
@@ -732,6 +805,8 @@
       "isa" = "PBXFrameworksBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "172D9A476EE74C059E4382D0",
+        "D454A10AE376BEB3DD7DFF1B",
         "BFD1C0C722B34895F28C75B4",
         "6063813958A7445DC516842D",
         "0A0765B7884D015D279249B3",
@@ -792,6 +867,8 @@
       "isa" = "PBXFrameworksBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "F915E3F710264BA39EDBCA29",
+        "E80886E9BF4361F40AE0A96D",
         "EC72F7F6F11429BF60F0270C",
         "9C33D42162A80F6D89B306F3",
         "B36451B8943B67E0C1E55631",
@@ -806,6 +883,9 @@
         "ENABLE_HARDENED_RUNTIME" = "NO";
         "MARKETING_VERSION" = "0.1.0";
         "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
+        "INFOPLIST_KEY_NSHumanReadableCopyright" = "Copyright © 2026 KOTHAPALLI AKSHAY WESLEY";
+        "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone only when you start dictation.";
+        "INFOPLIST_KEY_NSSpeechRecognitionUsageDescription" = "Wesley Flow transcribes your speech on this device into editable text.";
         "PRODUCT_MODULE_NAME" = "WesleyFlow";
         "PRODUCT_BUNDLE_IDENTIFIER" = "local.wesleyflow.WesleyFlow";
         "ENABLE_APP_SANDBOX" = "NO";

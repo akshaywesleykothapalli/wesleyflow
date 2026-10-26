@@ -1,0 +1,9 @@
+.venv/
+artifacts/
+prepared/
+runs/
+__pycache__/
+*.pyc
+*.safetensors
+*.npz
+*.gguf

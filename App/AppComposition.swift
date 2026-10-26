@@ -4,6 +4,8 @@ import Domain
 import TaskExecution
 import Persistence
 import SystemOperations
+import VoiceInput
+import ModelProviders
 
 struct FoundationStatus: Equatable, Sendable {
     let title: String
@@ -36,7 +38,25 @@ struct AppComposition {
     }
 
     func makeShellState() -> FoundationStatus { statusProvider.status() }
-    func makeRootView() -> FoundationView { FoundationView(state: makeShellState()) }
+    func makeRootView(dictation: DictationModel? = nil) -> FoundationView { FoundationView(state: makeShellState(), dictation: dictation ?? makeDictationModel()) }
+    func makeDictationModel(input: any DictationInput = AppleDictationInput()) -> DictationModel {
+        guard let endpoint = try? OllamaEndpoint() else { return DictationModel(input: input) }
+        let provider = OllamaProvider(endpoint:endpoint,transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
+        return DictationModel(input:input,rewriter:LocalPromptRewriter(provider:provider,clock:SystemTaskClock()))
+    }
+    func makeSystemWideCoordinator() -> SystemWideDictationCoordinator {
+        let clock = SystemTaskClock()
+        let storeURL = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
+            .appendingPathComponent("WesleyFlow/Dictation",isDirectory:true).appendingPathComponent("dictations.store")
+        let inspector: @Sendable () async throws -> [ModelDescriptor] = {
+            let provider = try OllamaProvider(endpoint:OllamaEndpoint(),transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
+            return try await provider.discover() // Metadata only; no generate/cancel/unload call.
+        }
+        return SystemWideDictationCoordinator(input:AppleDictationInput(),targets:NativeInsertionTargetCapture(),
+            insertion:TextInsertionService(clipboard:NativeDictationPasteboard(),clock:clock),shortcut:NativeDictationShortcut(),clock:clock,
+            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),minimumHoldMilliseconds:250)
+    }
+
 }
 
 @MainActor

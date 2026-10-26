@@ -14,7 +14,7 @@ No application, package, project or existing test source was modified. No reposi
 
 ## Verified execution
 
-All artifacts below are in [Evidence/Phase1A-Audit-2026-10-19](/Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Audit-2026-10-19). Each command has a JSON record with argv, exit, timestamp and its log. Build/test records include source hashes and report `source_unchanged: true`.
+All artifacts below are in [Evidence/Phase1A-Audit-2026-10-19](../Evidence/Phase1A-Audit-2026-10-19). Each command has a JSON record with argv, exit, timestamp and its log. Build/test records include source hashes and report `source_unchanged: true`.
 
 | Execution | Exit/outcome | Evidence |
 |---|---|---|
@@ -35,9 +35,9 @@ Selected environment was explicitly `DEVELOPER_DIR=/Applications/Xcode-beta.app/
 The actual build/test commands, run from the repository root with that developer-directory override, were:
 
 ```sh
-/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1A-Audit-20261019 -disableAutomaticPackageResolution -skipPackageUpdates -configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Audit-2026-10-19/debug.xcresult build
-/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1A-Audit-20261019 -disableAutomaticPackageResolution -skipPackageUpdates -configuration Release -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Audit-2026-10-19/release.xcresult build
-/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1A-Audit-20261019 -disableAutomaticPackageResolution -skipPackageUpdates -configuration Debug -resultBundlePath /Users/akshaywesley/Developer/WesleyFlow/Evidence/Phase1A-Audit-2026-10-19/tests.xcresult test
+/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1A-Audit-20261019 -disableAutomaticPackageResolution -skipPackageUpdates -configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1A-Audit-2026-10-19/debug.xcresult build
+/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1A-Audit-20261019 -disableAutomaticPackageResolution -skipPackageUpdates -configuration Release -resultBundlePath $REPO_ROOT/Evidence/Phase1A-Audit-2026-10-19/release.xcresult build
+/usr/bin/xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Phase1A-Audit-20261019 -disableAutomaticPackageResolution -skipPackageUpdates -configuration Debug -resultBundlePath $REPO_ROOT/Evidence/Phase1A-Audit-2026-10-19/tests.xcresult test
 ```
 
 Exact Swift compiler/linker commands and standalone probe invocations are in `audit-probes-compile.json`, `observer-probe-compile.json`, `crash-compile.json` and the corresponding per-probe JSON. Sources and runner scripts are retained alongside them. Raw diagnostics include nonfatal unused-AppIntents metadata and host linkd registration messages; the copied crash helper has an unnecessary-await warning. No SwiftData queue-affinity warning or Swift concurrency compile failure appeared; xcresult runtimeWarnings is empty. Passing compilation does not exclude actor reentrancy bugs.
@@ -46,7 +46,7 @@ Exact Swift compiler/linker commands and standalone probe invocations are in `au
 
 ### A1 — P1: cleanup invents resolution of unknown operation outcomes
 
-**Location:** [TaskCoordinator.swift:332](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift:332), also startup recovery at line 70; [TaskServices.swift:93](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/Domain/TaskServices.swift:93).
+**Location:** [TaskCoordinator.swift:332](../Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift), also startup recovery at line 70; [TaskServices.swift:93](../Packages/WesleyFlowCore/Sources/Domain/TaskServices.swift).
 
 **Problem:** `.stopped` acknowledges resource cleanup, but the coordinator assigns every intent to `outcomes` without an operation result or per-operation effect disposition. Stopping a provider cannot establish whether an operation completed, partially completed, or never applied. This removes the unresolved-intent signal used by recovery and retention. The problem is audit-state accuracy; no real filesystem modification is claimed in this probe.
 
@@ -56,7 +56,7 @@ Exact Swift compiler/linker commands and standalone probe invocations are in `au
 
 ### A2 — P1: late success can defeat operation and total-task deadlines
 
-**Location:** [TaskCoordinator.swift:210](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift:210), deadline creation at line 184 and watchdog at lines 191–194.
+**Location:** [TaskCoordinator.swift:210](../Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift), deadline creation at line 184 and watchdog at lines 191–194.
 
 **Problem:** `finished` checks generation/state, then cancels the watchdog and accepts success without checking the absolute execution deadline. Timer delivery is a scheduled task, not a guarantee that timeout runs before a provider completion. Delayed timer scheduling therefore permits a success observed after the enforced budget to become terminal success.
 
@@ -66,7 +66,7 @@ Exact Swift compiler/linker commands and standalone probe invocations are in `au
 
 ### A3 — P1: history stalls defeat bounded cleanup and shutdown
 
-**Location:** [TaskCoordinator.swift:299](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift:299), [TaskCoordinator.swift:316](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift:316), and shutdown at lines 354–358.
+**Location:** [TaskCoordinator.swift:299](../Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift), [TaskCoordinator.swift:316](../Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift), and shutdown at lines 354–358.
 
 **Problem:** Provider cancellation starts before the cancellation save, but cancellation waits indefinitely for that save. The five-second cleanup callback first acquires the same mutation lock held across the stalled history await. Consequently it cannot publish uncommitted failure/quarantine or allow shutdown to finish within its budget. The existing test proves cleanup *invocation* before save completion, not bounded terminal reporting/quit when the save never returns.
 
@@ -76,7 +76,7 @@ Exact Swift compiler/linker commands and standalone probe invocations are in `au
 
 ### A4 — P1: in-flight admission can succeed after shutdown returns
 
-**Location:** [TaskCoordinator.swift:86](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift:86), especially lines 94–100, and shutdown at lines 354–358.
+**Location:** [TaskCoordinator.swift:86](../Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift), especially lines 94–100, and shutdown at lines 354–358.
 
 **Problem:** `submit` checks `stopped` only before awaiting the history commit. While that await is suspended, shutdown marks stopped and snapshots the queue/active task, which do not yet contain the submission. Shutdown returns. When the commit resumes, submission publishes/enqueues the task and returns success without rechecking shutdown. The queued task is outside the completed shutdown cancellation set; service composition may already have closed history.
 
@@ -86,7 +86,7 @@ Exact Swift compiler/linker commands and standalone probe invocations are in `au
 
 ### A5 — P2: cancelled state observers remain retained until a later transition
 
-**Location:** [TaskCoordinator.swift:58](/Users/akshaywesley/Developer/WesleyFlow/Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift:58), waiter storage/publishing at lines 25, 47–54.
+**Location:** [TaskCoordinator.swift:58](../Packages/WesleyFlowCore/Sources/TaskExecution/TaskCoordinator.swift), waiter storage/publishing at lines 25, 47–54.
 
 **Problem:** `waitForState` stores a checked continuation without cancellation registration or waiter removal. Cancelling its calling task neither completes the wait nor releases captured observer state. Repeated short-lived observers can accumulate while the underlying task is paused/stalled. This is a demonstrated retention/lifetime issue, not an instrumented claim of a permanent heap leak.
 

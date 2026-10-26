@@ -39,7 +39,8 @@ private final class LocalSessionDelegate: NSObject, URLSessionTaskDelegate, Send
 }
 /// Ephemeral per-exchange session. No redirects, proxies, cookies, credentials, downloads or application retries.
 public struct LocalOllamaHTTPTransport: OllamaHTTPTransport {
-    public init() {}
+    private let networkPolicy: ApplicationNetworkPolicy
+    public init(networkPolicy: ApplicationNetworkPolicy = .shared) { self.networkPolicy = networkPolicy }
     public func send(_ request: OllamaHTTPRequest) async throws -> OllamaHTTPResponse {
         guard !Task.isCancelled else { throw InferenceFailure.cancelled }
         let config = URLSessionConfiguration.ephemeral
@@ -48,6 +49,8 @@ public struct LocalOllamaHTTPTransport: OllamaHTTPTransport {
         config.timeoutIntervalForRequest = request.timeoutSeconds; config.timeoutIntervalForResource = request.timeoutSeconds
         let session = URLSession(configuration: config, delegate: LocalSessionDelegate(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
+        let ticket = try networkPolicy.begin(request.endpoint.url) { session.invalidateAndCancel() }
+        defer { networkPolicy.finish(ticket) }
         let url = request.endpoint.url.appendingPathComponent("api").appendingPathComponent(request.route.rawValue)
         var r = URLRequest(url: url); r.httpMethod = request.body == nil ? "GET" : "POST"; r.httpBody = request.body
         r.setValue("application/json", forHTTPHeaderField: "Content-Type"); r.setValue("application/json", forHTTPHeaderField: "Accept")
