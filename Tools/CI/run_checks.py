@@ -19,8 +19,8 @@ MANUAL_TESTS = [
 ]
 
 
-# Baseline 1,025 expanded local cases minus the four graphical checks above.
-MIN_APP_CASES = 1021
+# Milestone 37R2: 1,256 expanded local cases minus the four graphical checks above.
+MIN_APP_CASES = 1252
 MIN_MODEL_LAB_TESTS = 152
 REQUIRED_APP_TESTS = {
     'OfflineQualityV2Tests/spokenPromptUsesRelevantSectionsWithoutNewContent()',
@@ -32,9 +32,20 @@ REQUIRED_APP_TESTS = {
     'GlobalPreviewDeliveryTests/repeatsAndConsecutiveGestures(_:)',
     'GlobalPreviewDeliveryTests/invalidationCannotCompleteOldPress(_:)',
     'GlobalPreviewDeliveryTests/cancelledGestureAndUnknownOriginFailClosed()',
-    'GlobalAIShortcutWorkflowTests/emptyInputOpensCorrectPreviewWithoutEffects(_:)',
+    'GlobalAIShortcutWorkflowTests/emptyInputShowsOnlyDisabledHUDWithoutEffects(_:)',
     'GlobalAIShortcutWorkflowTests/rapidChordsSleepAndLateResultsNeverReplaceSource()',
     'GlobalAIShortcutWorkflowTests/nativePanelNeverBecomesKeyOrMain()',
+    'InPlaceRewriteTests/everyShortcutBranchMakesZeroPreviewRequests(_:_:)',
+    'InPlaceRewriteTests/expiryReleasesRecordWithoutShortcutAndCannotDeliverLateAI()',
+    'InsertionReadbackRepairTests/delayedTextEditLikeReadbackVerifiesWithoutSecondEffect(_:)',
+    'ContinuousHUDTests/bothPostSpeechStagesKeepTheRequestedTranscriptionLabel()',
+    'CoreDelivery37Tests/identityBoundPasteDoesNotRequireAnExactOriginal(_:)',
+    'CoreDelivery37Tests/unsafeOpaqueTargetCannotReceiveAnyEvent(_:)',
+    'CoreDelivery37Tests/opaqueTargetCannotUseUnverifiableTypingWhenClipboardIsUnsupported()',
+    'CoreDelivery37Tests/sameOwnershipRevisionCannotHideAChangedClipboardPayload()',
+    'CoreDelivery37Tests/noExactContextCreatesNoAIReceiptAndPreservesHistoryAndPipelineState()',
+    'CoreDelivery37Tests/cancelWhilePreDispatchClockIsSuspendedCannotPaste()',
+    'CoreDelivery37Tests/postPublicationMismatchPreservesNewDataWithoutDispatch()',
 }
 
 

@@ -81,7 +81,7 @@ class BuildPlanTests(unittest.TestCase):
 
 
 class IntegratedRegressionGateTests(unittest.TestCase):
-    def summary(self, cases=1021):
+    def summary(self, cases=1252):
         return {'devicesAndConfigurations':[{'passedTests':cases}], 'failedTests':0, 'result':'Passed'}
 
     def tree(self):
@@ -89,8 +89,8 @@ class IntegratedRegressionGateTests(unittest.TestCase):
 
     def test_old_floor_is_not_current_coverage(self):
         with self.assertRaises(ValueError):
-            runner.require_test_results(self.summary(999), self.tree())
-        self.assertEqual(runner.require_test_results(self.summary(), self.tree()), 1021)
+            runner.require_test_results(self.summary(1251), self.tree())
+        self.assertEqual(runner.require_test_results(self.summary(), self.tree()), 1252)
 
     def test_enough_cases_cannot_hide_missing_or_skipped_new_regression(self):
         tree = self.tree()
