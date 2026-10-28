@@ -9,13 +9,13 @@ A native, local-first voice dictation app for Apple Silicon Macs, built with Swi
 - Dictionary, protected vocabulary, phrase replacements and deterministic formatting options.
 - Local dictation history, copy/delete controls, activity Insights and calendar heatmap.
 - Permission-aware insertion into supported editable fields, with original-target validation, observed-result verification and clipboard recovery safeguards.
-- Optional **preview-only** Smart Polish and structured-prompt organization using Apple's on-device FoundationModels provider. Both are opt-in; automatic AI insertion and submission remain disabled.
+- Optional Smart Polish and structured-prompt organization using Apple's on-device FoundationModels provider. Explicit manual previews support review and Copy. Separately enabled in-place shortcuts require a fresh verified dictation receipt, unchanged exact context and a supported editor; nothing is submitted.
 
 ## Important limits
 
-A dispatched paste is not proof that text appeared. Unreadable or changed targets fail closed; uncertain delivery can retain a clipboard backup requiring review. Repeated insertion in TextEdit, ChatGPT macOS and Codex Desktop has **not completed current-build physical acceptance**. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
+A dispatched paste is not proof that text appeared. An identity-bound editable field can receive one ordinary paste without exact readback; its outcome stays uncertain, its clipboard backup remains pending, and it grants no AI replacement authority. Changed or unsafe targets fail closed. On 28 October 2026 the user confirmed **3/3 physical ChatGPT dictations passed on 37R2**. This does not verify other editors, clipboard/focus edge cases or AI replacement. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
 
-AI preview registration supports Option+1/Option+2, but physical shortcut delivery remains unverified. Distinct tone quality and real structured-prompt output remain unverified after the latest native generation was blocked by the unchanged 4 GiB host-memory floor. The preservation gate permits only conservative copyediting; Prompt Engineering organizes supplied lines without inventing requirements. No cloud AI fallback, coding-agent execution, automatic source modification or custom model training is enabled.
+Option+1/Option+2 request in-place Smart Polish/Prompt Engineering and show only pill status; they never open a preview editor. Physical AI shortcut delivery and replacement remain unverified. Automatic replacement in the affected ChatGPT/WhatsApp editors remains unsupported; use the explicit manual preview and Copy workflow. Distinct tone quality and real structured-prompt output remain unverified after the latest native generation was blocked by the unchanged 4 GiB host-memory floor. The preservation gate permits only conservative copyediting; Prompt Engineering organizes supplied lines without inventing requirements. No cloud AI fallback, coding-agent execution, automatic source modification or custom model training is enabled.
 
 ## Requirements and permissions
 
@@ -49,7 +49,7 @@ The native application has no third-party Swift package dependency. Xcode refere
 
 ## Continuous integration
 
-See the [CI baseline and contribution guide](Docs/Engineering/CI-BASELINE.md) for local checks, hosted test selection, manual verification gates and safe branch/review practices. Hosted execution remains pending until the CI checkpoint is separately authorized for push and a real run succeeds.
+See the [CI baseline and contribution guide](Docs/Engineering/CI-BASELINE.md) for local checks, hosted test selection, manual verification gates and safe branch/review practices. Milestone 32 hosted push and PR runs passed at the earlier checkpoint; see [hosted evidence](Docs/Engineering/MILESTONE32-HOSTED-CI.md). The [37R2 publication review](Docs/Engineering/MILESTONE37-PUBLICATION-REVIEW.md) records fresh local verification and remaining physical gates. Hosted results must be checked for the exact proposed revision.
 
 ## Engineering records
 
