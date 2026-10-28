@@ -419,6 +419,10 @@ extension RemediationTests {
         let deadline = await h.clock.now() + 300_000
         await h.clock.waitUntilScheduled(deadline); await h.clock.advance(to: deadline)
         await h.executor.waitForCancellation()
+        // Adapter cancellation starts before the cancellation record commits. Do not
+        // advance its cleanup deadline until this test's timeout intent is durable;
+        // storage-stall/emergency-overlay behavior has separate coverage.
+        _ = try await h.coordinator.waitForState(p.id, .cancelling)
         let cleanupDeadline = deadline + 5_000
         await h.clock.waitUntilScheduled(cleanupDeadline); await h.clock.advance(to: cleanupDeadline)
         let failed = try await h.coordinator.waitForState(p.id, .failed)

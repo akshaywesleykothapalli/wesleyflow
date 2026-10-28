@@ -47,10 +47,12 @@ struct DictationPreferences: Codable, Equatable {
     var blockNetworkRequests = false
     var polishTone: OfflineRewriteTone = .natural
     var promptEngineeringEnabled = false
+    var inPlaceAIRewrite = false
+    var useFocusedTextWhenUnselected = false
     var previewShortcutsEnabled = false
     var offlineAIRewriting = false
     init() {}
-    private enum CodingKeys: String, CodingKey { case version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
+    private enum CodingKeys: String, CodingKey { case inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         version = try c.decode(Int.self,forKey:.version)
@@ -62,6 +64,8 @@ struct DictationPreferences: Codable, Equatable {
         activationKey = try c.decodeIfPresent(DictationActivationKey.self,forKey:.activationKey) ?? .fn
         idlePillEnabled = try c.decodeIfPresent(Bool.self,forKey:.idlePillEnabled) ?? false
         promptEngineeringEnabled = try c.decodeIfPresent(Bool.self,forKey:.promptEngineeringEnabled) ?? false
+        inPlaceAIRewrite = try c.decodeIfPresent(Bool.self,forKey:.inPlaceAIRewrite) ?? false
+        useFocusedTextWhenUnselected = try c.decodeIfPresent(Bool.self,forKey:.useFocusedTextWhenUnselected) ?? false
         previewShortcutsEnabled = try c.decodeIfPresent(Bool.self,forKey:.previewShortcutsEnabled) ?? false
         blockNetworkRequests = try c.decodeIfPresent(Bool.self,forKey:.blockNetworkRequests) ?? false
         polishTone = try c.decodeIfPresent(OfflineRewriteTone.self,forKey:.polishTone) ?? .natural

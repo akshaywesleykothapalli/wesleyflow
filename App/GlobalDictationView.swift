@@ -121,6 +121,13 @@ import Domain
                         Text("A paste remains unverified. Its clipboard backup is retained.").font(.callout).foregroundStyle(.orange)
                         Button("Review clipboard restoration…") { recoveryID = coordinator.clipboardRecoveryID; confirmRestore = recoveryID != nil }.disabled(coordinator.busy)
                     }
+                    if let latest = coordinator.latest, !coordinator.busy {
+                        Button("Copy latest dictation") {
+                            if coordinator.copyReviewedText(latest.cleaned) { copyError = nil }
+                            else { copyError = "Resolve clipboard recovery before copying. Your latest transcript remains available for review." }
+                        }.disabled(!coordinator.historyCopyAllowed)
+                        .help("Explicit copy only. Pending clipboard recovery must be resolved first.")
+                    }
                     if let error = coordinator.historyError { Text(error).font(.callout).foregroundStyle(.orange); Button("Retry history") { Task { await coordinator.loadHistory() } } }
                     if let copyError { Text(copyError).font(.callout).foregroundStyle(.orange) }
                 }.padding(.horizontal,22).padding(.vertical,12)
@@ -300,13 +307,19 @@ import Domain
                 FlowSettingsRow("Handle explicit self corrections",description:"Only ‘Red. Scratch that. Blue.’ within one unprotected utterance. Ambiguous cues are preserved.") { Toggle("Handle explicit self corrections",isOn:$coordinator.preferences.formatting.handleSelfCorrections) }
             }
             FlowSettingsGroup("Smart polish") {
-                FlowSettingsRow("Enable Smart Polish preview",description:"Apple on-device copyediting only. Automatic insertion stays off.") { Toggle("Enable Smart Polish preview",isOn:$coordinator.preferences.offlineAIRewriting) }
+                FlowSettingsRow("Enable Smart Polish preview",description:"Apple on-device copyediting. Manual previews are explicit; global AI shortcuts require separate in-place opt-in.") { Toggle("Enable Smart Polish preview",isOn:$coordinator.preferences.offlineAIRewriting) }
                 FlowSettingsRow("Tone",description:"Limited to punctuation, capitalization and hesitation removal. Rewording is rejected.") {
                     Picker("Tone",selection:$coordinator.preferences.polishTone) { ForEach(OfflineRewriteTone.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu).disabled(!coordinator.preferences.offlineAIRewriting || coordinator.isPreviewingRewrite)
                 }
             }
+            FlowSettingsGroup("In-place AI") {
+                FlowSettingsRow("In-place AI rewrite",description:coordinator.shortcutModeDescription) { Toggle("In-place AI rewrite",isOn:$coordinator.preferences.inPlaceAIRewrite) }
+            }
+            FlowSettingsGroup("Shortcut text access") {
+                FlowSettingsRow("Use focused text when nothing is selected",description:"Applies only to explicit editor-preview capture, never Option+1/2. No background reading, clipboard capture or source changes.") { Toggle("Use focused text when nothing is selected",isOn:$coordinator.preferences.useFocusedTextWhenUnselected) }
+            }
             FlowSettingsGroup("Preview input") {
-                FlowSettingsRow("Source",description:"Only text supplied here or a saved dictation you select. No other app is read.") {
+                FlowSettingsRow("Source",description:"Manual previews use supplied text or a selected dictation. Option+1/2 use only the last eligible verified dictation and never open an input editor.") {
                     Picker("Preview input source",selection:$coordinator.previewUseSaved) { Text("Supplied text").tag(false); Text("Saved dictation").tag(true) }.pickerStyle(.menu)
                 }
                 if coordinator.previewUseSaved {
@@ -318,6 +331,10 @@ import Domain
                     TextEditor(text:$coordinator.previewInputText).frame(minHeight:70,maxHeight:120).accessibilityLabel("Explicit preview input")
                     Text("\(coordinator.previewInputText.utf8.count) / 2,048 bytes · kept only in this window session").font(.caption).foregroundStyle(.secondary)
                 }
+            }
+            HStack {
+                Button("Open manual Smart Polish preview") { coordinator.openExplicitPreview(.polish) }.disabled(!coordinator.preferences.offlineAIRewriting || coordinator.busy || coordinator.inPlaceRunning)
+                Button("Open manual Prompt Engineering preview") { coordinator.openExplicitPreview(.promptEngineering) }.disabled(!coordinator.preferences.promptEngineeringEnabled || coordinator.busy || coordinator.inPlaceRunning)
             }
             HStack {
                 Button("Preview Smart Polish") { coordinator.startSuppliedPreview(.polish) }.disabled(!coordinator.canPreviewSupplied(.polish))
@@ -339,7 +356,7 @@ import Domain
                 Button("Copy reviewed preview") { _ = coordinator.copyReviewedText(result.text) }.disabled(!coordinator.historyCopyAllowed)
                 Button("Reject preview") { coordinator.rejectRewritePreview() }
             }
-            Text("Review every preview. Tone requests never override preservation checks or memory admission. Nothing is automatically inserted or submitted.").font(.caption).foregroundStyle(.secondary)
+            Text("Review every preview. Tone requests never override preservation checks or memory admission. Preview controls do not insert. In-place shortcuts require separate opt-in. Nothing is submitted.").font(.caption).foregroundStyle(.secondary)
         }
     }
     private var privacyPage: some View {
@@ -397,8 +414,11 @@ import Domain
             FlowSettingsGroup("Shortcuts") {
                 FlowSettingsRow("Hold to talk",description:"Native modifier choices; chords cancel rather than steal typing.") { Picker("Hold-to-talk key",selection:Binding(get:{ coordinator.preferences.activationKey },set:{ coordinator.changeActivationKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy) }
                 FlowSettingsRow("Hold-to-talk dictation") { Button(coordinator.shortcutEnabled ? "Disable" : "Enable") { if coordinator.shortcutEnabled { coordinator.disableShortcut() } else { coordinator.enableShortcut() } }.accessibilityLabel(coordinator.shortcutEnabled ? "Disable hold-to-talk dictation" : "Enable hold-to-talk dictation") }
-                FlowSettingsRow("Preview shortcuts",description:"Opt in to globally reserve Option+1 for Smart Polish and Option+2 for Prompt Engineering when each feature is enabled. Uses only the selected preview input; no automatic insertion. May override application shortcuts.") { Toggle("Enable preview shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
+                FlowSettingsRow("Preview shortcuts",description:"Option+1 requests in-place Smart Polish; Option+2 requests in-place Prompt Engineering. Both show only the pill, including errors and disabled in-place mode. No editor opens. May override application shortcuts.") { Toggle("Enable preview shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
                 FlowSettingsRow("Registration",description:coordinator.previewShortcutStatus) { Button("Retry") { coordinator.configurePreviewShortcuts() }.disabled(!coordinator.preferences.previewShortcutsEnabled) }
+                #if DEBUG
+                Text(coordinator.verificationDiagnosticSummary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).accessibilityLabel("Text verification diagnostics; metadata only")
+                #endif
             }
             Text("Fn can conflict with macOS emoji/Dictation. Right modifiers can conflict with app shortcuts. No system shortcut is changed. Set Keyboard → Press Globe key to → Do Nothing if needed.").font(.caption).foregroundStyle(.secondary)
             FlowSettingsGroup("History") {

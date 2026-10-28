@@ -98,6 +98,18 @@ public struct ProtectedRewriteText: Sendable {
             return (restored, unit)
         }
     }
+    /// Revalidate an already restored provider response before an optional destructive effect.
+    public func validateRestored(_ text:String) throws {
+        var masked = text
+        var cursor = masked.startIndex
+        for span in spans {
+            guard let range = masked.range(of:span.text,range:cursor..<masked.endIndex) else { throw Failure.invalidOutput }
+            let offset = masked.distance(from:masked.startIndex,to:range.lowerBound)
+            masked.replaceSubrange(range,with:span.marker)
+            cursor = masked.index(masked.startIndex,offsetBy:offset + span.marker.count)
+        }
+        guard try restoreAndValidate(masked) == text else { throw Failure.invalidOutput }
+    }
     public enum Failure: Error, Equatable { case invalidInput, unsupportedLanguage, invalidOutput }
     public func restoreAndValidate(_ output: String) throws -> String {
         guard !output.isEmpty, output.utf8.count <= 8192,

@@ -26,7 +26,7 @@ enum NativeSpeechCallbacks {
             Task { @MainActor in deliver(text, final, failed) }
         }
     }
-    nonisolated static func tap(_ ingress: AudioIngress) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
-        { buffer, _ in ingress.append(buffer) }
+    nonisolated static func tap(_ ingress: AudioIngress, meter: AudioLevelMailbox? = nil) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { buffer, _ in meter?.append(buffer); ingress.append(buffer) }
     }
 }

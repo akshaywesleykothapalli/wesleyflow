@@ -39,7 +39,7 @@ struct WesleyFlowApp: App {
         MenuBarExtra {
             Text(global.message)
             Text(global.previewNotice)
-            if global.isPreviewingRewrite { Button("Cancel AI preview") { global.cancelRewritePreview() } }
+            if global.isPreviewingRewrite || global.inPlaceRunning { Button("Cancel AI") { global.cancelRewritePreview(); global.cancelInPlaceRewrite() } }
             Button("Open Wesley Flow") { openWindow(id:"foundation"); NSApplication.shared.activate() }
             if global.busy { Button("Cancel dictation") { global.cancel() } }
             Button(global.shortcutEnabled ? "Disable hold-to-talk dictation" : "Enable hold-to-talk dictation…") {
@@ -53,56 +53,74 @@ struct WesleyFlowApp: App {
 }
 
 
-/// Display-only, nonactivating preview: shortcut delivery never steals the
-/// external editor's key focus. Input is selected/entered in Wesley Flow first.
+/// Explicit Settings preview only; an explicit Edit input action
+/// allows this panel to receive keyboard focus. Capture stays read-only.
 @MainActor final class ShortcutPreviewPanel: NSObject, NSWindowDelegate {
     private final class Panel: NSPanel {
-        override var canBecomeKey: Bool { false }
+        var editing = false
+        override var canBecomeKey: Bool { editing }
         override var canBecomeMain: Bool { false }
     }
-    private let panel: NSPanel
+    private var panel: Panel?
     private weak var coordinator: SystemWideDictationCoordinator?
     private var observation: AnyCancellable?
     init(coordinator: SystemWideDictationCoordinator) {
         self.coordinator = coordinator
-        panel = Panel(contentRect:NSRect(x:0,y:0,width:480,height:380),styleMask:[.titled,.closable,.nonactivatingPanel],backing:.buffered,defer:false)
         super.init()
-        panel.title = "Wesley Flow · AI Preview"; panel.isReleasedWhenClosed = false
-        panel.hidesOnDeactivate = false; panel.becomesKeyOnlyIfNeeded = true
-        panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
-        panel.contentView = NSHostingView(rootView:ShortcutPreviewContents(coordinator:coordinator))
-        panel.delegate = self; panel.center()
         observation = coordinator.$previewPresented.sink { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
         }
     }
+    private func makePanel(coordinator:SystemWideDictationCoordinator) -> Panel {
+        if let panel { return panel }
+        let panel = Panel(contentRect:NSRect(x:0,y:0,width:480,height:380),styleMask:[.titled,.closable,.nonactivatingPanel],backing:.buffered,defer:false)
+        panel.title = "Wesley Flow · AI Preview · 37"; panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false; panel.becomesKeyOnlyIfNeeded = true
+        panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
+        panel.contentView = NSHostingView(rootView:ShortcutPreviewContents(coordinator:coordinator,beginEditing:{ [weak self] in self?.beginEditing() }))
+        panel.delegate = self; panel.center(); self.panel = panel
+        return panel
+    }
+    private func beginEditing() {
+        guard let panel, panel.isVisible else { return }; panel.editing = true; panel.makeKey()
+    }
     private func refresh() {
-        if coordinator?.previewPresented == true { panel.orderFrontRegardless() }
-        else { panel.orderOut(nil) }
+        if let coordinator, coordinator.previewPresented {
+            let panel = makePanel(coordinator:coordinator)
+            panel.orderFrontRegardless()
+            coordinator.recordPreviewDiagnostic(panel.isVisible ? .presented : .hidden)
+        } else { panel?.editing = false; panel?.orderOut(nil); coordinator?.recordPreviewDiagnostic(.hidden) }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        coordinator?.dismissShortcutPreview(); panel.orderOut(nil); return false
+        coordinator?.dismissShortcutPreview(); panel?.orderOut(nil); return false
     }
-    func close() { observation?.cancel(); observation = nil; panel.orderOut(nil); panel.delegate = nil; panel.close() }
-    // Test visibility/identity without dispatching any keys or reading app text.
-    var isVisible: Bool { panel.isVisible }
-    var canBecomeKey: Bool { panel.canBecomeKey }
+    func close() { observation?.cancel(); observation = nil; panel?.orderOut(nil); panel?.delegate = nil; panel?.close(); panel = nil }
+    // No native preview window is allocated until an explicit presentation request.
+    var hasCreatedPanel: Bool { panel != nil }
+    var isVisible: Bool { panel?.isVisible ?? false }
+    var canBecomeKey: Bool { panel?.canBecomeKey ?? false }
+
 }
 @MainActor private struct ShortcutPreviewContents: View {
     @ObservedObject var coordinator: SystemWideDictationCoordinator
+    let beginEditing: () -> Void
     var body: some View {
         VStack(alignment:.leading,spacing:12) {
             Text(coordinator.previewKind == .polish ? "Smart Polish" : "Prompt Engineering").font(.headline)
-            Text("Preview only · original app focus is preserved").font(.caption).foregroundStyle(.secondary)
+            Text("Preview only · Edit input takes keyboard focus only when clicked").font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment:.leading,spacing:10) {
-                    if coordinator.previewOriginalText.isEmpty {
-                        Text("No permitted input. Enter text or explicitly select a saved dictation in Smart Formatting, then try the shortcut again.")
-                    } else {
-                        Text("Original").font(.caption).foregroundStyle(.secondary)
-                        Text(coordinator.previewOriginalText)
-                    }
+                    Text(coordinator.shortcutSource.rawValue).font(.caption).foregroundStyle(.secondary)
+                    if coordinator.isResolvingShortcutText { ProgressView("Reading focused text…") }
+                    TextEditor(text:$coordinator.shortcutInputText).frame(minHeight:80).accessibilityLabel("Preview input")
+                        .disabled(coordinator.isResolvingShortcutText || coordinator.isPreviewingRewrite)
+                    Button("Edit input",action:beginEditing).disabled(coordinator.isResolvingShortcutText || coordinator.isPreviewingRewrite)
+                    Button("Generate preview") { coordinator.generateShortcutPreview() }
+                        .disabled(coordinator.shortcutInputText.isEmpty || coordinator.shortcutInputText.utf8.count > 2048 || coordinator.isResolvingShortcutText || coordinator.isPreviewingRewrite)
+                    Text("Original").font(.caption).foregroundStyle(.secondary)
+                    Text(coordinator.previewOriginalText)
                     Text(coordinator.previewNotice).font(.caption).foregroundStyle(.secondary)
+                    DisclosureGroup("Capture details") { Text(coordinator.previewCaptureDiagnostic).font(.caption).textSelection(.enabled) }
                     if let result = coordinator.previewKind == .polish ? coordinator.rewritePreview : coordinator.promptPreview {
                         Text(coordinator.rewritePreviewMessage).font(.caption)
                         Text(result.text)
@@ -112,7 +130,7 @@ struct WesleyFlowApp: App {
                 }.frame(maxWidth:.infinity,alignment:.leading)
             }
             HStack {
-                if coordinator.isPreviewingRewrite { ProgressView().controlSize(.small); Button("Cancel") { coordinator.cancelRewritePreview() } }
+                if coordinator.isPreviewingRewrite || coordinator.isResolvingShortcutText { ProgressView().controlSize(.small); Button("Cancel") { coordinator.cancelTextCapture(); coordinator.cancelRewritePreview() } }
                 Spacer()
                 Button("Close") { coordinator.dismissShortcutPreview() }
             }

@@ -31,34 +31,56 @@ private actor GClock: TaskClock {
     }
     func advance(_ value: Int64) { self.value = value; for id in waits.keys.filter({ waits[$0]!.0 <= value }) { waits.removeValue(forKey:id)?.1.resume() } }
 }
-@MainActor private final class GTarget: InsertionTarget {
+@MainActor private final class GTarget: InsertionTarget, DictationRewriteAnchorProviding {
     let info: InsertionTargetInfo
-    let original: TargetTextState
+    let capturedOriginal: TargetTextState
+    var hasOriginalContext = true
+    var original:TargetTextState? { hasOriginalContext ? capturedOriginal : nil }
     var value: String?
     var validationError: TextTargetError?
+    var replacementCapability:EditorReplacementCapability = .unknown
     var writable = true, failWrite = false, acknowledgePaste = true
     var replacements = 0, pastes = 0
     var unicodeSupported = false, unicodeAcknowledged = true
     var unicodePosts = 0
     var pasted = "X"
     var beforePaste: (() -> Void)?
+    var observedOverride:String?
+    var readbackFailure:InsertionReadbackFailure?
+    var deferDirectReadback = false
+    var unconfirmedDirectWrite = false
+    var readbacks = 0
     init(session: String = "s", text: String = "abc", selection: Domain.TextSelection = .init(location:1,length:0)) {
         info = .init(session:session,applicationName:"Fixture Editor",processID:42,windowIdentity:"w",elementIdentity:"e",role:"AXTextArea")
-        original = .init(text:text,selection:selection); value = text
+        capturedOriginal = .init(text:text,selection:selection); value = text
     }
     func validate() throws { if let validationError { throw validationError } }
+    var rewriteCreationFailure: DictationRewriteValidationFailure?
+    var rewriteFixture: GRewriteAnchor?
+    func verifiedRewriteAnchor(insertedText:String) throws -> any DictationRewriteAnchor {
+        if let rewriteCreationFailure { throw rewriteCreationFailure }
+        guard original != nil else { throw DictationRewriteValidationFailure.invalidRange }
+        let anchor = GRewriteAnchor(target:self,text:insertedText)
+        rewriteFixture = anchor; return anchor
+    }
     func canReplaceSelection() -> Bool { writable }
-    func replaceSelection(_ text: String) throws { replacements += 1; if failWrite { throw TextTargetError.unsupported }; value = original.selection.replacing(in:original.text,with:text) }
+    func replaceSelection(_ text: String) throws { replacements += 1; if failWrite { throw TextTargetError.unsupported }; if !deferDirectReadback { value = capturedOriginal.selection.replacing(in:capturedOriginal.text,with:text) }; if unconfirmedDirectWrite { throw DirectTextUpdateFailure.dispatchUnconfirmed } }
     func postPaste(whileClipboardOwned: () -> Bool) throws {
         beforePaste?(); try validate(); guard whileClipboardOwned() else { throw TextTargetError.clipboardChanged }
         pastes += 1
-        if acknowledgePaste { value = original.selection.replacing(in:original.text,with:pasted) }
+        if acknowledgePaste { value = capturedOriginal.selection.replacing(in:capturedOriginal.text,with:pasted) }
     }
-    func observedText() -> String? { value }
+    func observedText() -> String? { observedOverride ?? value }
+    func readbackText() throws -> String {
+        readbacks += 1
+        if let readbackFailure { throw readbackFailure }
+        guard let value = observedText() else { throw InsertionReadbackFailure.temporarilyUnavailable }
+        return value
+    }
     func postText(_ text: String, budgetMilliseconds: Int64) -> Bool {
         guard unicodeSupported else { return false }
         unicodePosts += 1
-        if unicodeAcknowledged { value = original.selection.replacing(in:original.text,with:text) }
+        if unicodeAcknowledged { value = capturedOriginal.selection.replacing(in:capturedOriginal.text,with:text) }
         return true
     }
 }
@@ -90,8 +112,9 @@ private actor GClock: TaskClock {
     var failure: TextTargetError?
     var failureExplanation: String?
     var count = 0
+    var configure:(@MainActor (GTarget)->Void)?
     var target: GTarget?
-    func capture(session: String) throws -> any InsertionTarget { count += 1; if let failure { throw failure }; let t = GTarget(session:session); target = t; return t }
+    func capture(session: String) throws -> any InsertionTarget { count += 1; if let failure { throw failure }; let t = GTarget(session:session); configure?(t); target = t; return t }
 }
 @MainActor private final class GInput: DictationInput {
     var starts = 0, stops = 0, cancels = 0
@@ -788,8 +811,9 @@ private actor GHistory: DictationHistoryStore {
         coordinator.disableShortcut(); #expect(!coordinator.commandArmed); coordinator.close()
     }
     @Test func holdFnCapturesOnceStopsOnReleaseAndHidesPillAtTerminal() async throws {
+        let hudClock = GClock()
         let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), history = GHistory()
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history)
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,hudClock:hudClock,preferenceStore:preferences(),history:history)
         #expect(!coordinator.pillVisible)
         let pill = ClickableDictationPill(coordinator:coordinator); #expect(!pill.panel.isVisible)
         coordinator.resumeShortcutIfAuthorized(); #expect(shortcut.enables == 1); #expect(input.starts == 0)
@@ -798,7 +822,9 @@ private actor GHistory: DictationHistoryStore {
         input.receive?(.transcript("Fn words")); shortcut.receive?(.released); shortcut.receive?(.released)
         #expect(input.stops == 1); #expect(coordinator.phase == .finalizing); #expect(coordinator.pillVisible)
         input.receive?(.finished); await waitForTerminal(coordinator)
-        #expect(coordinator.phase == .success); #expect(!coordinator.pillVisible)
+        #expect(coordinator.phase == .success); #expect(coordinator.pillVisible)
+        await hudClock.waitForSleep(2200); await hudClock.advance(2200); await coordinator.waitForHUDFeedback()
+        #expect(!coordinator.pillVisible)
         #expect(capture.target?.value == "aFn wordsbc"); #expect(capture.target?.replacements == 1)
         #expect(try await history.load().count == 1)
         pill.close(); coordinator.close()
@@ -835,21 +861,27 @@ private actor GHistory: DictationHistoryStore {
         #expect(try JSONDecoder().decode(DictationPreferences.self,from:JSONEncoder().encode(value)) == value)
     }
     @Test func unsupportedFieldExplainsFailureAndDoesNotLeaveAnIdleWarningPill() async {
+        let hudClock = GClock()
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), shortcut = GShortcut()
         capture.failure = .unsupported; capture.failureExplanation = "The field does not expose a readable caret or selection. Copy from History."
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history)
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,hudClock:hudClock,preferenceStore:preferences(),history:history)
         coordinator.resumeShortcutIfAuthorized(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
         input.receive?(.transcript("retained words")); shortcut.receive?(.released); input.receive?(.finished); await waitForTerminal(coordinator)
-        #expect(coordinator.phase == .error); #expect(!coordinator.pillVisible); #expect(coordinator.message == capture.failureExplanation)
+        #expect(coordinator.phase == .error); #expect(coordinator.pillVisible); #expect(coordinator.message == capture.failureExplanation)
+        await hudClock.waitForSleep(2200); await hudClock.advance(2200); await coordinator.waitForHUDFeedback()
+        #expect(!coordinator.pillVisible)
         #expect(coordinator.latest?.cleaned == "retained words"); #expect(coordinator.latest?.insertion.attempted == false); coordinator.close()
     }
     @Test func speechFailureTakesPrecedenceOverEarlierTargetDiagnostic() async {
+        let hudClock = GClock()
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), shortcut = GShortcut()
         capture.failure = .unsupported; capture.failureExplanation = "Target diagnostic"
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history)
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,hudClock:hudClock,preferenceStore:preferences(),history:history)
         coordinator.resumeShortcutIfAuthorized(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
         input.receive?(.transcript("partial")); input.receive?(.failed(.recognitionFailed)); await waitForTerminal(coordinator)
-        #expect(coordinator.latest?.insertion.reason == .speechFailed); #expect(coordinator.message.contains("Speech")); #expect(!coordinator.pillVisible); coordinator.close()
+        #expect(coordinator.latest?.insertion.reason == .speechFailed); #expect(coordinator.message.contains("Speech")); #expect(coordinator.pillVisible)
+        await hudClock.waitForSleep(2200); await hudClock.advance(2200); await coordinator.waitForHUDFeedback()
+        #expect(!coordinator.pillVisible); coordinator.close()
     }
     @Test func nonFnManualCaptureNeverShowsPill() async {
         let input = GInput(), clock = GClock(), coordinator = world(input:input,clock:clock)
@@ -1616,7 +1648,7 @@ struct HandDrawnInsightsTests {
         #expect(coordinator.previewShortcutStatus.contains("Conflict")); #expect(registrar.registrations == 0)
         registrar.failure = nil; coordinator.configurePreviewShortcuts(); #expect(registrar.kinds == [.polish])
         coordinator.previewInputText = "Check the button"
-        registrar.receive?(.invoke(.polish)); await driver.waitForStart(); #expect(coordinator.isPreviewingRewrite)
+        coordinator.openExplicitPreview(.polish); coordinator.generateShortcutPreview(); await driver.waitForStart(); #expect(coordinator.isPreviewingRewrite)
         registrar.receive?(.secureInput); #expect(!coordinator.isPreviewingRewrite)
         await driver.release(); #expect(coordinator.rewritePreview == nil)
         coordinator.close()
@@ -1695,22 +1727,24 @@ struct HandDrawnInsightsTests {
     }
 }
 @MainActor private final class ETarget: InsertionTarget {
-    let info:InsertionTargetInfo, original:TargetTextState
+    let info:InsertionTargetInfo
+    let capturedOriginal:TargetTextState
+    var original:TargetTextState? { capturedOriginal }
     unowned let editor:EEditor
     let field:Int, direct:Bool
     var writes = 0, pastes = 0
     init(editor:EEditor,session:String) {
         self.editor = editor; field = editor.focused; direct = editor.direct
-        let text = editor.fields[field]; original = .init(text:text,selection:.init(location:text.utf16.count,length:0))
+        let text = editor.fields[field]; capturedOriginal = .init(text:text,selection:.init(location:text.utf16.count,length:0))
         info = .init(session:session,applicationName:"Synthetic editor",processID:Int32(100+field),windowIdentity:"window-\(field)",elementIdentity:"field-\(field)",role:"AXTextArea")
     }
-    func validate() throws { guard editor.focused == field, editor.fields[field] == original.text else { throw TextTargetError.changed } }
+    func validate() throws { guard editor.focused == field, editor.fields[field] == capturedOriginal.text else { throw TextTargetError.changed } }
     func canReplaceSelection() -> Bool { direct }
-    func replaceSelection(_ text:String) throws { try validate(); writes += 1; editor.fields[field] = original.selection.replacing(in:original.text,with:text)! }
+    func replaceSelection(_ text:String) throws { try validate(); writes += 1; editor.fields[field] = capturedOriginal.selection.replacing(in:capturedOriginal.text,with:text)! }
     func observedText() -> String? { editor.readable ? editor.fields[field] : nil }
     func postPaste(whileClipboardOwned:()->Bool) throws {
         try validate(); guard whileClipboardOwned() else { throw TextTargetError.clipboardChanged }; pastes += 1
-        if editor.acknowledge { editor.fields[field] = original.selection.replacing(in:original.text,with:editor.clipboard.text)! }
+        if editor.acknowledge { editor.fields[field] = capturedOriginal.selection.replacing(in:capturedOriginal.text,with:editor.clipboard.text)! }
     }
 }
 @Suite("Core voice repeated pipeline",.serialized,.timeLimit(.minutes(1))) @MainActor struct VoiceRepeatedPipelineTests {
@@ -1797,15 +1831,15 @@ struct HandDrawnInsightsTests {
 }
 
 @Suite("Global AI shortcut workflow",.serialized) @MainActor struct GlobalAIShortcutWorkflowTests {
-    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering]) func emptyInputOpensCorrectPreviewWithoutEffects(_ kind:OfflinePreviewKind) async {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering]) func emptyInputShowsOnlyDisabledHUDWithoutEffects(_ kind:OfflinePreviewKind) async {
         let driver = GOfflineRewrite(), registrar = GPreviewRegistrar(), capture = GCapture()
         var copied = false
         let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar,historyCopy:{ _ in copied = true; return true })
         coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.previewShortcutsEnabled = true
         registrar.receive?(.invokeFrom(kind,processIdentifier:42))
-        #expect(coordinator.previewPresented && coordinator.previewKind == kind)
-        #expect(coordinator.previewOriginProcessIdentifier == 42)
-        #expect(coordinator.previewOriginalText.isEmpty && coordinator.previewNotice.contains("No permitted"))
+        #expect(!coordinator.previewPresented && coordinator.inPlaceHUD == .error)
+        #expect(coordinator.previewOriginProcessIdentifier == nil)
+        #expect(coordinator.message == "Enable in-place AI rewrite in Settings.")
         #expect(await driver.calls == 0); #expect(capture.count == 0 && !copied)
         coordinator.dismissShortcutPreview(); #expect(!coordinator.previewPresented); coordinator.close()
     }
@@ -1814,9 +1848,9 @@ struct HandDrawnInsightsTests {
         let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar)
         coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.previewShortcutsEnabled = true
         coordinator.previewInputText = "Check the button"
-        registrar.receive?(.invokeFrom(.polish,processIdentifier:42)); await driver.waitForStart()
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); coordinator.generateShortcutPreview(); await driver.waitForStart()
         for _ in 0..<10 { registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:99)) }
-        #expect(await driver.calls == 1); #expect(coordinator.previewKind == .polish && coordinator.previewOriginProcessIdentifier == 42)
+        #expect(await driver.calls == 1); #expect(!coordinator.previewPresented && !coordinator.isPreviewingRewrite)
         registrar.receive?(.suspended); #expect(!coordinator.isPreviewingRewrite && coordinator.previewShortcutStatus.contains("sleeping"))
         coordinator.dismissShortcutPreview(); await driver.release()
         #expect(coordinator.rewritePreview == nil && coordinator.promptPreview == nil)
@@ -1826,7 +1860,1108 @@ struct HandDrawnInsightsTests {
     @Test func nativePanelNeverBecomesKeyOrMain() {
         let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
         let panel = ShortcutPreviewPanel(coordinator:coordinator)
-        #expect(!panel.canBecomeKey && !panel.isVisible)
+        #expect(!panel.canBecomeKey && !panel.isVisible && !panel.hasCreatedPanel)
         panel.close(); coordinator.close()
+    }
+}
+
+@Suite("Shortcut delivery diagnosis",.serialized) @MainActor struct ShortcutDeliveryDiagnosisTests {
+    @Test func disabledOptInDoesNotRegisterAndFailureIsInspectable() {
+        let registrar = GPreviewRegistrar()
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),previewRegistrar:registrar)
+        coordinator.configurePreviewShortcuts()
+        #expect(registrar.registrations == 0 && coordinator.previewDiagnostics.last == .disabled)
+        registrar.failure = .registration(-9878)
+        coordinator.preferences.offlineAIRewriting = true
+        coordinator.preferences.previewShortcutsEnabled = true
+        #expect(coordinator.previewDiagnostics.last == .registrationFailed)
+        #expect(coordinator.previewShortcutStatus.contains("-9878"))
+        #expect(!coordinator.previewPresented)
+        coordinator.close()
+    }
+    @Test(arguments:[Int32(42),Int32(99)]) func deliveryUsesSameWindowlessPolicyForLocalAndExternalOrigins(_ process:Int32) {
+        let registrar = GPreviewRegistrar()
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),previewRegistrar:registrar)
+        coordinator.preferences.offlineAIRewriting = true
+        coordinator.preferences.promptEngineeringEnabled = true
+        coordinator.preferences.previewShortcutsEnabled = true
+        for kind in OfflinePreviewKind.allCases {
+            registrar.receive?(.invokeFrom(kind,processIdentifier:process))
+            #expect(!coordinator.previewPresented && coordinator.inPlaceHUD == .error)
+            #expect(coordinator.previewDiagnostics.last == .activated)
+            coordinator.dismissShortcutPreview()
+        }
+        for _ in 0..<100 { coordinator.recordPreviewDiagnostic(.hidden) }
+        #expect(coordinator.previewDiagnostics.count == 32)
+        coordinator.close()
+    }
+}
+
+@MainActor private final class GFocusedText: FocusedTextResolving {
+    var calls = 0, allow = false, pid: Int32 = 0
+    var hold = false
+    var result = FocusedTextResolution(text:"Synthetic draft",source:.draft)
+    var pending: CheckedContinuation<FocusedTextResolution,Never>?
+    var started: CheckedContinuation<Void,Never>?
+    func waitForStart() async { if pending != nil { return }; await withCheckedContinuation { started = $0 } }
+    func resolve(processID:Int32,allowUnselected:Bool) async -> FocusedTextResolution {
+        calls += 1; allow = allowUnselected; pid = processID
+        if hold { return await withCheckedContinuation { pending = $0; started?.resume(); started = nil } }
+        return result
+    }
+    func release() { pending?.resume(returning:result); pending = nil }
+}
+@Suite("Focused preview capture",.serialized) @MainActor struct FocusedPreviewCaptureTests {
+    private func make(_ resolver:GFocusedText, driver:GOfflineRewrite = GOfflineRewrite()) -> SystemWideDictationCoordinator {
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,focusedTextResolver:resolver)
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.previewShortcutsEnabled = true
+        return coordinator
+    }
+    @Test func preferenceDefaultAndPersistence() throws {
+        let store = preferences(); var value = store.load()
+        #expect(!value.useFocusedTextWhenUnselected)
+        value.useFocusedTextWhenUnselected = true; store.save(value)
+        #expect(store.load().useFocusedTextWhenUnselected)
+        var old = try #require(JSONSerialization.jsonObject(with:JSONEncoder().encode(value)) as? [String:Any]); old.removeValue(forKey:"useFocusedTextWhenUnselected")
+        #expect(!(try JSONDecoder().decode(DictationPreferences.self,from:JSONSerialization.data(withJSONObject:old))).useFocusedTextWhenUnselected)
+    }
+    @Test(arguments:[FocusedTextSource.selection,.draft,.paragraph]) func capturesArePreviewOnlyUntilGenerate(_ source:FocusedTextSource) async {
+        let resolver = GFocusedText(), driver = GOfflineRewrite(); resolver.result = .init(text:"Synthetic draft",source:source)
+        let coordinator = make(resolver,driver:driver); coordinator.preferences.useFocusedTextWhenUnselected = true
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(resolver.calls == 1 && resolver.pid == 42 && resolver.allow)
+        #expect(coordinator.shortcutSource == source && coordinator.shortcutInputText == "Synthetic draft")
+        #expect(coordinator.previewPresented && !coordinator.isPreviewingRewrite)
+        #expect(await driver.calls == 0)
+        coordinator.shortcutInputText = "Edited synthetic draft"; #expect(coordinator.shortcutSource == .manual)
+        coordinator.dismissShortcutPreview(); #expect(coordinator.shortcutInputText.isEmpty && coordinator.previewOriginalText.isEmpty); coordinator.close()
+    }
+    @Test func unselectedWithoutOptInNeverBecomesInput() async {
+        let resolver = GFocusedText(), coordinator = make(resolver)
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(!resolver.allow && coordinator.shortcutInputText.isEmpty)
+        #expect(coordinator.shortcutSource == .manual); coordinator.close()
+    }
+    @Test func selectionWorksWithoutUnselectedOptIn() async {
+        let resolver = GFocusedText(); resolver.result = .init(text:"Selected synthetic text",source:.selection)
+        let coordinator = make(resolver)
+        coordinator.openExplicitPreview(.promptEngineering,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(coordinator.shortcutSource == .selection && !resolver.allow); coordinator.close()
+    }
+    @Test(arguments:["denied","unsupported","stale","empty"]) func unavailableCaptureRetainsManualFallback(_ reason:String) async {
+        let resolver = GFocusedText(); resolver.result = .init()
+        let coordinator = make(resolver); coordinator.previewInputText = "Explicit manual input"
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(coordinator.shortcutSource == .manual && coordinator.shortcutInputText == "Explicit manual input")
+        #expect(coordinator.previewPresented); coordinator.close()
+    }
+    @Test func disabledFeatureDoesNotReadExternalText() async {
+        let resolver = GFocusedText(), coordinator = make(resolver)
+        coordinator.preferences.offlineAIRewriting = false
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(resolver.calls == 0); coordinator.close()
+    }
+    @Test func cancelDuringCaptureDropsLateResultAndSuppressesRepeats() async {
+        let resolver = GFocusedText(); resolver.hold = true
+        let coordinator = make(resolver); coordinator.preferences.useFocusedTextWhenUnselected = true
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42)
+        // Await a controlled continuation handshake, never a timing delay.
+        await resolver.waitForStart()
+        let capture = coordinator.captureTask
+        coordinator.openExplicitPreview(.promptEngineering,originProcessIdentifier:99)
+        #expect(resolver.calls == 1 && coordinator.previewKind == .polish)
+        coordinator.dismissShortcutPreview(); resolver.release(); await capture?.value
+        #expect(!coordinator.previewPresented && coordinator.shortcutInputText.isEmpty)
+        coordinator.close()
+    }
+}
+
+extension FocusedPreviewCaptureTests {
+    @Test func explicitGenerationNeverCapturesInsertsOrCopies() async throws {
+        let resolver = GFocusedText(), driver = GOfflineRewrite(), capture = GCapture(), clipboard = GClipboard()
+        var copied = false
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,focusedTextResolver:resolver,historyCopy:{ _ in copied = true; return true })
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.previewShortcutsEnabled = true; coordinator.preferences.useFocusedTextWhenUnselected = true
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(await driver.calls == 0)
+        let task = try #require(coordinator.generateShortcutPreview()); await task.value
+        #expect(await driver.calls == 1); #expect(capture.count == 0 && !copied)
+        #expect(coordinator.previewOriginalText == "Synthetic draft")
+        coordinator.close()
+    }
+}
+
+extension FocusedPreviewCaptureTests {
+    @Test(arguments:[FocusedTextStatus.disabled,.permissionRequired,.unsupported,.empty,.sizeLimit,.sourceChanged,.cancelled,.timedOut])
+    func accurateOutcomeAlwaysHasManualGenerationFallback(_ status:FocusedTextStatus) async throws {
+        let resolver = GFocusedText(), driver = GOfflineRewrite(), clipboard = GClipboard(), target = GCapture()
+        resolver.result = .init(status:status,stage:.attributes)
+        let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:target,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,focusedTextResolver:resolver)
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.previewShortcutsEnabled = true
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await coordinator.waitForTextCapture()
+        #expect(coordinator.previewPresented && coordinator.shortcutInputText.isEmpty)
+        #expect(coordinator.previewNotice == status.explanation)
+        #expect(coordinator.previewCaptureDiagnostic == "\(status.rawValue) · attributes")
+        #expect(await driver.calls == 0)
+        coordinator.shortcutInputText = "Explicit synthetic manual input"
+        let task = try #require(coordinator.generateShortcutPreview()); await task.value
+        #expect(await driver.calls == 1)
+        #expect(clipboard.text == "original" && clipboard.installed == 0 && clipboard.restores == 0 && clipboard.count == 1)
+        #expect(target.count == 0); coordinator.close()
+    }
+    @Test func originalCaptureCompletesBeforePanelPresentationEvenWithRepeatedGesture() async {
+        let resolver = GFocusedText(); resolver.hold = true; resolver.result = .init(text:"Selected synthetic draft",source:.selection)
+        let coordinator = make(resolver)
+        coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); await resolver.waitForStart()
+        #expect(!coordinator.previewPresented && coordinator.isResolvingShortcutText)
+        coordinator.openExplicitPreview(.promptEngineering,originProcessIdentifier:99)
+        #expect(!coordinator.previewPresented && resolver.calls == 1)
+        let capture = coordinator.captureTask; resolver.release(); await capture?.value
+        #expect(coordinator.previewPresented && coordinator.previewKind == .polish)
+        #expect(coordinator.shortcutSource == .selection); coordinator.close()
+    }
+}
+
+@MainActor private final class GRewriteAnchor: DictationRewriteAnchor {
+    let sessionID:String, originalText:String
+    var processID:Int32 { 42 }
+    private weak var target:GTarget?
+    private let expected:String
+    var commitRejection:DictationRewriteValidationFailure?
+    var lastValidationFailure:DictationRewriteValidationFailure? { commitRejection }
+    var typedRejection:DictationRewriteValidationFailure?
+    var rejection:TextTargetError?
+    var stale = false, used = false, replacements = 0
+    init(target:GTarget,text:String) { self.target = target; sessionID = target.info.session; originalText = text; expected = target.value ?? "" }
+    func validate() throws { if let typedRejection { throw typedRejection }; if let rejection { throw rejection }; guard !stale, !used, target?.value == expected else { throw TextTargetError.changed } }
+    func replaceValidatedSpan(_ text:String) -> TextInsertionReceipt {
+        if commitRejection != nil { return .init(.targetChanged,.changed) }
+        do { try validate() } catch { return .init(.targetChanged,.changed) }
+        guard let target, let value = TextSelection(location:target.capturedOriginal.selection.location,length:originalText.utf16.count).replacing(in:expected,with:text) else { return .init(.unsupportedTarget,.unsupported) }
+        used = true; replacements += 1; target.value = value
+        return .init(.inserted,.verified,attempted:true)
+    }
+}
+private actor InPlaceFixtureRewriter: OfflineTranscriptRewriting {
+    var blocked = false, held = false, invalid = false
+    var forcedOutcome:OfflineRewriteStatus?
+    var calls = 0
+    var requests:[OfflineRewriteRequest] = []
+    var pending:CheckedContinuation<OfflineRewriteOutcome,Never>?
+    var started:CheckedContinuation<Void,Never>?
+    var waiting = false
+    func configure(blocked:Bool = false,held:Bool = false,invalid:Bool = false,outcome:OfflineRewriteStatus? = nil) { self.blocked = blocked; self.held = held; self.invalid = invalid; self.forcedOutcome = outcome }
+    func rewrite(_ request:OfflineRewriteRequest) async -> OfflineRewriteOutcome {
+        calls += 1; requests.append(request)
+        if let forcedOutcome { return .init(forcedOutcome,text:request.text) }
+        if blocked { return .init(.resourceBlocked,text:request.text) }
+        if held { waiting = true; started?.resume(); started = nil; return await withCheckedContinuation { pending = $0 } }
+        if invalid { return .init(.rewritten,text:"invented requirements and numbers 123") }
+        if request.kind == .promptEngineering { return .init(.rewritten,text:"## Objective\n"+request.text) }
+        return .init(.rewritten,text:request.text+".")
+    }
+    func waitForStart() async { if waiting { return }; await withCheckedContinuation { started = $0 } }
+    func release() { pending?.resume(returning:.init(.rewritten,text:"check the button.")); pending = nil }
+    func cancel(requestID:String) {}
+}
+@Suite("In-place dictation rewrite",.serialized) @MainActor struct InPlaceRewriteTests {
+    private func prepare(_ driver:InPlaceFixtureRewriter, verified:Bool = true, registrar:GPreviewRegistrar? = nil, presentation:PreviewPresentationSpy? = nil, transcript:String = "check the button", hudClock:GClock = GClock(), clock:GClock = GClock()) async throws -> (SystemWideDictationCoordinator,GTarget,GClipboard) {
+        let input = GInput(), capture = GCapture(), clipboard = GClipboard()
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,hudClock:hudClock,preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar,previewPresentationRequest:{ presentation?.requests.append($0) })
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.inPlaceAIRewrite = true
+        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        let target = try #require(capture.target)
+        if !verified { target.failWrite = true }
+        input.receive?(.transcript(transcript)); coordinator.stop(); input.receive?(.finished)
+        for await phase in coordinator.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        return (coordinator,target,clipboard)
+    }
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering]) func exactSpanRoutingLeavesSurroundingsAndHistoryUnchanged(_ kind:OfflinePreviewKind) async throws {
+        let driver = InPlaceFixtureRewriter(); let (coordinator,target,clipboard) = try await prepare(driver)
+        let original = try #require(coordinator.latest)
+        #expect(await driver.calls == 0)
+        coordinator.invokeAIShortcut(kind,originProcessIdentifier:42); await coordinator.waitForInPlaceRewrite()
+        #expect(!coordinator.previewPresented && coordinator.inPlaceHUD == .success)
+        #expect(target.value?.hasPrefix("a") == true && target.value?.hasSuffix("bc") == true)
+        #expect(target.rewriteFixture?.replacements == 1 && coordinator.latest == original)
+        #expect(clipboard.text == "original" && clipboard.installed == 0 && target.pastes == 0 && target.unicodePosts == 0)
+        coordinator.invokeAIShortcut(kind,originProcessIdentifier:42); await coordinator.waitForInPlaceRewrite()
+        #expect(target.rewriteFixture?.replacements == 1); coordinator.close()
+    }
+    @Test(arguments:["edited","other-app","uncertain"]) func unsafeTargetsNeverGenerateOrReplace(_ reason:String) async throws {
+        let driver = InPlaceFixtureRewriter(); let (coordinator,target,_) = try await prepare(driver,verified:reason != "uncertain")
+        if reason == "edited" { target.value = "user changed this field" }
+        coordinator.invokeAIShortcut(.polish,originProcessIdentifier:reason == "other-app" ? 99 : 42); await coordinator.waitForInPlaceRewrite()
+        #expect(await driver.calls == 0); #expect((target.rewriteFixture?.replacements ?? 0) == 0); #expect(!coordinator.previewPresented)
+        coordinator.close()
+    }
+    @Test(arguments:["memory","invalid"]) func rejectedGenerationKeepsOriginal(_ reason:String) async throws {
+        let driver = InPlaceFixtureRewriter(); await driver.configure(blocked:reason == "memory",invalid:reason == "invalid")
+        let (coordinator,target,_) = try await prepare(driver); let original = target.value
+        coordinator.invokeAIShortcut(.polish,originProcessIdentifier:42); await coordinator.waitForInPlaceRewrite()
+        #expect(target.value == original && target.rewriteFixture?.replacements == 0 && coordinator.inPlaceHUD == .error)
+        coordinator.close()
+    }
+    @Test(arguments:[false,true]) func cancellationAndEditDuringGenerationDiscardResult(_ edit:Bool) async throws {
+        let driver = InPlaceFixtureRewriter(); await driver.configure(held:true)
+        let (coordinator,target,_) = try await prepare(driver)
+        coordinator.invokeAIShortcut(.polish,originProcessIdentifier:42); await driver.waitForStart()
+        if edit { target.value = "new user text" } else { coordinator.cancelInPlaceRewrite() }
+        await driver.release(); await coordinator.waitForInPlaceRewrite()
+        #expect(target.rewriteFixture?.replacements == 0); coordinator.close()
+    }
+    @Test func replacementPreferenceDefaultsOffAndPersists() {
+        let store = preferences(); var value = store.load(); #expect(!value.inPlaceAIRewrite)
+        value.inPlaceAIRewrite = true; store.save(value); #expect(store.load().inPlaceAIRewrite)
+    }
+}
+
+@Suite("Continuous dictation HUD") struct ContinuousHUDTests {
+    @Test @MainActor func microphoneAndNonMicrophoneStatesAreHonest() {
+        #expect(DictationHUDContent.resolve(phase:.recording,ai:.idle,verified:false) == .waveform)
+        #expect(DictationHUDContent.resolve(phase:.finalizing,ai:.idle,verified:false) == .label("Transcribing…"))
+        #expect(DictationHUDContent.resolve(phase:.inserting,ai:.idle,verified:false) == .label("Transcribing…"))
+        #expect(DictationHUDContent.resolve(phase:.success,ai:.idle,verified:false) == .label("Ready"))
+        #expect(DictationHUDContent.resolve(phase:.success,ai:.idle,verified:true) == .verified)
+        #expect(DictationHUDContent.resolve(phase:.idle,ai:.polishing,verified:false) == .label("Polishing…"))
+        #expect(DictationHUDContent.resolve(phase:.idle,ai:.structuring,verified:false) == .label("Structuring…"))
+    }
+}
+
+// These enter through the exact callback registered by the app coordinator, not
+// by directly calling the private/native delivery layer or injecting OS keys.
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func registeredShortcutRoutesInPlaceWithoutPanel(_ kind:OfflinePreviewKind) async throws {
+        let registrar = GPreviewRegistrar(), driver = InPlaceFixtureRewriter()
+        let (c,target,clipboard) = try await prepare(driver,registrar:registrar)
+        c.preferences.previewShortcutsEnabled = true
+        #expect(registrar.kinds == [.polish,.promptEngineering])
+        registrar.receive?(.invokeFrom(kind,processIdentifier:42)); await c.waitForInPlaceRewrite()
+        #expect(c.shortcutRouteTrace.suffix(6).map(\.stage) == [.received,.inPlaceSelected,.generationRequested,.generationReturned,.replacementRequested,.replacementVerified])
+        #expect(!c.previewPresented && target.rewriteFixture?.replacements == 1)
+        let request = try #require(await driver.requests.last)
+        #expect(request.kind == kind && request.text == "check the button")
+        #expect(clipboard.text == "original" && clipboard.installed == 0 && target.pastes == 0 && target.unicodePosts == 0)
+        c.close()
+    }
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func registeredShortcutWithModeOffShowsOnlyHUD(_ kind:OfflinePreviewKind) async {
+        let store = preferences(), registrar = GPreviewRegistrar(), driver = InPlaceFixtureRewriter()
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:store,offlineRewriter:driver,previewRegistrar:registrar)
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.previewShortcutsEnabled = true
+        registrar.receive?(.invokeFrom(kind,processIdentifier:42))
+        #expect(!c.previewPresented && c.inPlaceHUD == .error && c.shortcutRouteTrace.last?.stage == .featureDisabled)
+        #expect(c.message == "Enable in-place AI rewrite in Settings.")
+        #expect(await driver.calls == 0); #expect(!store.load().inPlaceAIRewrite); c.close()
+    }
+    @Test(arguments:[TextTargetError.denied,.unsupported,.secure,.changed])
+    func sourceFailuresHaveSpecificCompactOutcome(_ failure:TextTargetError) async throws {
+        let driver = InPlaceFixtureRewriter(); let (c,target,_) = try await prepare(driver)
+        target.rewriteFixture?.rejection = failure
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .error && !c.previewPresented && target.rewriteFixture?.replacements == 0)
+        #expect(await driver.calls == 0)
+        let expected = switch failure { case .denied: "Accessibility permission"; case .unsupported:"Destination editor"; case .secure:"Secure input"; default:"changed or expired" }
+        #expect(c.message.contains(expected)); #expect(c.shortcutRouteTrace.last?.stage == .sourceRejected); c.close()
+    }
+    @Test func missingDictationDoesNotOpenOrReadPreview() async {
+        let driver = InPlaceFixtureRewriter(), capture = GCapture()
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver)
+        c.preferences.inPlaceAIRewrite = true; c.preferences.promptEngineeringEnabled = true
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42)
+        #expect(!c.previewPresented && c.message.contains("No insertion receipt exists") && capture.count == 0)
+        #expect(await driver.calls == 0); c.close()
+    }
+    @Test(arguments:[false,true]) func conflictingSavedModeNeverFallsBack(_ memoryEnabled:Bool) {
+        let store = preferences()
+        let real = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:store)
+        real.preferences.inPlaceAIRewrite = memoryEnabled
+        var external = store.load(); external.inPlaceAIRewrite = !memoryEnabled; store.save(external)
+        real.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42)
+        #expect(!real.previewPresented && real.shortcutRouteTrace.last?.stage == .settingsDisagree)
+        #expect(real.message.contains("another app instance")); #expect(store.load().inPlaceAIRewrite == !memoryEnabled)
+        real.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflineRewriteStatus.modelUnavailable,.resourceBlocked,.timedOut,.cancelled])
+    func registeredGenerationFailureRetainsTextAndNeverOpensPanel(_ status:OfflineRewriteStatus) async throws {
+        let driver = InPlaceFixtureRewriter(), registrar = GPreviewRegistrar()
+        await driver.configure(outcome:status)
+        let (c,target,clipboard) = try await prepare(driver,registrar:registrar); let original = target.value
+        c.preferences.previewShortcutsEnabled = true
+        registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:42)); await c.waitForInPlaceRewrite()
+        #expect(!c.previewPresented && c.inPlaceHUD == .error && target.value == original)
+        #expect(target.rewriteFixture?.replacements == 0 && clipboard.installed == 0)
+        let expected = switch status { case .modelUnavailable:"Local AI"; case .resourceBlocked:"memory/resource admission"; case .timedOut:"timed out"; default:"cancelled" }
+        #expect(c.message.contains(expected) && c.previewShortcutStatus == c.message)
+        #expect(await driver.calls == 1); c.close()
+    }
+}
+
+@MainActor private final class PreviewPresentationSpy {
+    var requests:[OfflinePreviewKind] = []
+}
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering], ["success","disabled","missing","denied","unsupported","secure","changed","foreign","memory","invalid","unavailable","timeout","feature-off"])
+    func everyShortcutBranchMakesZeroPreviewRequests(_ kind:OfflinePreviewKind,_ scenario:String) async throws {
+        let spy = PreviewPresentationSpy(), registrar = GPreviewRegistrar(), driver = InPlaceFixtureRewriter()
+        await driver.configure(blocked:scenario == "memory",invalid:scenario == "invalid",outcome:scenario == "unavailable" ? .modelUnavailable : scenario == "timeout" ? .timedOut : nil)
+        let (c,target,clipboard) = try await prepare(driver,verified:scenario != "missing",registrar:registrar,presentation:spy)
+        c.preferences.previewShortcutsEnabled = true
+        let before = target.value
+        if scenario == "disabled" { c.preferences.inPlaceAIRewrite = false }
+        if scenario == "feature-off" { if kind == .polish { c.preferences.offlineAIRewriting = false } else { c.preferences.promptEngineeringEnabled = false } }
+        let rejection:TextTargetError? = switch scenario { case "denied": .denied; case "unsupported": .unsupported; case "secure": .secure; case "changed": .changed; default:nil }
+        target.rewriteFixture?.rejection = rejection
+        registrar.receive?(.invokeFrom(kind,processIdentifier:scenario == "foreign" ? 99 : 42)); await c.waitForInPlaceRewrite()
+        #expect(spy.requests.isEmpty && !c.previewPresented && !c.isResolvingShortcutText)
+        #expect(clipboard.text == "original" && clipboard.installed == 0 && target.pastes == 0 && target.unicodePosts == 0)
+        if scenario == "success" { #expect(target.rewriteFixture?.replacements == 1 && c.inPlaceHUD == .success) }
+        else { #expect(target.value == before && (target.rewriteFixture?.replacements ?? 0) == 0 && c.inPlaceHUD == .error) }
+        c.close()
+    }
+    @Test func explicitSettingsPreviewRequestsPresenterAndShortcutFencesLateCapture() async {
+        let spy = PreviewPresentationSpy(), resolver = GFocusedText(), registrar = GPreviewRegistrar()
+        resolver.hold = true; resolver.result = .init(text:"Synthetic explicitly requested text",source:.selection)
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),previewRegistrar:registrar,previewPresentationRequest:{ spy.requests.append($0) },focusedTextResolver:resolver)
+        c.preferences.offlineAIRewriting = true; c.preferences.previewShortcutsEnabled = true
+        c.openExplicitPreview(.polish,originProcessIdentifier:42); await resolver.waitForStart()
+        let capture = c.captureTask
+        registrar.receive?(.invokeFrom(.polish,processIdentifier:42))
+        resolver.release(); await capture?.value
+        #expect(spy.requests.isEmpty && !c.previewPresented)
+        c.openExplicitPreview(.polish)
+        #expect(spy.requests == [.polish] && c.previewPresented)
+        registrar.receive?(.invokeFrom(.polish,processIdentifier:42))
+        #expect(spy.requests == [.polish] && !c.previewPresented)
+        c.close()
+    }
+    @Test(arguments:[false,true]) func cancellationOrUserEditHasZeroPresentationAndNoLateWrite(_ edit:Bool) async throws {
+        let spy = PreviewPresentationSpy(), registrar = GPreviewRegistrar(), driver = InPlaceFixtureRewriter()
+        await driver.configure(held:true)
+        let (c,target,_) = try await prepare(driver,registrar:registrar,presentation:spy)
+        c.preferences.previewShortcutsEnabled = true
+        registrar.receive?(.invokeFrom(.polish,processIdentifier:42)); await driver.waitForStart()
+        registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:42)); #expect(await driver.calls == 1)
+        let task = c.inPlaceRunning
+        #expect(task)
+        let completion:Task<Void,Never>?
+        if edit { target.value = "Synthetic edited source"; completion = nil } else { completion = c.cancelInPlaceRewrite() }
+        await driver.release(); await completion?.value; await c.waitForInPlaceRewrite()
+        #expect(spy.requests.isEmpty && !c.previewPresented && target.rewriteFixture?.replacements == 0)
+        c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func disabledShortcutShowsConciseHUDAndDismissesDeterministically(_ kind:OfflinePreviewKind) async {
+        let spy = PreviewPresentationSpy(), hudClock = GClock(), registrar = GPreviewRegistrar()
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),hudClock:hudClock,preferenceStore:preferences(),previewRegistrar:registrar,previewPresentationRequest:{ spy.requests.append($0) })
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.previewShortcutsEnabled = true
+        let panel = ShortcutPreviewPanel(coordinator:c)
+        registrar.receive?(.invokeFrom(kind,processIdentifier:42))
+        #expect(c.compactAIStatus == "Enable in-place AI" && c.pillVisible && c.hudFeedbackVisible)
+        #expect(spy.requests.isEmpty && !panel.hasCreatedPanel && !c.previewPresented)
+        await hudClock.waitForSleep(2200); await hudClock.advance(2200); await c.waitForHUDFeedback()
+        #expect(!c.pillVisible && c.inPlaceHUD == .idle && !panel.hasCreatedPanel)
+        panel.close(); c.close()
+    }
+    @Test(arguments:[false,true])
+    func staleSavedSettingMakesZeroPresentationRequests(_ enabled:Bool) {
+        let spy = PreviewPresentationSpy(), store = preferences(), registrar = GPreviewRegistrar()
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:store,previewRegistrar:registrar,previewPresentationRequest:{ spy.requests.append($0) })
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.previewShortcutsEnabled = true; c.preferences.inPlaceAIRewrite = enabled
+        var external = store.load(); external.inPlaceAIRewrite = !enabled; store.save(external)
+        for kind in OfflinePreviewKind.allCases { registrar.receive?(.invokeFrom(kind,processIdentifier:42)) }
+        #expect(spy.requests.isEmpty && !c.previewPresented && c.compactAIStatus == "Settings changed")
+        c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test func formattedInsertedTextIsTheRewriteSourceNotRawSpeech() async throws {
+        let driver = InPlaceFixtureRewriter(), spy = PreviewPresentationSpy()
+        let (c,target,clipboard) = try await prepare(driver,presentation:spy,transcript:"  check   the button  ")
+        #expect(c.latest?.raw == "  check   the button  ")
+        #expect(c.latest?.cleaned == "check the button" && target.rewriteFixture?.originalText == "check the button")
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(await driver.requests.last?.text == "check the button")
+        #expect(target.value == "a## Objective\ncheck the buttonbc")
+        #expect(spy.requests.isEmpty && clipboard.installed == 0); c.close()
+    }
+    @Test(arguments:DictationRewriteValidationFailure.allCases)
+    func typedValidationFailuresDoNotMislabelMissingDataAsChangedText(_ failure:DictationRewriteValidationFailure) async throws {
+        let driver = InPlaceFixtureRewriter(), spy = PreviewPresentationSpy()
+        let (c,target,clipboard) = try await prepare(driver,presentation:spy)
+        target.rewriteFixture?.typedRejection = failure
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .error && !c.previewPresented && spy.requests.isEmpty)
+        #expect((c.compactAIStatus == "Text changed") == (failure == .textMismatch))
+        #expect(target.rewriteFixture?.replacements == 0 && clipboard.installed == 0)
+        #expect(await driver.calls == 0); c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test func initialVerificationCannotAcceptCanonicalEqualityWithDifferentUTF16() async {
+        let target = GTarget(text:"ab",selection:.init(location:1,length:0)), clipboard = GClipboard()
+        target.observedOverride = "aéb"
+        let receipt = await TextInsertionService(clipboard:clipboard,clock:GClock()).insert("e\u{301}",target:target,session:"s")
+        #expect(receipt.status != .insertedVerified && receipt.attempted)
+        #expect(target.replacements == 1 && target.pastes == 0 && clipboard.installed == 0)
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test(arguments:[DictationRewriteValidationFailure.textUnavailable,.invalidRange,.caretChanged])
+    func finalPreflightFailureKeepsItsSourceReasonAndDoesNotBecomeAIUnavailable(_ reason:DictationRewriteValidationFailure) async throws {
+        let driver = InPlaceFixtureRewriter(), spy = PreviewPresentationSpy()
+        let (c,target,clipboard) = try await prepare(driver,presentation:spy)
+        target.rewriteFixture?.commitRejection = reason
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .error && c.compactAIStatus != "AI unavailable" && c.compactAIStatus != "Text changed")
+        #expect(target.rewriteFixture?.replacements == 0 && clipboard.installed == 0 && spy.requests.isEmpty)
+        #expect(await driver.calls == 1); c.close()
+    }
+}
+
+// 36D: receipt existence is independent of transient UI and model outcomes.
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func provenanceSurvivesTeardownHUDAndUnrelatedPreferences(_ kind:OfflinePreviewKind) async throws {
+        let driver = InPlaceFixtureRewriter(), hud = GClock()
+        await driver.configure(blocked:true)
+        let (c,target,clipboard) = try await prepare(driver,hudClock:hud)
+        #expect(c.eligibleReceiptPresent && c.provenanceReason == .none && !c.busy)
+        c.preferences.spacingCleanup.toggle()
+        // Exercise a genuine HUD lifecycle without replacing/consuming the record.
+        c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.eligibleReceiptPresent && c.message.contains("memory/resource"))
+        await hud.waitForSleep(2200); await hud.advance(2200); await c.waitForHUDFeedback()
+        #expect(!c.hudFeedbackVisible && c.eligibleReceiptPresent)
+        c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(await driver.calls == 2)
+        #expect(target.rewriteFixture?.replacements == 0 && !c.previewPresented)
+        #expect(clipboard.text == "original" && clipboard.installed == 0)
+        #expect(c.verificationDiagnosticSummary.contains("eligibleReceipt=true"))
+        c.close(); #expect(!c.eligibleReceiptPresent && c.provenanceReason == .invalidated)
+    }
+    @Test(arguments:[DictationRewriteValidationFailure.expired,.editorUnavailable,.targetChanged,.invalidRange,.textMismatch])
+    func repeatedFailureKeepsSpecificProvenanceReason(_ failure:DictationRewriteValidationFailure) async throws {
+        let driver = InPlaceFixtureRewriter(), (c,target,_) = try await prepare(driver)
+        target.rewriteFixture?.typedRejection = failure
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        let reason = c.provenanceReason, message = c.message
+        #expect(reason != .noReceipt && reason != .none && !c.eligibleReceiptPresent)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42)
+        #expect(c.provenanceReason == reason && c.message == message)
+        #expect(await driver.calls == 0); #expect(!c.previewPresented)
+        c.close()
+    }
+    @Test func uncertainReceiptNeverBecomesAuthorityAndRestartCannotRestoreIt() async throws {
+        let driver = InPlaceFixtureRewriter(), (c,_,_) = try await prepare(driver,verified:false)
+        #expect(!c.eligibleReceiptPresent && c.provenanceReason == .uncertain)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42)
+        #expect(!c.message.contains("No eligible recent dictation")); #expect(await driver.calls == 0)
+        let fresh = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        #expect(!fresh.eligibleReceiptPresent && fresh.provenanceReason == .noReceipt)
+        c.close(); fresh.close()
+    }
+    @Test func anchorCreationFailureHasVerifiedReceiptButNoRangeAuthority() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), driver = InPlaceFixtureRewriter()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
+        c.preferences.inPlaceAIRewrite = true; c.preferences.promptEngineeringEnabled = true
+        c.pillClicked(); await clock.waitForSleep(61000)
+        capture.target?.rewriteCreationFailure = .compositionUnavailable
+        input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished)
+        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        #expect(c.latest?.insertion.status == .insertedVerified)
+        #expect(c.provenanceReason == .rangeUnavailable && !c.eligibleReceiptPresent)
+        #expect(c.verificationDiagnosticSummary.contains("verifiedReceipt=true"))
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42)
+        #expect(c.message.contains("composition") && !c.previewPresented)
+        #expect(await driver.calls == 0); c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test(arguments:[119_999,120_000,120_001])
+    func monotonicReceiptLifetime(_ elapsed:Int64) async throws {
+        let clock = GClock(), driver = InPlaceFixtureRewriter()
+        await driver.configure(blocked:true)
+        let (c,target,_) = try await prepare(driver,clock:clock)
+        let start = await clock.now(); await clock.advance(start + elapsed)
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(await driver.calls == (elapsed < 120_000 ? 1 : 0))
+        #expect(c.eligibleReceiptPresent == (elapsed < 120_000))
+        if elapsed >= 120_000 { #expect(c.provenanceReason == .expired && c.compactAIStatus == "Dictation expired") }
+        #expect(target.rewriteFixture?.replacements == 0 && !c.previewPresented)
+        c.close()
+    }
+}
+
+@MainActor private final class ProvenanceReceiptFixture: DictationTextInserting {
+    var hasPendingClipboard:Bool { false }
+    var pendingClipboardRecovery:ClipboardRecovery? { nil }
+    var pending:CheckedContinuation<Void,Never>?
+    var observer:CheckedContinuation<Void,Never>?
+    func waitForStart() async { if pending != nil { return }; await withCheckedContinuation { observer = $0 } }
+    func insert(_ text:String,target:any InsertionTarget,session:String) async -> TextInsertionReceipt {
+        // Deliberately noncooperative adapter: cancellation must not grant authority.
+        await withCheckedContinuation { pending = $0; observer?.resume(); observer = nil }
+        try? target.replaceSelection(text)
+        return .init(.inserted,.verified,attempted:true)
+    }
+    func release() { pending?.resume(); pending = nil }
+    func reconcileClipboardState() -> ClipboardRestoration? { nil }
+    func restoreAfterUserConfirmation(expectedRecoveryID:String) -> ClipboardRestoration { .unavailable }
+}
+extension InPlaceRewriteTests {
+    @Test func cancelledInsertionCannotPublishLateVerifiedAuthority() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), insertion = ProvenanceReceiptFixture()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:insertion,shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
+        c.preferences.inPlaceAIRewrite = true
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("Synthetic late receipt")); c.stop(); input.receive?(.finished)
+        await insertion.waitForStart(); c.cancel(); insertion.release()
+        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        #expect(c.latest?.insertion.status == .insertedVerified) // Actual delivery is retained honestly.
+        #expect(!c.eligibleReceiptPresent && c.provenanceReason == .invalidated)
+        #expect(capture.target?.rewriteFixture == nil && !c.previewPresented)
+        c.close()
+    }
+    @Test(arguments:["disabled","cancelled","speechFailed"])
+    func missingEligibilityHasActualCreationReason(_ mode:String) async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
+        c.preferences.inPlaceAIRewrite = mode != "disabled"
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("Synthetic draft"))
+        if mode == "cancelled" { c.cancel() }
+        else if mode == "speechFailed" { input.receive?(.failed(.recognitionFailed)) }
+        else { c.stop(); input.receive?(.finished) }
+        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        #expect(!c.eligibleReceiptPresent)
+        #expect(c.provenanceReason == (mode == "disabled" ? .disabled : .failed))
+        #expect(c.latest?.insertion.status == (mode == "disabled" ? .insertedVerified : mode == "cancelled" ? .cancelled : .failed))
+        c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test func expiryReleasesRecordWithoutShortcutAndCannotDeliverLateAI() async throws {
+        let clock = GClock(), driver = InPlaceFixtureRewriter()
+        await driver.configure(held:true)
+        let (c,target,_) = try await prepare(driver,clock:clock)
+        await clock.waitForSleep(121000)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await driver.waitForStart()
+        await clock.advance(121000); await c.waitForReceiptExpiration()
+        #expect(!c.eligibleReceiptPresent && c.provenanceReason == .expired)
+        await driver.release(); await c.waitForInPlaceRewrite()
+        #expect(target.rewriteFixture?.replacements == 0 && c.compactAIStatus == "Dictation expired")
+        #expect(!c.previewPresented); c.close()
+    }
+}
+extension InPlaceRewriteTests {
+    @Test func successiveDictationsReplaceOnlyAuthoritativeLatestRecord() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), driver = InPlaceFixtureRewriter()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
+        c.preferences.inPlaceAIRewrite = true; c.preferences.promptEngineeringEnabled = true
+        await driver.configure(blocked:true)
+        var previous:GRewriteAnchor?
+        for index in 1...3 {
+            c.pillClicked()
+            #expect(!c.eligibleReceiptPresent && c.provenanceReason == .invalidated)
+            for await phase in c.$phase.values { if phase == .recording { break } }
+            input.receive?(.transcript("Synthetic request \(index)")); c.stop(); input.receive?(.finished)
+            for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+            let current = try #require(capture.target?.rewriteFixture)
+            #expect(c.eligibleReceiptPresent && c.provenanceReason == .none)
+            #expect(current.sessionID == c.latest?.id && current !== previous)
+            c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+            #expect(await driver.requests.last?.text == "Synthetic request \(index)")
+            #expect(current.replacements == 0 && (previous?.replacements ?? 0) == 0)
+            previous = current
+        }
+        #expect(await driver.calls == 3 && !c.previewPresented)
+        c.close()
+    }
+}
+
+
+@Suite("36E insertion readback",.serialized,.timeLimit(.minutes(1))) @MainActor struct InsertionReadbackRepairTests {
+    @Test(arguments:[true,false])
+    func delayedTextEditLikeReadbackVerifiesWithoutSecondEffect(_ direct:Bool) async throws {
+        let target = GTarget(), clipboard = GClipboard(), clock = GClock()
+        target.writable = direct; target.deferDirectReadback = true; target.acknowledgePaste = false
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let task = Task { await service.insert("Hello 😀",target:target,session:"s") }
+        await clock.waitForSleep(1050)
+        #expect(target.readbacks == 1)
+        #expect(target.replacements + target.pastes == 1)
+        target.value = target.capturedOriginal.selection.replacing(in:target.capturedOriginal.text,with:"Hello 😀")
+        await clock.advance(1050)
+        let receipt = await task.value
+        #expect(receipt.status == .insertedVerified && !service.hasPendingClipboard)
+        #expect(target.replacements + target.pastes == 1 && target.unicodePosts == 0)
+        #expect(clipboard.text == "original")
+        #expect(service.verificationDiagnostics.contains { $0.code == .verified && $0.timing == .settling })
+    }
+    @Test(arguments:[InsertionReadbackFailure.unsupported,.denied,.rangeUnavailable,.rangeInvalid,.targetChanged,.secure])
+    func typedReadbackRejectionDoesNotGrantReceipt(_ failure:InsertionReadbackFailure) async {
+        let target = GTarget(), clipboard = GClipboard(), service = TextInsertionService(clipboard:clipboard,clock:GClock())
+        target.readbackFailure = failure
+        let receipt = await service.insert("X",target:target,session:"s")
+        #expect(receipt.status != .insertedVerified && receipt.attempted)
+        #expect(target.value == "aXbc" && target.replacements == 1 && target.pastes == 0)
+        let code:InsertionVerificationDiagnostic.Code = switch failure {
+        case .unsupported: .readbackUnsupported
+        case .denied,.secure: .readbackDenied
+        case .rangeUnavailable: .rangeUnavailable
+        case .rangeInvalid: .rangeInvalid
+        default: .targetChanged
+        }
+        #expect(service.verificationDiagnostics.contains { $0.code == code })
+        #expect(clipboard.installed == 0)
+    }
+    @Test(arguments:[true,false])
+    func temporaryReadbackCanSettleOrCancel(_ cancel:Bool) async {
+        let target = GTarget(), clipboard = GClipboard(), clock = GClock(), service = TextInsertionService(clipboard:clipboard,clock:clock)
+        target.readbackFailure = .temporarilyUnavailable
+        let task = Task { await service.insert("X",target:target,session:"s") }
+        await clock.waitForSleep(1050)
+        if cancel { task.cancel() } else { target.readbackFailure = nil; await clock.advance(1050) }
+        let receipt = await task.value
+        #expect(receipt.status == (cancel ? .uncertain : .insertedVerified))
+        #expect(target.replacements == 1 && target.pastes == 0 && clipboard.installed == 0)
+    }
+    @Test(arguments:[true,false])
+    func deadlineNeverConvertsLateReadbackToSuccess(_ direct:Bool) async {
+        let target = GTarget(), clipboard = GClipboard(), clock = GClock()
+        target.writable = direct; target.deferDirectReadback = true; target.acknowledgePaste = false
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let task = Task { await service.insert("X",target:target,session:"s") }
+        await clock.waitForSleep(1050); target.value = "aXbc"; await clock.advance(2500)
+        let receipt = await task.value
+        #expect(receipt.status != .insertedVerified)
+        #expect(service.verificationDiagnostics.contains { $0.code == .readbackTimeout })
+        #expect(service.hasPendingClipboard == !direct && clipboard.restores == 0)
+    }
+    @Test(arguments:[true,false])
+    func focusLossDuringSettlingRemainsUncertain(_ direct:Bool) async {
+        let target = GTarget(), clipboard = GClipboard(), clock = GClock()
+        target.writable = direct; target.deferDirectReadback = true; target.acknowledgePaste = false
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let task = Task { await service.insert("X",target:target,session:"s") }
+        await clock.waitForSleep(1050); target.readbackFailure = .targetChanged; await clock.advance(1050)
+        let receipt = await task.value
+        #expect(receipt.status != .insertedVerified && target.replacements + target.pastes == 1)
+        #expect(service.hasPendingClipboard == !direct && clipboard.restores == 0)
+        #expect(service.verificationDiagnostics.contains { $0.code == .targetChanged })
+    }
+    @Test(arguments:["prefix 😀 ","curly ‘quotes’ ","line1\nline2 ","e\u{301} "])
+    func exactUTF16SpanAndSurroundings(_ prefix:String) async throws {
+        let text = "Dictation 😀\nnext line", target = GTarget(text:prefix+"suffix",selection:.init(location:prefix.utf16.count,length:0))
+        let service = TextInsertionService(clipboard:GClipboard(),clock:GClock())
+        let receipt = await service.insert(text,target:target,session:"s")
+        #expect(receipt.status == .insertedVerified)
+        #expect(target.value == prefix+text+"suffix")
+        #expect(service.verificationDiagnostics.contains { $0.code == .verified && $0.rangeLocation == prefix.utf16.count && $0.rangeLength == text.utf16.count })
+    }
+    @Test(arguments:["X ","x","é"])
+    func formattingOrContentMismatchNeverBecomesSuccess(_ observed:String) async {
+        let target = GTarget(text:"",selection:.init(location:0,length:0)); target.observedOverride = observed
+        let service = TextInsertionService(clipboard:GClipboard(),clock:GClock())
+        let receipt = await service.insert("X",target:target,session:"s")
+        #expect(receipt.status != .insertedVerified && target.replacements == 1)
+        #expect(service.verificationDiagnostics.contains { $0.code == .textMismatch || $0.code == .contextMismatch })
+    }
+    @Test func realAXErrorCategoriesAndAttributedValueHandling() {
+        #expect(NativeReadbackFailureClassifier.classify([-25211,-25205]) == .denied)
+        #expect(NativeReadbackFailureClassifier.classify([-25202]) == .targetChanged)
+        #expect(NativeReadbackFailureClassifier.classify([-25204]) == .temporarilyUnavailable)
+        #expect(NativeReadbackFailureClassifier.classify([-25212]) == .temporarilyUnavailable)
+        #expect(NativeReadbackFailureClassifier.classify([-25205]) == .unsupported)
+        #expect(NativeReadbackFailureClassifier.classify([-25213]) == .rangeUnavailable)
+        #expect(NativeReadbackFailureClassifier.classify([]) == .rangeInvalid)
+        let attributed = CFAttributedStringCreate(nil,"Hello 😀" as CFString,nil)
+        #expect(NativeFieldTextReader.plainTextValue(attributed) == "Hello 😀")
+        #expect(NativeFieldTextReader.plainTextValue("Hello" as CFString) == "Hello")
+        #expect(NativeFieldTextReader.plainTextValue(NSNumber(value:7)) == nil)
+    }
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func receiptBecomesEligibleOnlyAfterSettledReadback(_ kind:OfflinePreviewKind) async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard(), driver = InPlaceFixtureRewriter()
+        await driver.configure(blocked:true)
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
+        c.preferences.inPlaceAIRewrite = true; c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true
+        c.pillClicked(); await clock.waitForSleep(61000)
+        let target = try #require(capture.target); target.deferDirectReadback = true
+        input.receive?(.transcript("Synthetic request")); c.stop(); input.receive?(.finished)
+        await clock.waitForSleep(1050)
+        #expect(!c.eligibleReceiptPresent && target.rewriteFixture == nil)
+        target.value = "aSynthetic requestbc"; await clock.advance(1050)
+        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        #expect(c.eligibleReceiptPresent && c.latest?.insertion.status == .insertedVerified)
+        #expect(c.verificationDiagnosticSummary.contains("INSERTION_VERIFIED") && c.verificationDiagnosticSummary.contains("INSERTION_RECEIPT_CREATED"))
+        c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(await driver.requests.last?.text == "Synthetic request")
+        #expect(c.eligibleReceiptPresent && !c.previewPresented && clipboard.text == "original")
+        #expect(!c.verificationDiagnosticSummary.contains("Synthetic request"))
+        c.close()
+    }
+}
+
+extension InsertionReadbackRepairTests {
+    @Test(arguments:[true,false])
+    func unconfirmedAXWriteNeedsActualReadbackNotAcknowledgement(_ readable:Bool) async {
+        let target = GTarget(), clipboard = GClipboard(), clock = GClock(), service = TextInsertionService(clipboard:clipboard,clock:clock)
+        target.unconfirmedDirectWrite = true; target.deferDirectReadback = !readable
+        let task = Task { await service.insert("X",target:target,session:"s") }
+        if !readable { await clock.waitForSleep(1050); await clock.advance(2500) }
+        let receipt = await task.value
+        #expect(receipt.status == (readable ? .insertedVerified : .dispatchedUnverified))
+        #expect(target.replacements == 1 && target.pastes == 0 && target.unicodePosts == 0 && clipboard.installed == 0)
+        #expect(service.verificationDiagnostics.contains { $0.code == .directDispatched && $0.status == .pending })
+        #expect(service.verificationDiagnostics.contains { $0.code == (readable ? .verified : .readbackTimeout) })
+    }
+}
+
+
+@Suite("36F cross-app capability isolation",.serialized,.timeLimit(.minutes(1))) @MainActor struct CrossAppReliabilityTests {
+    @Test(arguments:[0,1,2])
+    func containerFocusUsesOnlyOwnedEditorFallbacks(_ system:Int) throws {
+        var visited:[String] = []
+        let element = try NativeFocusedElementResolver.resolve(processID:42,application:{ visited.append("application"); return 1 },system:{ visited.append("system"); return system == 0 ? nil : (system == 1 ? 2 : 3) },window:{ visited.append("window"); return 3 },owner:{ _ in 42 },isEditor:{ $0 == 3 })
+        #expect(element == 3 && visited.first == "application")
+        #expect(visited.contains("window") == (system != 2))
+    }
+    @Test func foreignOrSecureContainerNeverFallsBackToAnotherTarget() {
+        #expect(throws:TextTargetError.changed) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{ Issue.record("Foreign owner must stop resolution"); return 2 },owner:{ _ in 99 },isEditor:{ _ in false })
+        }
+        #expect(throws:TextTargetError.secure) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{ Issue.record("Secure target must stop resolution"); return 2 },owner:{ _ in 42 },isEditor:{ _ in throw TextTargetError.secure })
+        }
+        #expect(throws:TextTargetError.unsupported) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{ 2 },window:{ 3 },owner:{ _ in 42 },isEditor:{ _ in false })
+        }
+    }
+    @Test(arguments:[EditorReplacementCapability.available,.unavailable,.unknown],[true,false])
+    func ordinaryDeliveryDoesNotRequirePreciseReplacementSupport(_ capability:EditorReplacementCapability,_ direct:Bool) async {
+        let target = GTarget(), clipboard = GClipboard()
+        target.replacementCapability = capability
+        target.writable = direct; target.pasted = "X"
+        let service = TextInsertionService(clipboard:clipboard,clock:GClock())
+        let receipt = await service.insert("X",target:target,session:"s")
+        #expect(receipt.status == .insertedVerified && target.value == "aXbc")
+        #expect(target.pastes == (direct ? 0 : 1) && target.replacements == (direct ? 1 : 0) && target.unicodePosts == 0)
+        #expect(clipboard.text == "original" && clipboard.restores == (direct ? 0 : 1))
+        #expect(service.verificationDiagnostics.contains { $0.code == (direct ? .directDispatched : .pasteDispatched) })
+    }
+    private func finish(_ c:SystemWideDictationCoordinator) async {
+        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } }
+    }
+    @Test(arguments:[false,true])
+    func targetIsCapturedBeforeRecordingAndHUDStateThenRevalidated(_ focusChanged:Bool) async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard(), shortcut = GShortcut()
+        capture.configure = { target in target.writable = false; target.pasted = "Synthetic draft" }
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences())
+        var capturedBeforePreparing = false
+        let observation = c.$phase.sink { phase in if phase == .preparing { capturedBeforePreparing = capture.target != nil && input.starts == 0 } }
+        c.enableShortcut(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
+        let target = try #require(capture.target)
+        #expect(capturedBeforePreparing && capture.count == 1)
+        if focusChanged { target.validationError = .changed }
+        input.receive?(.transcript("Synthetic draft")); shortcut.receive?(.released); input.receive?(.finished); await finish(c)
+        #expect(target.pastes == (focusChanged ? 0 : 1) && target.replacements == 0)
+        #expect(c.deliveryStatus == (focusChanged ? .notDelivered : .verifiedInsertion))
+        #expect(clipboard.text == "original" && !c.previewPresented)
+        if focusChanged { #expect(c.crossAppFailure == .targetChanged && target.value == "abc") }
+        observation.cancel(); c.close()
+    }
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func customEditorMayReceivePasteWithoutReadbackOrReplacement(_ kind:OfflinePreviewKind) async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard(), driver = InPlaceFixtureRewriter()
+        capture.configure = { t in t.writable = false; t.pasted = "Synthetic draft"; t.readbackFailure = .unsupported; t.replacementCapability = .unavailable }
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:service,shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.inPlaceAIRewrite = true
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished); await finish(c)
+        let target = try #require(capture.target)
+        #expect(target.value == "aSynthetic draftbc" && target.pastes == 1 && target.replacements == 0)
+        #expect(c.deliveryStatus == .insertedUnverified && c.readbackStatus == .readbackUnavailable)
+        #expect(c.replacementCapabilityStatus == .replacementUnsupported && !c.eligibleReceiptPresent)
+        c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.crossAppFailure == .replacementUnsupported && c.compactAIStatus == "Editor unsupported")
+        #expect(!c.previewPresented && target.rewriteFixture == nil); #expect(await driver.calls == 0)
+        #expect(service.hasPendingClipboard && clipboard.restores == 0 && clipboard.text == "Synthetic draft")
+        let diagnostics = c.verificationDiagnosticSummary
+        #expect(diagnostics.contains("DICTATION_DELIVERY=DICTATION_INSERTED_UNVERIFIED"))
+        #expect(diagnostics.contains("REPLACEMENT_CAPABILITY=EDITOR_REPLACEMENT_UNSUPPORTED"))
+        #expect(!diagnostics.contains("Synthetic draft")); c.close()
+    }
+    @Test func verifiedPasteDoesNotGrantUnsupportedReplacementAuthority() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard()
+        capture.configure = { t in t.writable = false; t.pasted = "Synthetic draft"; t.replacementCapability = .unavailable }
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
+        c.preferences.inPlaceAIRewrite = true
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished); await finish(c)
+        #expect(c.latest?.insertion.status == .insertedVerified && c.readbackStatus == .verifiedInsertion)
+        #expect(c.provenanceReason == .replacementUnsupported && !c.eligibleReceiptPresent)
+        #expect(capture.target?.rewriteFixture == nil && clipboard.text == "original")
+        c.close()
+    }
+    @Test func missingReceiptNeverClaimsEditorUnsupported() {
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        c.preferences.inPlaceAIRewrite = true; c.preferences.offlineAIRewriting = true
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42)
+        #expect(c.crossAppFailure == .noReceipt && c.replacementCapabilityStatus == .unknown)
+        #expect(c.compactAIStatus != "Editor unsupported" && !c.previewPresented)
+        c.close()
+    }
+}
+extension InPlaceRewriteTests {
+    @Test(arguments:[true,false])
+    func generationFailureIsSeparateFromVerifiedInsertion(_ memory:Bool) async throws {
+        let driver = InPlaceFixtureRewriter(); await driver.configure(blocked:memory,invalid:!memory)
+        let (c,target,_) = try await prepare(driver)
+        let original = target.value
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.deliveryStatus == .verifiedInsertion && c.readbackStatus == .verifiedInsertion)
+        #expect(c.generationStatus == (memory ? .memoryBlocked : .generationFailed))
+        #expect(c.crossAppFailure == (memory ? .memoryBlocked : .generationFailed))
+        #expect(target.value == original && target.rewriteFixture?.replacements == 0 && !c.previewPresented)
+        c.close()
+    }
+    @Test func actualSourceMismatchHasItsOwnCategory() async throws {
+        let driver = InPlaceFixtureRewriter(), (c,target,_) = try await prepare(driver)
+        target.value = "Synthetic user edit"; target.rewriteFixture?.typedRejection = .textMismatch
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.crossAppFailure == .sourceChanged && c.compactAIStatus == "Text changed")
+        #expect(c.deliveryStatus == .verifiedInsertion && !c.previewPresented); #expect(await driver.calls == 0)
+        c.close()
+    }
+}
+
+extension CrossAppReliabilityTests {
+    @Test func failedCaptureCannotReusePreviousAppsVerificationTrace() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard()
+        capture.configure = { t in t.writable = false; t.pasted = "First synthetic" }
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:service,shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("First synthetic")); c.stop(); input.receive?(.finished); await finish(c)
+        let firstSession = try #require(c.latest?.id)
+        #expect(service.verificationSession == firstSession && c.verificationDiagnosticSummary.contains("PASTE_DISPATCHED"))
+        capture.failure = .unsupported; c.pillClicked()
+        for await phase in c.$phase.values { if phase == .recording { break } }
+        input.receive?(.transcript("Second synthetic")); c.stop(); input.receive?(.finished); await finish(c)
+        #expect(c.latest?.id != firstSession && service.verificationSession == firstSession)
+        #expect(c.deliveryStatus == .notDelivered && c.readbackStatus == .notRequested)
+        let diagnostic = c.verificationDiagnosticSummary
+        #expect(!diagnostic.contains("PASTE_DISPATCHED") && !diagnostic.contains("INSERTION_VERIFIED"))
+        #expect(!c.eligibleReceiptPresent && clipboard.text == "original")
+        c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test func disabledFeatureDoesNotReusePreviousMemoryFailureCode() async throws {
+        let driver = InPlaceFixtureRewriter(); await driver.configure(blocked:true)
+        let (c,target,_) = try await prepare(driver)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.crossAppFailure == .memoryBlocked)
+        c.preferences.offlineAIRewriting = false
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42)
+        #expect(c.generationStatus == .notRequested && c.crossAppFailure == .featureDisabled)
+        #expect(await driver.calls == 1); #expect(target.rewriteFixture?.replacements == 0 && !c.previewPresented)
+        c.close()
+    }
+    @Test func cancellationHasCurrentStageCodeAndCannotPublishLateResult() async throws {
+        let driver = InPlaceFixtureRewriter(); await driver.configure(held:true)
+        let (c,target,_) = try await prepare(driver)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await driver.waitForStart()
+        let completion = c.cancelInPlaceRewrite()
+        #expect(c.generationStatus == .generationCancelled && c.crossAppFailure == .generationCancelled)
+        await driver.release(); await completion?.value
+        #expect(c.generationStatus == .generationCancelled && target.rewriteFixture?.replacements == 0 && !c.previewPresented)
+        c.close()
+    }
+}
+
+
+@Suite("Milestone37 core delivery",.serialized,.timeLimit(.minutes(1))) @MainActor struct CoreDelivery37Tests {
+    @Test(arguments:[true,false])
+    func identityBoundPasteDoesNotRequireAnExactOriginal(_ accepts:Bool) async {
+        let target = GTarget(), clipboard = GClipboard(), clock = GClock()
+        target.hasOriginalContext = false; target.writable = true; target.acknowledgePaste = accepts; target.pasted = "Synthetic 😀 draft"
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let receipt = await service.insert("Synthetic 😀 draft",target:target,session:"s")
+        #expect(target.replacements == 0 && target.pastes == 1 && target.unicodePosts == 0)
+        #expect(target.value == (accepts ? "aSynthetic 😀 draftbc" : "abc"))
+        // Physical-looking fixture acceptance is not exact API verification.
+        #expect(receipt.status == .dispatchedUnverified && service.hasPendingClipboard)
+        #expect(clipboard.restores == 0 && clipboard.text == "Synthetic 😀 draft")
+        #expect(service.verificationDiagnostics.contains { $0.code == .readbackUnsupported })
+        let rejected = await service.insert("Another",target:target,session:"s")
+        #expect(!rejected.attempted && target.pastes == 1) // No reuse of unacknowledged payload.
+        let recovery = service.pendingClipboardRecovery
+        #expect(service.restoreAfterUserConfirmation(expectedRecoveryID:recovery?.id ?? "") == .restored)
+        #expect(clipboard.text == "original" && target.pastes == 1 && !service.hasPendingClipboard)
+    }
+    @Test func userCopySupersedesOpaquePasteWithoutRestorationOrRetry() async {
+        let target = GTarget(), clipboard = GClipboard(), service = TextInsertionService(clipboard:clipboard,clock:GClock())
+        target.hasOriginalContext = false; target.pasted = "X"
+        _ = await service.insert("X",target:target,session:"s")
+        clipboard.externalCopy("New synthetic copy")
+        #expect(service.reconcileClipboardState() == .preservedNewer)
+        #expect(!service.hasPendingClipboard && clipboard.text == "New synthetic copy" && clipboard.restores == 0 && target.pastes == 1)
+    }
+    @Test(arguments:[TextTargetError.changed,.secure,.denied])
+    func unsafeOpaqueTargetCannotReceiveAnyEvent(_ failure:TextTargetError) async {
+        let target = GTarget(), clipboard = GClipboard(), service = TextInsertionService(clipboard:clipboard,clock:GClock())
+        target.hasOriginalContext = false; target.validationError = failure
+        let receipt = await service.insert("X",target:target,session:"s")
+        #expect(!receipt.attempted && target.pastes == 0 && target.replacements == 0 && clipboard.installed == 0)
+    }
+    @Test func opaqueTargetCannotUseUnverifiableTypingWhenClipboardIsUnsupported() async {
+        let target = GTarget(), clipboard = GClipboard(); target.hasOriginalContext = false; target.unicodeSupported = true; clipboard.unsupported = true
+        let receipt = await TextInsertionService(clipboard:clipboard,clock:GClock()).insert("X",target:target,session:"s")
+        #expect(!receipt.attempted && target.pastes == 0 && target.unicodePosts == 0 && clipboard.text == "original")
+    }
+    @Test func readOnlySelectionOrSecureContextDoesNotAuthorizeOpaquePaste() {
+        #expect(!NativeEditorCapability.allowsIdentityOnlyPaste(enabled:true,editable:nil,writableText:false,console:false))
+        #expect(!NativeEditorCapability.allowsIdentityOnlyPaste(enabled:true,editable:false,writableText:true,console:false))
+        #expect(!NativeEditorCapability.allowsIdentityOnlyPaste(enabled:false,editable:true,writableText:true,console:false))
+        #expect(!NativeEditorCapability.allowsIdentityOnlyPaste(enabled:true,editable:true,writableText:true,console:true))
+        #expect(!NativeEditorCapability.allowsIdentityOnlyPaste(enabled:true,editable:true,writableText:true,console:false,secure:true))
+        #expect(NativeEditorCapability.allowsIdentityOnlyPaste(enabled:true,editable:true,writableText:false,console:false))
+    }
+    @Test func sameOwnershipRevisionCannotHideAChangedClipboardPayload() throws {
+        let board = NSPasteboard.withUniqueName(); defer { board.releaseGlobally() }
+        board.setString("Original synthetic copy",forType:.string)
+        let native = NativeDictationPasteboard(pasteboard:board), snapshot = try native.snapshot()
+        let ownership = try native.install("Synthetic payload",replacing:snapshot)
+        let count = board.changeCount
+        #expect(native.owns(ownership))
+        board.setString("New synthetic copy",forType:.string)
+        #expect(board.changeCount == count) // Real NSPasteboard, not the user's clipboard.
+        #expect(!native.owns(ownership) && native.isSuperseded(ownership))
+        #expect(native.restore(snapshot,ifOwned:ownership) == .preservedNewer)
+        #expect(board.string(forType:.string) == "New synthetic copy")
+    }
+    private func terminal(_ c:SystemWideDictationCoordinator) async {
+        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } }
+    }
+    @Test func noExactContextCreatesNoAIReceiptAndPreservesHistoryAndPipelineState() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard(), history = GHistory(), driver = InPlaceFixtureRewriter()
+        capture.configure = { t in t.hasOriginalContext = false; t.pasted = "Synthetic draft" }
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history,offlineRewriter:driver)
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.inPlaceAIRewrite = true
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished); await terminal(c)
+        #expect(c.audioCaptureResult == .success && c.transcriptionResult == .success && c.targetCaptureResult == .success)
+        #expect(c.targetValidationResult == .success && c.insertionDispatchResult == .dispatched && c.pasteboardLeaseResult == .recoveryPending)
+        #expect(c.latest?.cleaned == "Synthetic draft" && c.latest?.insertion.status == .dispatchedUnverified)
+        #expect(c.entries.count == 1 && !c.eligibleReceiptPresent)
+        for kind in OfflinePreviewKind.allCases { c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite() }
+        #expect(await driver.calls == 0); #expect(!c.previewPresented && capture.target?.rewriteFixture == nil)
+        #expect(!c.historyCopyAllowed)
+        c.restoreClipboardAfterConfirmation(expectedRecoveryID:c.clipboardRecoveryID)
+        #expect(c.pasteboardLeaseResult == .restored && c.historyCopyAllowed && clipboard.text == "original")
+        let metadata = c.verificationDiagnosticSummary
+        for code in ["CAPTURE_RESULT=SUCCESS","TRANSCRIPTION_RESULT=SUCCESS","TARGET_CAPTURE_RESULT=SUCCESS","TARGET_VALIDATION_RESULT=SUCCESS","PASTEBOARD_LEASE_RESULT=RESTORED","INSERTION_DISPATCH_RESULT=DISPATCHED_UNVERIFIED","DESTINATION_READBACK_RESULT=ACCESSIBILITY_READBACK_UNAVAILABLE"] { #expect(metadata.contains(code)) }
+        #expect(!metadata.contains("Synthetic draft")); c.close()
+    }
+    @Test func cancelledOpaqueDictationDoesNotDispatchOrLoseItsCompletedText() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard()
+        capture.configure = { $0.hasOriginalContext = false }
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
+        c.pillClicked(); await clock.waitForSleep(61000)
+        input.receive?(.transcript("Synthetic cancelled draft")); c.cancel(); await terminal(c)
+        #expect(c.audioCaptureResult == .cancelled && c.transcriptionResult == .cancelled)
+        #expect(c.latest?.cleaned == "Synthetic cancelled draft" && c.latest?.insertion.status == .cancelled)
+        #expect(capture.target?.pastes == 0 && clipboard.installed == 0 && !c.eligibleReceiptPresent)
+        c.close()
+    }
+}
+
+private actor PreDispatchClock37:TaskClock {
+    var calls = 0
+    var held:CheckedContinuation<Int64,Never>?
+    var observer:CheckedContinuation<Void,Never>?
+    func now() async -> Int64 {
+        calls += 1
+        if calls == 3 { return await withCheckedContinuation { held = $0; observer?.resume(); observer = nil } }
+        return 1000
+    }
+    func sleep(until:Int64) async throws { throw CancellationError() }
+    func waitForHeldNow() async { if held != nil { return }; await withCheckedContinuation { observer = $0 } }
+    func release() { held?.resume(returning:1000); held = nil }
+}
+extension CoreDelivery37Tests {
+    @Test func cancelWhilePreDispatchClockIsSuspendedCannotPaste() async {
+        let target = GTarget(), clipboard = GClipboard(), clock = PreDispatchClock37()
+        target.hasOriginalContext = false
+        let service = TextInsertionService(clipboard:clipboard,clock:clock)
+        let task = Task { await service.insert("X",target:target,session:"s") }
+        await clock.waitForHeldNow(); task.cancel(); await clock.release()
+        let receipt = await task.value
+        #expect(receipt.status == .cancelled && !receipt.attempted && target.pastes == 0)
+        #expect(clipboard.text == "original" && clipboard.restores == 1 && !service.hasPendingClipboard)
+    }
+    @Test func postPublicationMismatchPreservesNewDataWithoutDispatch() async throws {
+        let board = NSPasteboard.withUniqueName(); defer { board.releaseGlobally() }
+        board.setString("Original synthetic",forType:.string)
+        let native = NativeDictationPasteboard(pasteboard:board,publication:{ items in
+            let result = board.writeObjects(items)
+            board.setString("New synthetic data",forType:.string)
+            return result
+        })
+        let target = GTarget(); target.writable = false
+        let service = TextInsertionService(clipboard:native,clock:GClock())
+        let receipt = await service.insert("X",target:target,session:"s")
+        #expect(!receipt.attempted && target.pastes == 0)
+        #expect(board.string(forType:.string) == "New synthetic data" && !service.hasPendingClipboard)
+    }
+}
+
+// 37R1: explicit AX failures must not be hidden by another focus route.
+extension CoreDelivery37Tests {
+    @Test(arguments:[TextTargetError.denied,.changed])
+    func failedApplicationFocusReadDoesNotFallBack(_ error:TextTargetError) {
+        #expect(throws:error) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ () throws -> Int? in throw error },system:{ Issue.record("Explicit failure must stop resolution"); return 2 },window:{ Issue.record("No window search after explicit failure"); return 3 },owner:{ _ in 42 })
+        }
+    }
+    @Test func failedSystemFocusReadDoesNotSearchAnotherTarget() {
+        #expect(throws:TextTargetError.denied) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ nil as Int? },system:{ () throws -> Int? in throw TextTargetError.denied },window:{ Issue.record("Denied system read must stop"); return 3 },owner:{ _ in 42 })
+        }
+    }
+    @Test func ordinaryMissingFocusStillAllowsTheExistingBoundedWindowRoute() throws {
+        var visited:[String] = []
+        let result = try NativeFocusedElementResolver.resolve(processID:42,application:{ visited.append("application"); return nil as Int? },system:{ visited.append("system"); return nil as Int? },window:{ visited.append("window"); return 3 },owner:{ _ in 42 },isEditor:{ $0 == 3 })
+        #expect(result == 3 && visited == ["application","system","window"])
+    }
+}
+
+extension ContinuousHUDTests {
+    @Test @MainActor func startupAndOrdinaryErrorsHaveNoVisiblePillContent() {
+        #expect(DictationHUDContent.resolve(phase:.preparing,ai:.idle,verified:false) == .hidden)
+        #expect(DictationHUDContent.resolve(phase:.error,ai:.idle,verified:false) == .hidden)
+        #expect(DictationHUDContent.resolve(phase:.recording,ai:.idle,verified:false) == .waveform)
+    }
+    @Test @MainActor func bothPostSpeechStagesKeepTheRequestedTranscriptionLabel() {
+        for phase in [SystemWideDictationCoordinator.Phase.finalizing,.inserting] {
+            #expect(DictationHUDContent.resolve(phase:phase,ai:.idle,verified:false) == .label("Transcribing…"))
+        }
     }
 }

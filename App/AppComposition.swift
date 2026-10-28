@@ -54,7 +54,7 @@ struct AppComposition {
         }
         return SystemWideDictationCoordinator(input:AppleDictationInput(),targets:NativeInsertionTargetCapture(),
             insertion:TextInsertionService(clipboard:NativeDictationPasteboard(),clock:clock),shortcut:NativeDictationShortcut(),clock:clock,
-            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),minimumHoldMilliseconds:250)
+            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250)
     }
 
 }

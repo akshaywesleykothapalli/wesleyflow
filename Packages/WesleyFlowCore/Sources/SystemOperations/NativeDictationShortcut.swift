@@ -141,8 +141,8 @@ enum ModifierShortcutDecoder {
     init(target: any InsertionTarget) { self.target = target }
     func insert(_ text: String) throws {
         let clean = DictationText.cleaned(text)
-        guard !clean.isEmpty, clean.utf8.count <= DictationText.maximumBytes, target.canReplaceSelection(),
-              let expected = target.original.selection.replacing(in:target.original.text,with:clean) else { throw DictationShortcutFailure.insertionFailed }
+        guard !clean.isEmpty, clean.utf8.count <= DictationText.maximumBytes, let original = target.original, target.canReplaceSelection(),
+              let expected = original.selection.replacing(in:original.text,with:clean) else { throw DictationShortcutFailure.insertionFailed }
         try target.validate(); try target.replaceSelection(clean)
         guard target.observedText() == expected else { throw DictationShortcutFailure.insertionFailed }
     }

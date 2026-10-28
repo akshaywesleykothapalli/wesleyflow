@@ -73,7 +73,9 @@ final class AudioIngress: Sendable {
 }
 
 /// Native on-device engines only; no asset installation, files, model provider or tool port.
-@MainActor public final class AppleDictationInput: DictationInput {
+@MainActor public final class AppleDictationInput: DictationInput, DictationAudioMetering {
+    private var meter: AudioLevelMailbox?
+    public func audioLevel() -> DictationAudioLevel { meter?.snapshot() ?? .init() }
     private var session: UUID?
     private var receive: (@MainActor @Sendable (DictationEvent) -> Void)?
     private var engine: AVAudioEngine?
@@ -191,7 +193,8 @@ final class AudioIngress: Sendable {
         try current(id)
         let format = audio.inputNode.outputFormat(forBus: 0)
         guard let ingress else { throw DictationFailure.audioUnavailable }
-        audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format, block: NativeSpeechCallbacks.tap(ingress))
+        let meter = AudioLevelMailbox(); self.meter = meter
+        audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format, block: NativeSpeechCallbacks.tap(ingress,meter:meter))
         tapInstalled = true
         let onConfiguration: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor [weak self] in self?.fail(.audioUnavailable, id: id) }
@@ -209,6 +212,7 @@ final class AudioIngress: Sendable {
         receive?(.transcript(text))
     }
     private func stopCapture() {
+        meter = nil
         ingress?.close(); ingress = nil
         if let engine {
             engine.stop()

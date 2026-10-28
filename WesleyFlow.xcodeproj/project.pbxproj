@@ -5,6 +5,8 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "AE3500013500350035003500" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Packages/WesleyFlowCore/Tests/WorkspaceTests/FocusedTextResolverTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "BE3500013500350035003500" = { "isa" = "PBXBuildFile"; "fileRef" = "AE3500013500350035003500"; };
     "EC9505D3F9C24A1C87FCACCB" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "AppTests/GlobalDictationTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
     "2C77FDDA4D304F5680EC9EA1" = { "isa" = "PBXBuildFile"; "fileRef" = "EC9505D3F9C24A1C87FCACCB"; };
     "0322194798894536851F84B1" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/DictationPreferences.swift"; "sourceTree" = "SOURCE_ROOT"; };
@@ -131,6 +133,7 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "BE3500013500350035003500",
         "ED47F42CC96584420F538969",
         "CD0CE631E9C5325AD187F337",
         "178EE4FA3E52D432F672451C",
@@ -473,6 +476,7 @@
         "08F33CD8BC9D4D2394B39F36",
         "F5D86A826642B1704CC3BA71",
         "34B9DA293E35A7050763212D",
+        "AE3500013500350035003500",
         "E9201E34DB01CE257F1B8830",
         "19CA6BC6250D3A8FFBC14E14",
         "A97B3181A49D1868CD436BC9",

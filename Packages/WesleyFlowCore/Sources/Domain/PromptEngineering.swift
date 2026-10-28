@@ -35,6 +35,19 @@ public struct PromptEngineeringContract: Sendable {
         lines = original
         numberedMaskedText = masked.enumerated().map { "\($0.offset): \($0.element)" }.joined(separator:"\n")
     }
+    /// Revalidate the existing renderer's restored output, never accept invented section content.
+    public func validateRendered(_ output:String) throws {
+        guard output.utf8.count <= 4096 else { throw ProtectedRewriteText.Failure.invalidOutput }
+        let headings = ["## Objective","## Context","## Requirements","## Constraints","## Expected output"]
+        var section = -1, body:[String] = []
+        for line in output.components(separatedBy:"\n").filter({ !$0.isEmpty }) {
+            if let next = headings.firstIndex(of:line) {
+                guard next > section, section >= 0 || next == 0 else { throw ProtectedRewriteText.Failure.invalidOutput }
+                section = next
+            } else { guard section >= 0 else { throw ProtectedRewriteText.Failure.invalidOutput }; body.append(line) }
+        }
+        guard section >= 0, body == lines else { throw ProtectedRewriteText.Failure.invalidOutput }
+    }
     public func render(_ output:String) throws -> String {
         guard output.utf8.count <= 4096, !output.contains("\\") else { throw ProtectedRewriteText.Failure.invalidOutput }
         // Keys may not be duplicated or escaped to bypass duplicate detection.

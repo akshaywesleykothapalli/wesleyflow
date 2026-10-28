@@ -20,13 +20,13 @@ import Combine
         panel.isOpaque = false; panel.backgroundColor = .clear
         hitView = DictationPillHitView(coordinator:coordinator); panel.contentView = hitView
         if let screen = NSScreen.main { panel.setFrameOrigin(NSPoint(x:screen.visibleFrame.midX-42,y:screen.visibleFrame.minY+36)) }
-        observation = coordinator.$phase.combineLatest(coordinator.$preferences).sink { [weak self] _,_ in Task { @MainActor [weak self] in self?.refresh() } }
+        observation = Publishers.CombineLatest4(coordinator.$phase,coordinator.$preferences,coordinator.$inPlaceHUD,coordinator.$hudFeedbackVisible).sink { [weak self] _,_,_,_ in Task { @MainActor [weak self] in self?.refresh() } }
         refresh()
     }
     private func refresh() {
         guard let coordinator else { return }
         hitView.updateAccessibility()
-        if coordinator.pillVisible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+        if coordinator.pillVisible && coordinator.pillContent != .hidden { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
     }
     func close() { observation?.cancel(); panel.orderOut(nil); panel.close() }
 }
@@ -48,33 +48,55 @@ import Combine
     override func mouseDown(with event: NSEvent) { coordinator?.pillClicked(clickCount:event.clickCount) }
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu(), item = NSMenuItem(title:"Cancel dictation",action:#selector(cancelDictation),keyEquivalent:"")
-        item.target = self; item.isEnabled = coordinator?.busy == true; menu.addItem(item)
+        item.target = self; item.isEnabled = coordinator?.busy == true || coordinator?.inPlaceRunning == true; menu.addItem(item)
         NSMenu.popUpContextMenu(menu,with:event,for:self)
     }
     @objc private func cancelDictation() { coordinator?.cancel() }
     override func accessibilityPerformPress() -> Bool { coordinator?.pillClicked(); return coordinator != nil }
     func updateAccessibility() { setAccessibilityLabel("Dictation status"); setAccessibilityHelp(coordinator?.message); toolTip = "Hold the selected key to speak. Click to start/stop; right-click to cancel." }
 }
+enum DictationHUDContent: Equatable {
+    case waveform, label(String), idle, verified, hidden
+    static func resolve(phase:SystemWideDictationCoordinator.Phase,ai:SystemWideDictationCoordinator.InPlaceHUD,verified:Bool) -> Self {
+        switch ai {
+        case .polishing: return .label("Polishing…")
+        case .structuring: return .label("Structuring…")
+        case .success: return .verified
+        case .error: return .hidden
+        case .idle: break
+        }
+        switch phase {
+        case .recording: return .waveform
+        case .preparing: return .hidden
+        case .finalizing: return .label("Transcribing…")
+        case .inserting: return .label("Transcribing…")
+        case .success: return verified ? .verified : .label("Ready")
+        case .error: return .hidden
+        case .idle: return .idle
+        }
+    }
+}
+@MainActor extension SystemWideDictationCoordinator {
+    var pillContent:DictationHUDContent {
+        // Keep actionable AI status as text; ordinary errors stay in Dictation.
+        inPlaceHUD == .error ? .label(compactAIStatus) : DictationHUDContent.resolve(phase:phase,ai:inPlaceHUD,verified:latest?.insertion.status == .insertedVerified)
+    }
+}
 @MainActor private struct GlobalDictationWaveform: View {
     @ObservedObject var coordinator: SystemWideDictationCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
+        let content = coordinator.pillContent
         Group {
-            switch coordinator.phase {
+            switch content {
             case .idle: Image(systemName:"mic.fill").foregroundStyle(.secondary)
-            case .preparing,.finalizing: ProgressView().controlSize(.small)
-            case .inserting: Image(systemName:"arrow.down.to.line").foregroundStyle(.secondary)
-            case .success: Image(systemName:"checkmark").foregroundStyle(.green)
-            case .error: Image(systemName:"exclamationmark").foregroundStyle(.orange)
-            case .recording:
-                TimelineView(.animation(minimumInterval:1.0/20,paused:reduceMotion)) { timeline in
-                    HStack(spacing:3) {
-                        ForEach(0..<7) { index in
-                            let motion = reduceMotion ? 0.5 : (sin(timeline.date.timeIntervalSinceReferenceDate*6+Double(index)*0.9)+1)/2
-                            Capsule().fill(Color.teal).frame(width:3,height:CGFloat(5+motion*15))
-                        }
-                    }
-                }
+            case .verified: Image(systemName:"checkmark").foregroundStyle(.green)
+            case .hidden: EmptyView()
+            case .label(let text): Text(text).font(.system(size:10)).lineLimit(2).multilineTextAlignment(.center).padding(.horizontal,3)
+            case .waveform:
+                HStack(spacing:3) {
+                    ForEach(0..<7) { index in Capsule().fill(Color.teal).frame(width:3,height:CGFloat(5+coordinator.audioBars[index]*15)) }
+                }.animation(reduceMotion ? nil : .linear(duration:0.05),value:coordinator.audioBars)
             }
         }.frame(width:84,height:32).background(.ultraThinMaterial,in:Capsule())
     }

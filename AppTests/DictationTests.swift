@@ -503,3 +503,52 @@ extension DictationTests {
         await provider.resolve(); _ = try await second.value
     }
 }
+
+@Suite("Live audio energy visualization") struct LiveAudioEnergyTests {
+    @Test func silenceAndLevelsAreMonotonicAndBounded() {
+        var silence = DictationAudioEnvelope(), quiet = DictationAudioEnvelope(), loud = DictationAudioEnvelope()
+        for n:UInt32 in 1...30 {
+            silence.update(.init(sequence:n,rms:0)); quiet.update(.init(sequence:n,rms:0.003)); loud.update(.init(sequence:n,rms:0.2))
+        }
+        #expect(silence.bars.allSatisfy { $0 == 0 })
+        #expect(quiet.bars.last! > 0 && quiet.bars.last! < loud.bars.last!)
+        #expect(loud.bars.allSatisfy { $0 >= 0 && $0 <= 1 })
+        let high = loud.bars.last!
+        for n:UInt32 in 31...100 { loud.update(.init(sequence:n,rms:0)) }
+        #expect(high > 0.5 && loud.bars.allSatisfy { $0 == 0 })
+        loud.reset(); #expect(loud.bars.allSatisfy { $0 == 0 })
+    }
+    @Test func staleInvalidAndNoiseNeverInventSpeech() {
+        var envelope = DictationAudioEnvelope()
+        envelope.update(.init(sequence:1,rms:0.8)); #expect(envelope.bars.last! > 0.5)
+        for _ in 0..<100 { envelope.update(.init(sequence:1,rms:0.8)) }
+        #expect(envelope.bars.allSatisfy { $0 == 0 })
+        for n:UInt32 in 2...30 { envelope.update(.init(sequence:n,rms:.nan)) }
+        #expect(envelope.bars.allSatisfy { $0 == 0 })
+        for n:UInt32 in 31...60 { envelope.update(.init(sequence:n,rms:0.0001)) }
+        #expect(envelope.bars.allSatisfy { $0 == 0 })
+    }
+    @Test func realPCMFeedsOneScalarMailboxWithoutAudioRetention() throws {
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate:48000,channels:1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:1024)); buffer.frameLength = 1024
+        let samples = try #require(buffer.floatChannelData)
+        let meter = AudioLevelMailbox()
+        for i in 0..<1024 { samples[0][i] = 0.02 }
+        meter.append(buffer); #expect(abs(meter.snapshot().rms-0.02) < 0.0001)
+        #expect(meter.snapshot().sequence == 1)
+        for i in 0..<1024 { samples[0][i] = 0 }
+        meter.append(buffer); #expect(meter.snapshot().rms == 0 && meter.snapshot().sequence == 2)
+        #expect(AudioLevelMailbox().snapshot().rms == 0)
+    }
+}
+
+extension LiveAudioEnergyTests {
+    @Test func interleavedStereoUsesTheActualChannelStride() throws {
+        let format = try #require(AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:2,interleaved:true))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:128)); buffer.frameLength = 128
+        let samples = try #require(buffer.floatChannelData)
+        for i in 0..<128 { samples[0][2*i] = 0.25; samples[0][2*i+1] = -0.25 }
+        let meter = AudioLevelMailbox(); meter.append(buffer)
+        #expect(abs(meter.snapshot().rms-0.25) < 0.0001)
+    }
+}
