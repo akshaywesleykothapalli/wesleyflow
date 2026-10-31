@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private weak var global: SystemWideDictationCoordinator?
     func connect(_ model: DictationModel) { dictation = model }
     func connectGlobal(_ coordinator: SystemWideDictationCoordinator) { global = coordinator; if pill == nil { pill = ClickableDictationPill(coordinator:coordinator) }; if aiPreview == nil { aiPreview = ShortcutPreviewPanel(coordinator:coordinator) } }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { if let global, global.preferences.holdFnEnabled || global.preferences.idlePillEnabled || global.preferences.previewShortcutsEnabled || global.busy { return false }; return !(dictation?.shortcutEnabled ?? false) }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { if let global, global.keepsAppRunningAfterWindowClose { return false }; return !(dictation?.shortcutEnabled ?? false) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { (global?.canTerminateSafely() ?? true) ? .terminateNow : .terminateCancel }
     func applicationWillTerminate(_ notification: Notification) { dictation?.disableShortcut(); dictation?.close(); global?.close(); pill?.close(); aiPreview?.close() }
 }
@@ -39,6 +39,10 @@ struct WesleyFlowApp: App {
         MenuBarExtra {
             Text(global.message)
             Text(global.previewNotice)
+            Text(global.agentShortcutStatus)
+            Button(global.agentShortcutEnabled ? "Disable Agent shortcut" : "Enable Agent shortcut…") {
+                if global.agentShortcutEnabled { global.disableAgentShortcut() } else { global.enableAgentShortcut() }
+            }.disabled(global.busy)
             if global.isPreviewingRewrite || global.inPlaceRunning { Button("Cancel AI") { global.cancelRewritePreview(); global.cancelInPlaceRewrite() } }
             Button("Open Wesley Flow") { openWindow(id:"foundation"); NSApplication.shared.activate() }
             if global.busy { Button("Cancel dictation") { global.cancel() } }

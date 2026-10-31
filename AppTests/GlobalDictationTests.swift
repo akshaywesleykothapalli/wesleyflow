@@ -1,9 +1,12 @@
 import AppKit
+import ApplicationServices
 import Combine
 import SwiftUI
 import Foundation
 import Domain
+import VoiceInput
 import Testing
+@testable import ModelProviders
 @testable import WesleyFlow
 @testable import SystemOperations
 @testable import Persistence
@@ -116,14 +119,20 @@ private actor GClock: TaskClock {
     var target: GTarget?
     func capture(session: String) throws -> any InsertionTarget { count += 1; if let failure { throw failure }; let t = GTarget(session:session); configure?(t); target = t; return t }
 }
-@MainActor private final class GInput: DictationInput {
+@MainActor private final class GInput: DictationInput, DictationCaptureReporting, DictationRecoveryProviding {
+    var unmergedRecognitionText: String?
+    var injectedSpeechDiagnostics: DictationSpeechDiagnostics?
+    var speechDiagnostics: DictationSpeechDiagnostics? { injectedSpeechDiagnostics }
+    var captureDiagnosticSummary: String { injectedSpeechDiagnostics?.summary ?? "fixtureTelemetry=unavailable" }
     var starts = 0, stops = 0, cancels = 0
     var hold = false
+    var startFailure: DictationFailure?
     var receive: (@MainActor @Sendable (DictationEvent) -> Void)?
     var waiter: CheckedContinuation<DictationInfo,any Error>?
     var entered: CheckedContinuation<Void,Never>?
     func start(localeIdentifier: String, receive: @escaping @MainActor @Sendable (DictationEvent) -> Void) async throws -> DictationInfo {
         starts += 1; self.receive = receive; entered?.resume(); entered = nil
+        if let startFailure { throw startFailure }
         if hold { return try await withCheckedThrowingContinuation { waiter = $0 } }
         return .init(engine:"Fixture Apple Speech",localeIdentifier:localeIdentifier)
     }
@@ -133,6 +142,7 @@ private actor GClock: TaskClock {
     func resolve() { waiter?.resume(returning:.init(engine:"Fixture",localeIdentifier:"en-IN")); waiter = nil }
 }
 @MainActor private final class GShortcut: DictationShortcutMonitoring {
+    var activationContext:DictationActivationContext?
     var receive: (@MainActor @Sendable (DictationShortcutEvent) -> Void)?
     var authorizationReady = true
     var enables = 0, disables = 0
@@ -185,7 +195,7 @@ private actor GHistory: DictationHistoryStore {
         #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ _ in visits += 1; return false },children:{ _,_ in Array(0..<1000) }) == nil)
         #expect(visits <= 64)
         #expect(FocusedDescendantSearch.find(root:0,maximumDepth:0,focusedEditor:{ $0 == 1 },children:{ _,_ in [1] }) == nil)
-        #expect(FocusedDescendantSearch.find(root:0,limit:65,focusedEditor:{ _ in true },children:{ _,_ in [] }) == nil)
+        #expect(FocusedDescendantSearch.find(root:0,limit:257,focusedEditor:{ _ in true },children:{ _,_ in [] }) == nil)
     }
     @Test func invalidUnicodeCaretIsRejectedWithoutEffects() async {
         let target = GTarget(text:"😀x",selection:.init(location:1,length:0))
@@ -638,9 +648,7 @@ private actor GHistory: DictationHistoryStore {
         SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history)
     }
     private func waitForTerminal(_ coordinator: SystemWideDictationCoordinator) async {
-        for await phase in coordinator.$phase.values {
-            if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return }
-        }
+        await coordinator.waitForInsertionCompletion()
     }
     @Test func pendingClipboardStopsRecordingBeforeAnyCaptureAndPreservesDiagnosis() async throws {
         let target = GTarget(), clipboard = GClipboard(), clock = GClock()
@@ -651,7 +659,7 @@ private actor GHistory: DictationHistoryStore {
         let input = GInput(), capture = GCapture(), shortcut = GShortcut(), history = GHistory()
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:service,shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history)
         coordinator.enableShortcut(); shortcut.receive?(.pressed); shortcut.receive?(.released)
-        #expect(coordinator.phase == .error); #expect(!coordinator.busy); #expect(!coordinator.pillVisible)
+        #expect(coordinator.phase == .error); #expect(!coordinator.busy); #expect(coordinator.pillVisible); #expect(coordinator.pillContent == .label("Review clipboard"))
         #expect(coordinator.clipboardPending); #expect(input.starts == 0); #expect(capture.count == 0)
         #expect(coordinator.message.contains("pre-paste text")); #expect(coordinator.message.contains("Recording was not started"))
         #expect(try await history.load().isEmpty); #expect(clipboard.restores == 0)
@@ -669,7 +677,7 @@ private actor GHistory: DictationHistoryStore {
         #expect(input.starts == 0); #expect(capture.target?.replacements == 0)
         await clock.advance(2000)
         shortcut.receive?(.pressed); shortcut.receive?(.pressed); await clock.waitForSleep(2250)
-        await clock.advance(2250); await clock.waitForSleep(62250)
+        await clock.advance(2250); await coordinator.waitUntilRecording()
         #expect(input.starts == 1); #expect(capture.count == 2)
         input.receive?(.transcript("hello")); shortcut.receive?(.released); input.receive?(.finished); await waitForTerminal(coordinator)
         #expect(capture.target?.replacements == 1); coordinator.close()
@@ -679,7 +687,7 @@ private actor GHistory: DictationHistoryStore {
         let coordinator = world(input:input,capture:capture,clock:clock)
         #expect(!coordinator.pillVisible); coordinator.preferences.idlePillEnabled = true
         #expect(coordinator.pillVisible); coordinator.pillClicked(); #expect(capture.count == 1)
-        await clock.waitForSleep(61000); coordinator.pillClicked(); input.receive?(.transcript("hello")); input.receive?(.finished)
+        await coordinator.waitUntilRecording(); coordinator.pillClicked(); input.receive?(.transcript("hello")); input.receive?(.finished)
         await waitForTerminal(coordinator); #expect(capture.target?.value == "ahellobc")
         #expect(coordinator.pillVisible); coordinator.close(); #expect(!coordinator.pillVisible)
     }
@@ -687,7 +695,7 @@ private actor GHistory: DictationHistoryStore {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory()
         let coordinator = world(input:input,capture:capture,clock:clock,history:history)
         coordinator.preferences.formatting.spokenPunctuation = true; coordinator.preferences.formatting.sentenceCapitalization = true
-        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        coordinator.pillClicked(); await coordinator.waitUntilRecording()
         input.receive?(.transcript("volatile")); input.receive?(.transcript("hello comma world"))
         #expect(capture.target?.replacements == 0); coordinator.stop(); input.receive?(.finished)
         await waitForTerminal(coordinator)
@@ -711,7 +719,7 @@ private actor GHistory: DictationHistoryStore {
         var old: (@MainActor @Sendable (DictationEvent) -> Void)?
         for index in 0..<3 {
             coordinator.pillClicked()
-            for await phase in coordinator.$phase.values { if phase == .recording { break } }
+            await coordinator.waitUntilRecording()
             let target = capture.target
             input.receive?(.transcript("fresh \(index)")); old?(.transcript("STALE")); old?(.finished)
             #expect(coordinator.raw == "fresh \(index)"); #expect(target?.replacements == 0)
@@ -725,7 +733,7 @@ private actor GHistory: DictationHistoryStore {
     @Test func focusLossAfterTranscriptionNeverRedirectsToTheNextField() async {
         let input = GInput(), capture = GCapture(), clock = GClock()
         let coordinator = world(input:input,capture:capture,clock:clock)
-        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        coordinator.pillClicked(); await coordinator.waitUntilRecording()
         input.receive?(.transcript("synthetic draft")); capture.target?.validationError = .changed
         coordinator.stop(); input.receive?(.finished); await waitForTerminal(coordinator)
         #expect(coordinator.latest?.insertion.status == .targetChanged)
@@ -742,7 +750,7 @@ private actor GHistory: DictationHistoryStore {
         coordinator.enableShortcut(); shortcut.receive?(.pressed); shortcut.receive?(.released)
         #expect(input.starts == 0); #expect(coordinator.clipboardPending)
         clipboard.externalCopy("newer clipboard")
-        shortcut.receive?(.pressed); await clock.waitForSleep(62500)
+        shortcut.receive?(.pressed); await coordinator.waitUntilRecording()
         input.receive?(.transcript("fresh")); shortcut.receive?(.released); input.receive?(.finished)
         await waitForTerminal(coordinator)
         #expect(coordinator.latest?.raw == "fresh"); #expect(coordinator.latest?.insertion.status == .insertedVerified)
@@ -763,52 +771,60 @@ private actor GHistory: DictationHistoryStore {
         #expect(requests == [.whatsapp]); #expect(coordinator.phase == .error)
         #expect(coordinator.commandStatus.contains("Could not open")); coordinator.close()
     }
-    @Test func commandsRequireOneShotArmingAndNeverInsertCommandText() async throws {
-        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), history = GHistory()
+    @Test func separateAgentGestureNeverInsertsCommandText() async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), agent = GShortcut(), history = GHistory()
         var requests: [AppOpeningCommand] = []
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history,appOpener:{ requests.append($0) })
-        coordinator.enableShortcut(); coordinator.armCommand()
-        shortcut.receive?(.pressed); await clock.waitForSleep(61000)
-        #expect(!coordinator.commandArmed); #expect(capture.count == 0); #expect(coordinator.message.contains("app-opening command"))
-        input.receive?(.transcript("open WhatsApp")); shortcut.receive?(.released); input.receive?(.finished)
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },clock:clock,preferenceStore:preferences(),history:history,appOpener:{ requests.append($0) })
+        coordinator.personalAgentQueueURL = FileManager.default.temporaryDirectory.appendingPathComponent("wesley39-voice-" + UUID().uuidString).appendingPathComponent("queue.json")
+        defer { if let url = coordinator.personalAgentQueueURL { try? FileManager.default.removeItem(at:url.deletingLastPathComponent()) } }
+        coordinator.enableShortcut(); coordinator.enableAgentShortcut()
+        agent.receive?(.pressed); await coordinator.waitUntilRecording()
+        #expect(!coordinator.commandArmed); #expect(capture.count == 0); #expect(coordinator.message.contains("Agent listening"))
+        input.receive?(.transcript("open WhatsApp")); agent.receive?(.released); input.receive?(.finished)
         await waitForTerminal(coordinator)
-        #expect(requests == [.whatsapp]); #expect(coordinator.phase == .success); #expect(try await history.load().isEmpty)
+        #expect(requests.isEmpty); #expect(coordinator.agentPlan?.steps.first?.tool == .openApp); #expect(coordinator.phase == .success); #expect(try await history.load().isEmpty)
         #expect(!coordinator.commandArmed); coordinator.close()
     }
     @Test func unarmedCommandWordsRemainDictation() async {
-        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), history = GHistory()
+        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), agent = GShortcut(), history = GHistory()
         var requests: [AppOpeningCommand] = []
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history,appOpener:{ requests.append($0) })
-        coordinator.enableShortcut(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },clock:clock,preferenceStore:preferences(),history:history,appOpener:{ requests.append($0) })
+        coordinator.enableShortcut(); shortcut.receive?(.pressed); await coordinator.waitUntilRecording()
         input.receive?(.transcript("open browser")); shortcut.receive?(.released); input.receive?(.finished)
         await waitForTerminal(coordinator)
         #expect(requests.isEmpty); #expect(capture.count == 1)
         #expect(capture.target?.value == "aopen browserbc"); coordinator.close()
     }
     @Test func closingBeforeQueuedVoiceDispatchPreventsOpening() async {
-        let input = GInput(), clock = GClock(), shortcut = GShortcut()
+        let input = GInput(), clock = GClock(), shortcut = GShortcut(), agent = GShortcut()
         var requests: [AppOpeningCommand] = []
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),appOpener:{ requests.append($0) })
-        coordinator.enableShortcut(); coordinator.armCommand(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
-        input.receive?(.transcript("open settings")); shortcut.receive?(.released); input.receive?(.finished); coordinator.close()
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },clock:clock,preferenceStore:preferences(),appOpener:{ requests.append($0) })
+        coordinator.personalAgentQueueURL = FileManager.default.temporaryDirectory.appendingPathComponent("wesley39-voice-" + UUID().uuidString).appendingPathComponent("queue.json")
+        defer { if let url = coordinator.personalAgentQueueURL { try? FileManager.default.removeItem(at:url.deletingLastPathComponent()) } }
+        coordinator.enableShortcut(); coordinator.enableAgentShortcut(); agent.receive?(.pressed); await coordinator.waitUntilRecording()
+        input.receive?(.transcript("open settings")); agent.receive?(.released); input.receive?(.finished); coordinator.close()
         // Join the cancelled dispatch task explicitly; no sleeps or scheduler guesses.
         await coordinator.waitForCommandDispatch()
         #expect(requests.isEmpty)
     }
     @Test(arguments:[false,true])
     func unknownOrCancelledVoiceCommandsHaveNoEffects(_ cancelled: Bool) async {
-        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut()
+        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), agent = GShortcut()
         var requests: [AppOpeningCommand] = []
-        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),appOpener:{ requests.append($0) })
-        coordinator.enableShortcut(); coordinator.armCommand(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },clock:clock,preferenceStore:preferences(),appOpener:{ requests.append($0) })
+        coordinator.personalAgentQueueURL = FileManager.default.temporaryDirectory.appendingPathComponent("wesley39-voice-" + UUID().uuidString).appendingPathComponent("queue.json")
+        defer { if let url = coordinator.personalAgentQueueURL { try? FileManager.default.removeItem(at:url.deletingLastPathComponent()) } }
+        coordinator.enableShortcut(); coordinator.enableAgentShortcut(); agent.receive?(.pressed); await coordinator.waitUntilRecording()
         input.receive?(.transcript(cancelled ? "open settings" : "open settings and delete everything"))
-        if cancelled { coordinator.cancel() } else { shortcut.receive?(.released); input.receive?(.finished) }
+        if cancelled { coordinator.cancel() } else { agent.receive?(.released); input.receive?(.finished) }
         await coordinator.waitForCommandDispatch()
         #expect(requests.isEmpty); #expect(capture.count == 0); #expect(!coordinator.commandArmed); coordinator.close()
     }
-    @Test func disablingShortcutDisarmsVoiceCommands() {
-        let coordinator = world(); coordinator.armCommand(); #expect(coordinator.commandArmed)
-        coordinator.disableShortcut(); #expect(!coordinator.commandArmed); coordinator.close()
+    @Test func disablingAgentDoesNotDisableDictation() {
+        let input = GInput(), dictation = GShortcut(), agent = GShortcut()
+        let coordinator = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:dictation,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },preferenceStore:preferences())
+        coordinator.enableShortcut(); coordinator.enableAgentShortcut(); coordinator.disableAgentShortcut()
+        #expect(coordinator.shortcutEnabled); #expect(!coordinator.agentShortcutEnabled); coordinator.close()
     }
     @Test func holdFnCapturesOnceStopsOnReleaseAndHidesPillAtTerminal() async throws {
         let hudClock = GClock()
@@ -818,7 +834,7 @@ private actor GHistory: DictationHistoryStore {
         let pill = ClickableDictationPill(coordinator:coordinator); #expect(!pill.panel.isVisible)
         coordinator.resumeShortcutIfAuthorized(); #expect(shortcut.enables == 1); #expect(input.starts == 0)
         shortcut.receive?(.pressed); #expect(capture.count == 1); #expect(coordinator.pillVisible)
-        shortcut.receive?(.pressed); await clock.waitForSleep(61000); #expect(input.starts == 1)
+        shortcut.receive?(.pressed); await coordinator.waitUntilRecording(); #expect(input.starts == 1)
         input.receive?(.transcript("Fn words")); shortcut.receive?(.released); shortcut.receive?(.released)
         #expect(input.stops == 1); #expect(coordinator.phase == .finalizing); #expect(coordinator.pillVisible)
         input.receive?(.finished); await waitForTerminal(coordinator)
@@ -865,7 +881,7 @@ private actor GHistory: DictationHistoryStore {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), shortcut = GShortcut()
         capture.failure = .unsupported; capture.failureExplanation = "The field does not expose a readable caret or selection. Copy from History."
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,hudClock:hudClock,preferenceStore:preferences(),history:history)
-        coordinator.resumeShortcutIfAuthorized(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
+        coordinator.resumeShortcutIfAuthorized(); shortcut.receive?(.pressed); await coordinator.waitUntilRecording()
         input.receive?(.transcript("retained words")); shortcut.receive?(.released); input.receive?(.finished); await waitForTerminal(coordinator)
         #expect(coordinator.phase == .error); #expect(coordinator.pillVisible); #expect(coordinator.message == capture.failureExplanation)
         await hudClock.waitForSleep(2200); await hudClock.advance(2200); await coordinator.waitForHUDFeedback()
@@ -877,7 +893,7 @@ private actor GHistory: DictationHistoryStore {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), shortcut = GShortcut()
         capture.failure = .unsupported; capture.failureExplanation = "Target diagnostic"
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,hudClock:hudClock,preferenceStore:preferences(),history:history)
-        coordinator.resumeShortcutIfAuthorized(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
+        coordinator.resumeShortcutIfAuthorized(); shortcut.receive?(.pressed); await coordinator.waitUntilRecording()
         input.receive?(.transcript("partial")); input.receive?(.failed(.recognitionFailed)); await waitForTerminal(coordinator)
         #expect(coordinator.latest?.insertion.reason == .speechFailed); #expect(coordinator.message.contains("Speech")); #expect(coordinator.pillVisible)
         await hudClock.waitForSleep(2200); await hudClock.advance(2200); await coordinator.waitForHUDFeedback()
@@ -885,20 +901,20 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func nonFnManualCaptureNeverShowsPill() async {
         let input = GInput(), clock = GClock(), coordinator = world(input:input,clock:clock)
-        coordinator.startManual(); await clock.waitForSleep(61000); #expect(!coordinator.pillVisible)
+        coordinator.startManual(); await coordinator.waitUntilRecording(); #expect(!coordinator.pillVisible)
         coordinator.cancel(); #expect(!coordinator.pillVisible); coordinator.close()
     }
     @Test func pillCapturesTargetBeforeSpeechAndDoubleClicksCannotStartAnotherSession() async {
         let input = GInput(), capture = GCapture(), clock = GClock(), coordinator = world(input:input,capture:capture,clock:clock)
         coordinator.pillClicked(); #expect(capture.count == 1)
         coordinator.pillClicked(clickCount:2); #expect(capture.count == 1)
-        await clock.waitForSleep(61000); #expect(input.starts == 1)
+        await coordinator.waitUntilRecording(); #expect(input.starts == 1)
         coordinator.pillClicked(); #expect(input.stops == 1); coordinator.pillClicked(); #expect(input.starts == 1)
         coordinator.cancel()
     }
     @Test func finalTextIsCleanedInsertedOnceAndSavedWithVerifiedOutcome() async {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), coordinator = world(input:input,capture:capture,clock:clock,history:history)
-        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        coordinator.pillClicked(); await coordinator.waitUntilRecording()
         input.receive?(.transcript("one")); input.receive?(.transcript("one   two"))
         coordinator.stop(); input.receive?(.finished); input.receive?(.finished)
         await history.waitForEntry()
@@ -911,7 +927,7 @@ private actor GHistory: DictationHistoryStore {
     func deniedAndUnsupportedTargetsStillAllowManualDictation(_ failure: TextTargetError) async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(); capture.failure = failure
         let coordinator = world(input:input,capture:capture,clock:clock,history:history)
-        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        coordinator.pillClicked(); await coordinator.waitUntilRecording()
         input.receive?(.transcript("copy me")); coordinator.stop(); input.receive?(.finished); await history.waitForEntry()
         #expect(input.starts == 1); #expect(try await history.load().first?.insertion.outcome != .inserted); #expect(coordinator.latest?.cleaned == "copy me")
         coordinator.close()
@@ -923,7 +939,7 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func targetChangedDuringRecordingIsNotReplaced() async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), coordinator = world(input:input,capture:capture,clock:clock,history:history)
-        coordinator.pillClicked(); await clock.waitForSleep(61000); capture.target?.validationError = .changed
+        coordinator.pillClicked(); await coordinator.waitUntilRecording(); capture.target?.validationError = .changed
         input.receive?(.transcript("safe")); coordinator.stop(); input.receive?(.finished); await history.waitForEntry()
         #expect(try await history.load().first?.insertion.outcome == .targetChanged); #expect(capture.target?.replacements == 0); coordinator.close()
     }
@@ -935,14 +951,14 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func finalizationTimeoutDoesNotInsertPartialText() async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), coordinator = world(input:input,capture:capture,clock:clock,history:history)
-        coordinator.pillClicked(); await clock.waitForSleep(61000); input.receive?(.transcript("partial")); coordinator.stop()
+        coordinator.pillClicked(); await coordinator.waitUntilRecording(); input.receive?(.transcript("partial")); coordinator.stop()
         await clock.waitForSleep(9000); await clock.advance(9000); await history.waitForEntry()
         #expect(try await history.load().first?.insertion.outcome == .timedOut); #expect(capture.target?.replacements == 0); coordinator.close()
     }
     @Test func historyOptOutAndSpacingControlAreConnected() async throws {
         let input = GInput(), clock = GClock(), history = GHistory(), coordinator = world(input:input,clock:clock,history:history)
         coordinator.preferences.keepHistory = false; coordinator.preferences.spacingCleanup = false
-        coordinator.startManual(); await clock.waitForSleep(61000); input.receive?(.transcript("x   y")); coordinator.stop(); input.receive?(.finished)
+        coordinator.startManual(); await coordinator.waitUntilRecording(); input.receive?(.transcript("x   y")); coordinator.stop(); input.receive?(.finished)
         // The manual path finishes without a persistence await; wait for its owned work through the clock actor.
         await coordinator.loadHistory()
         #expect(try await history.load().isEmpty); #expect(coordinator.cleaned == "x   y"); coordinator.close()
@@ -950,7 +966,7 @@ private actor GHistory: DictationHistoryStore {
     @Test(arguments:[false,true])
     func cancellationDuringRecordingAndFinalizationNeverInserts(_ finalizing: Bool) async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), coordinator = world(input:input,capture:capture,clock:clock,history:history)
-        coordinator.pillClicked(); await clock.waitForSleep(61000); input.receive?(.transcript("cancelled draft"))
+        coordinator.pillClicked(); await coordinator.waitUntilRecording(); input.receive?(.transcript("cancelled draft"))
         if finalizing { coordinator.stop() }
         coordinator.cancel(); input.receive?(.transcript("late")); input.receive?(.finished); await history.waitForEntry()
         let row = try await history.load().first
@@ -959,7 +975,7 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func cancellationDuringInsertionRetainsActualUncertainOutcome() async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), coordinator = world(input:input,capture:capture,clock:clock,history:history)
-        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        coordinator.pillClicked(); await coordinator.waitUntilRecording()
         capture.target?.writable = false; capture.target?.acknowledgePaste = false
         input.receive?(.transcript("X")); coordinator.stop(); input.receive?(.finished)
         await clock.waitForSleep(1050); coordinator.cancel(); await history.waitForEntry()
@@ -1161,15 +1177,15 @@ struct GlobalHistoryTests {
         var options = result; options.activationKey = .rightOption; options.formatting.vocabulary = ["myTerm"]
         #expect(try JSONDecoder().decode(DictationPreferences.self,from:JSONEncoder().encode(options)) == options)
     }
-    @Test(arguments:[DictationActivationKey.fn,.rightOption,.rightCommand])
+    @Test(arguments:[DictationActivationKey.fn,.rightOption,.rightCommand,.rightControl])
     func physicalModifierDownUpAndChords(_ key: DictationActivationKey) {
         let code = Int64(ModifierShortcutDecoder.code(key))
-        let flags: CGEventFlags = key == .fn ? .maskSecondaryFn : key == .rightOption ? .maskAlternate : .maskCommand
-        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:flags,selectedDown:true).signal == .pressed)
-        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:[],selectedDown:false).signal == .released)
-        if key != .fn { #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:flags,selectedDown:false).signal == .released) }
-        #expect(ModifierShortcutDecoder.decode(key:key,type:.keyDown,code:53,flags:flags,selectedDown:true).signal == .cancelled)
-        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:flags.union(.maskShift),selectedDown:true).signal == .cancelled)
+        let flags: CGEventFlags = key == .fn ? .maskSecondaryFn : key == .rightOption ? .maskAlternate : key == .rightControl ? .maskControl : .maskCommand
+        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:flags).signal == .pressed)
+        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:[]).signal == .released)
+        if key != .fn { #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:flags).signal == .pressed) }
+        #expect(ModifierShortcutDecoder.decode(key:key,type:.keyDown,code:53,flags:flags).signal == .cancelled)
+        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:code,flags:flags.union(.maskShift)).signal == .cancelled)
     }
 }
 
@@ -1473,7 +1489,7 @@ private actor GOfflineRewrite: OfflineTranscriptRewriting {
 }
 @Suite("Offline rewrite app preview",.serialized,.timeLimit(.minutes(1))) @MainActor struct OfflineRewriteAppTests {
     private func terminal(_ coordinator:SystemWideDictationCoordinator) async {
-        for await phase in coordinator.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } }
+        await coordinator.waitForInsertionCompletion()
     }
     @Test func preferenceDefaultMigrationAndPersistence() throws {
         let store = preferences(); #expect(!store.load().offlineAIRewriting)
@@ -1486,7 +1502,7 @@ private actor GOfflineRewrite: OfflineTranscriptRewriting {
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history,offlineRewriter:driver)
         #expect(!coordinator.preferences.offlineAIRewriting); #expect(coordinator.startRewritePreview() == nil)
         coordinator.preferences.offlineAIRewriting = true; #expect(coordinator.startRewritePreview() == nil)
-        coordinator.pillClicked(); await clock.waitForSleep(61000); input.receive?(.transcript("partial"))
+        coordinator.pillClicked(); await coordinator.waitUntilRecording(); input.receive?(.transcript("partial"))
         #expect(coordinator.startRewritePreview() == nil); #expect(await driver.calls == 0)
         input.receive?(.transcript("check the button")); coordinator.stop(); input.receive?(.finished); await terminal(coordinator)
         let id = try #require(coordinator.latest?.id), target = try #require(capture.target)
@@ -1501,7 +1517,7 @@ private actor GOfflineRewrite: OfflineTranscriptRewriting {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory()
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history,offlineRewriter:driver)
         coordinator.preferences.offlineAIRewriting = true
-        coordinator.startManual(); await clock.waitForSleep(61000); input.receive?(.transcript("check the button")); coordinator.stop(); input.receive?(.finished); await terminal(coordinator)
+        coordinator.startManual(); await coordinator.waitUntilRecording(); input.receive?(.transcript("check the button")); coordinator.stop(); input.receive?(.finished); await terminal(coordinator)
         let task = try #require(coordinator.startRewritePreview()); await driver.waitForStart(); #expect(coordinator.startRewritePreview() == nil)
         coordinator.startManual(); #expect(coordinator.rewritePreview == nil); await driver.release(); await task.value
         #expect(coordinator.rewritePreview == nil); #expect(capture.count == 0); coordinator.close()
@@ -1509,7 +1525,7 @@ private actor GOfflineRewrite: OfflineTranscriptRewriting {
     @Test func disablingOptInAndDeletingEntryInvalidatesPreview() async throws {
         let driver = GOfflineRewrite(), input = GInput(), clock = GClock(), history = GHistory()
         let coordinator = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history,offlineRewriter:driver)
-        coordinator.preferences.offlineAIRewriting = true; coordinator.startManual(); await clock.waitForSleep(61000)
+        coordinator.preferences.offlineAIRewriting = true; coordinator.startManual(); await coordinator.waitUntilRecording()
         input.receive?(.transcript("check the button")); coordinator.stop(); input.receive?(.finished); await terminal(coordinator)
         let task = try #require(coordinator.startRewritePreview()); await task.value; #expect(coordinator.rewritePreview != nil)
         coordinator.preferences.offlineAIRewriting = false; #expect(coordinator.rewritePreview == nil); #expect(coordinator.startRewritePreview() == nil)
@@ -1534,7 +1550,7 @@ struct HandDrawnInsightsTests {
         #expect(s.values[1].value == 100.formatted(.number.precision(.fractionLength(0))))
         #expect(s.values[2].value == "1 day"); #expect(s.values[3].value == "1 day")
     }
-    @Test(arguments:[Int64(0),-1,120001]) func missingOrInvalidTimingMakesRateUnavailable(_ duration:Int64) {
+    @Test(arguments:[Int64(0),-1,DictationText.maximumDurationMilliseconds + 1]) func missingOrInvalidTimingMakesRateUnavailable(_ duration:Int64) {
         let s = summary([entry("a"),entry("b",duration:duration)])
         #expect(s.values[1].value == "Unavailable"); #expect(s.timingNote.contains("1 of 2"))
     }
@@ -1593,7 +1609,7 @@ struct HandDrawnInsightsTests {
         #expect(!p.formatting.smartTypography && !p.formatting.handleSelfCorrections)
     }
     @Test func everyReferenceCommandMapsToExistingParser() {
-        #expect(AppOpeningCommand.allCases.count == 6)
+        #expect(AppOpeningCommand.allCases.count == 7)
         for command in AppOpeningCommand.allCases { #expect(AppOpeningCommand.parse("Open \(command.rawValue)") == command) }
         #expect(AppOpeningCommand.parse("open arbitrary app") == nil)
         #expect(AppOpeningCommand.parse("delete history") == nil)
@@ -1692,11 +1708,11 @@ struct HandDrawnInsightsTests {
 }
 
 @Suite("Core voice failure reporting",.serialized,.timeLimit(.minutes(1))) @MainActor struct VoiceFailureReportingTests {
-    private func terminal(_ c:SystemWideDictationCoordinator) async { for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } } }
+    private func terminal(_ c:SystemWideDictationCoordinator) async { await c.waitForInsertionCompletion() }
     @Test(arguments:[false,true]) func speechFailureIsNotAnUncertainInsertion(_ oversized:Bool) async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory()
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history)
-        c.pillClicked(); await clock.waitForSleep(61000); input.receive?(.transcript("synthetic partial"))
+        c.pillClicked(); await c.waitUntilRecording(); input.receive?(.transcript("synthetic partial"))
         if oversized { input.receive?(.transcript(String(repeating:"x",count:DictationText.maximumBytes+1))) } else { input.receive?(.failed(.recognitionFailed)) }; await terminal(c)
         let entry = try #require(c.latest); #expect(entry.insertion.reason == .speechFailed); #expect(!entry.insertion.attempted)
         #expect(entry.insertion.status == .failed); #expect(entry.insertion.outcome != .uncertain)
@@ -1748,8 +1764,8 @@ struct HandDrawnInsightsTests {
     }
 }
 @Suite("Core voice repeated pipeline",.serialized,.timeLimit(.minutes(1))) @MainActor struct VoiceRepeatedPipelineTests {
-    private func recording(_ c:SystemWideDictationCoordinator) async { for await phase in c.$phase.values { if phase == .recording { return } } }
-    private func terminal(_ c:SystemWideDictationCoordinator) async { for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } } }
+    private func recording(_ c:SystemWideDictationCoordinator) async { await c.waitUntilRecording() }
+    private func terminal(_ c:SystemWideDictationCoordinator) async { await c.waitForInsertionCompletion() }
     @Test(arguments:[(3,false,false),(3,false,true),(3,true,false),(3,true,true),(10,false,false),(10,false,true),(10,true,false),(10,true,true)])
     func consecutiveSessions(_ scenario:(Int,Bool,Bool)) async throws {
         let (count,differentTargets,paste) = scenario
@@ -1801,7 +1817,7 @@ struct HandDrawnInsightsTests {
         editor.direct = false; editor.acknowledge = false
         shortcut.receive?(.pressed); await recording(c); input.receive?(.transcript("unverified synthetic")); shortcut.receive?(.released); input.receive?(.finished)
         await clock.waitForSleep(1050); await clock.advance(2500); await terminal(c)
-        #expect(c.latest?.insertion.status == .dispatchedUnverified); #expect(service.hasPendingClipboard); #expect(editor.targets[1].pastes == 1)
+        #expect(c.latest?.insertion.status == .dispatchedUnverified); #expect(service.hasPendingClipboard); #expect(editor.targets[1].pastes == 1); #expect(c.pillContent == .hidden)
         let recovery = try #require(service.pendingClipboardRecovery)
         shortcut.receive?(.pressed); shortcut.receive?(.released); #expect(input.starts == 2); #expect(editor.targets.count == 2)
         clipboard.externalCopy("new synthetic user copy"); editor.direct = true
@@ -2069,11 +2085,11 @@ private actor InPlaceFixtureRewriter: OfflineTranscriptRewriting {
         let input = GInput(), capture = GCapture(), clipboard = GClipboard()
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,hudClock:hudClock,preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar,previewPresentationRequest:{ presentation?.requests.append($0) })
         coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.inPlaceAIRewrite = true
-        coordinator.pillClicked(); await clock.waitForSleep(61000)
+        coordinator.pillClicked(); await coordinator.waitUntilRecording()
         let target = try #require(capture.target)
         if !verified { target.failWrite = true }
         input.receive?(.transcript(transcript)); coordinator.stop(); input.receive?(.finished)
-        for await phase in coordinator.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        await coordinator.waitForInsertionCompletion()
         return (coordinator,target,clipboard)
     }
     @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering]) func exactSpanRoutingLeavesSurroundingsAndHistoryUnchanged(_ kind:OfflinePreviewKind) async throws {
@@ -2121,8 +2137,8 @@ private actor InPlaceFixtureRewriter: OfflineTranscriptRewriting {
         #expect(DictationHUDContent.resolve(phase:.recording,ai:.idle,verified:false) == .waveform)
         #expect(DictationHUDContent.resolve(phase:.finalizing,ai:.idle,verified:false) == .label("Transcribing…"))
         #expect(DictationHUDContent.resolve(phase:.inserting,ai:.idle,verified:false) == .label("Transcribing…"))
-        #expect(DictationHUDContent.resolve(phase:.success,ai:.idle,verified:false) == .label("Ready"))
-        #expect(DictationHUDContent.resolve(phase:.success,ai:.idle,verified:true) == .verified)
+        #expect(DictationHUDContent.resolve(phase:.success,ai:.idle,verified:false) == .hidden)
+        #expect(DictationHUDContent.resolve(phase:.success,ai:.idle,verified:true) == .hidden)
         #expect(DictationHUDContent.resolve(phase:.idle,ai:.polishing,verified:false) == .label("Polishing…"))
         #expect(DictationHUDContent.resolve(phase:.idle,ai:.structuring,verified:false) == .label("Structuring…"))
     }
@@ -2375,10 +2391,10 @@ extension InPlaceRewriteTests {
         let input = GInput(), capture = GCapture(), clock = GClock(), driver = InPlaceFixtureRewriter()
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
         c.preferences.inPlaceAIRewrite = true; c.preferences.promptEngineeringEnabled = true
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         capture.target?.rewriteCreationFailure = .compositionUnavailable
         input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished)
-        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        await c.waitForInsertionCompletion()
         #expect(c.latest?.insertion.status == .insertedVerified)
         #expect(c.provenanceReason == .rangeUnavailable && !c.eligibleReceiptPresent)
         #expect(c.verificationDiagnosticSummary.contains("verifiedReceipt=true"))
@@ -2425,10 +2441,10 @@ extension InPlaceRewriteTests {
         let input = GInput(), capture = GCapture(), clock = GClock(), insertion = ProvenanceReceiptFixture()
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:insertion,shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
         c.preferences.inPlaceAIRewrite = true
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("Synthetic late receipt")); c.stop(); input.receive?(.finished)
         await insertion.waitForStart(); c.cancel(); insertion.release()
-        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        await c.waitForInsertionCompletion()
         #expect(c.latest?.insertion.status == .insertedVerified) // Actual delivery is retained honestly.
         #expect(!c.eligibleReceiptPresent && c.provenanceReason == .invalidated)
         #expect(capture.target?.rewriteFixture == nil && !c.previewPresented)
@@ -2439,12 +2455,12 @@ extension InPlaceRewriteTests {
         let input = GInput(), capture = GCapture(), clock = GClock()
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
         c.preferences.inPlaceAIRewrite = mode != "disabled"
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("Synthetic draft"))
         if mode == "cancelled" { c.cancel() }
         else if mode == "speechFailed" { input.receive?(.failed(.recognitionFailed)) }
         else { c.stop(); input.receive?(.finished) }
-        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        await c.waitForInsertionCompletion()
         #expect(!c.eligibleReceiptPresent)
         #expect(c.provenanceReason == (mode == "disabled" ? .disabled : .failed))
         #expect(c.latest?.insertion.status == (mode == "disabled" ? .insertedVerified : mode == "cancelled" ? .cancelled : .failed))
@@ -2476,9 +2492,9 @@ extension InPlaceRewriteTests {
         for index in 1...3 {
             c.pillClicked()
             #expect(!c.eligibleReceiptPresent && c.provenanceReason == .invalidated)
-            for await phase in c.$phase.values { if phase == .recording { break } }
+            await c.waitUntilRecording()
             input.receive?(.transcript("Synthetic request \(index)")); c.stop(); input.receive?(.finished)
-            for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+            await c.waitForInsertionCompletion()
             let current = try #require(capture.target?.rewriteFixture)
             #expect(c.eligibleReceiptPresent && c.provenanceReason == .none)
             #expect(current.sessionID == c.latest?.id && current !== previous)
@@ -2599,13 +2615,13 @@ extension InPlaceRewriteTests {
         await driver.configure(blocked:true)
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
         c.preferences.inPlaceAIRewrite = true; c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         let target = try #require(capture.target); target.deferDirectReadback = true
         input.receive?(.transcript("Synthetic request")); c.stop(); input.receive?(.finished)
         await clock.waitForSleep(1050)
         #expect(!c.eligibleReceiptPresent && target.rewriteFixture == nil)
         target.value = "aSynthetic requestbc"; await clock.advance(1050)
-        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { break } }
+        await c.waitForInsertionCompletion()
         #expect(c.eligibleReceiptPresent && c.latest?.insertion.status == .insertedVerified)
         #expect(c.verificationDiagnosticSummary.contains("INSERTION_VERIFIED") && c.verificationDiagnosticSummary.contains("INSERTION_RECEIPT_CREATED"))
         c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
@@ -2664,7 +2680,7 @@ extension InsertionReadbackRepairTests {
         #expect(service.verificationDiagnostics.contains { $0.code == (direct ? .directDispatched : .pasteDispatched) })
     }
     private func finish(_ c:SystemWideDictationCoordinator) async {
-        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } }
+        await c.waitForInsertionCompletion()
     }
     @Test(arguments:[false,true])
     func targetIsCapturedBeforeRecordingAndHUDStateThenRevalidated(_ focusChanged:Bool) async throws {
@@ -2673,7 +2689,7 @@ extension InsertionReadbackRepairTests {
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences())
         var capturedBeforePreparing = false
         let observation = c.$phase.sink { phase in if phase == .preparing { capturedBeforePreparing = capture.target != nil && input.starts == 0 } }
-        c.enableShortcut(); shortcut.receive?(.pressed); await clock.waitForSleep(61000)
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
         let target = try #require(capture.target)
         #expect(capturedBeforePreparing && capture.count == 1)
         if focusChanged { target.validationError = .changed }
@@ -2691,7 +2707,7 @@ extension InsertionReadbackRepairTests {
         let service = TextInsertionService(clipboard:clipboard,clock:clock)
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:service,shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),offlineRewriter:driver)
         c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.inPlaceAIRewrite = true
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished); await finish(c)
         let target = try #require(capture.target)
         #expect(target.value == "aSynthetic draftbc" && target.pastes == 1 && target.replacements == 0)
@@ -2711,7 +2727,7 @@ extension InsertionReadbackRepairTests {
         capture.configure = { t in t.writable = false; t.pasted = "Synthetic draft"; t.replacementCapability = .unavailable }
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
         c.preferences.inPlaceAIRewrite = true
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished); await finish(c)
         #expect(c.latest?.insertion.status == .insertedVerified && c.readbackStatus == .verifiedInsertion)
         #expect(c.provenanceReason == .replacementUnsupported && !c.eligibleReceiptPresent)
@@ -2756,12 +2772,12 @@ extension CrossAppReliabilityTests {
         capture.configure = { t in t.writable = false; t.pasted = "First synthetic" }
         let service = TextInsertionService(clipboard:clipboard,clock:clock)
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:service,shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("First synthetic")); c.stop(); input.receive?(.finished); await finish(c)
         let firstSession = try #require(c.latest?.id)
         #expect(service.verificationSession == firstSession && c.verificationDiagnosticSummary.contains("PASTE_DISPATCHED"))
         capture.failure = .unsupported; c.pillClicked()
-        for await phase in c.$phase.values { if phase == .recording { break } }
+        await c.waitUntilRecording()
         input.receive?(.transcript("Second synthetic")); c.stop(); input.receive?(.finished); await finish(c)
         #expect(c.latest?.id != firstSession && service.verificationSession == firstSession)
         #expect(c.deliveryStatus == .notDelivered && c.readbackStatus == .notRequested)
@@ -2858,14 +2874,14 @@ extension InPlaceRewriteTests {
         #expect(board.string(forType:.string) == "New synthetic copy")
     }
     private func terminal(_ c:SystemWideDictationCoordinator) async {
-        for await phase in c.$phase.values { if ![.preparing,.recording,.finalizing,.inserting].contains(phase) { return } }
+        await c.waitForInsertionCompletion()
     }
     @Test func noExactContextCreatesNoAIReceiptAndPreservesHistoryAndPipelineState() async throws {
         let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard(), history = GHistory(), driver = InPlaceFixtureRewriter()
         capture.configure = { t in t.hasOriginalContext = false; t.pasted = "Synthetic draft" }
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),history:history,offlineRewriter:driver)
         c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.inPlaceAIRewrite = true
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("Synthetic draft")); c.stop(); input.receive?(.finished); await terminal(c)
         #expect(c.audioCaptureResult == .success && c.transcriptionResult == .success && c.targetCaptureResult == .success)
         #expect(c.targetValidationResult == .success && c.insertionDispatchResult == .dispatched && c.pasteboardLeaseResult == .recoveryPending)
@@ -2884,7 +2900,7 @@ extension InPlaceRewriteTests {
         let input = GInput(), capture = GCapture(), clock = GClock(), clipboard = GClipboard()
         capture.configure = { $0.hasOriginalContext = false }
         let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences())
-        c.pillClicked(); await clock.waitForSleep(61000)
+        c.pillClicked(); await c.waitUntilRecording()
         input.receive?(.transcript("Synthetic cancelled draft")); c.cancel(); await terminal(c)
         #expect(c.audioCaptureResult == .cancelled && c.transcriptionResult == .cancelled)
         #expect(c.latest?.cleaned == "Synthetic cancelled draft" && c.latest?.insertion.status == .cancelled)
@@ -2956,12 +2972,1147 @@ extension CoreDelivery37Tests {
 extension ContinuousHUDTests {
     @Test @MainActor func startupAndOrdinaryErrorsHaveNoVisiblePillContent() {
         #expect(DictationHUDContent.resolve(phase:.preparing,ai:.idle,verified:false) == .hidden)
-        #expect(DictationHUDContent.resolve(phase:.error,ai:.idle,verified:false) == .hidden)
+        #expect(DictationHUDContent.resolve(phase:.error,ai:.idle,verified:false) == .label("Check dictation"))
         #expect(DictationHUDContent.resolve(phase:.recording,ai:.idle,verified:false) == .waveform)
     }
     @Test @MainActor func bothPostSpeechStagesKeepTheRequestedTranscriptionLabel() {
         for phase in [SystemWideDictationCoordinator.Phase.finalizing,.inserting] {
             #expect(DictationHUDContent.resolve(phase:phase,ai:.idle,verified:false) == .label("Transcribing…"))
         }
+    }
+}
+
+@MainActor private extension SystemWideDictationCoordinator {
+    func waitUntilRecording() async {
+        await waitForCaptureStartup()
+        #expect(phase == .recording)
+    }
+}
+
+@Suite("Milestone38 held dictation",.serialized) @MainActor struct HeldSpeech38Tests {
+    @Test(arguments:[15_000,60_000,180_000,300_000])
+    func heldSessionNeverStopsOrInsertsBeforeRelease(_ milliseconds:Int64) async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), history = GHistory()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history)
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("first తెలుగు English"))
+        await clock.advance(1000 + milliseconds)
+        #expect(c.phase == .recording && input.stops == 0)
+        #expect(capture.target?.replacements == 0 && capture.target?.pastes == 0)
+        input.receive?(.transcript("first తెలుగు English last words"))
+        shortcut.receive?(.released); #expect(input.stops == 1 && c.phase == .finalizing)
+        input.receive?(.finished); await history.waitForEntry()
+        #expect(c.latest?.raw == "first తెలుగు English last words")
+        #expect(c.latest?.durationMilliseconds == milliseconds)
+        #expect(capture.target?.replacements == 1)
+        c.close()
+    }
+    @Test func providerEndWhileHeldRetainsTextWithoutAnyInsertion() async {
+        let input = GInput(), capture = GCapture(), history = GHistory()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),history:history)
+        c.pillClicked(); await c.waitUntilRecording()
+        input.receive?(.transcript("available earlier speech")); input.receive?(.finished)
+        await history.waitForEntry()
+        #expect(capture.target?.replacements == 0 && capture.target?.pastes == 0)
+        #expect(c.latest?.raw == "available earlier speech" && c.verificationDiagnosticSummary.contains("providerEnded"))
+        c.close()
+    }
+}
+
+extension GlobalHistoryTests {
+    @Test func maximumLongDictationReopensWithoutCorruptingHistory() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("WF-LongHistory-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at:root) }
+        let url = root.appendingPathComponent("history.store")
+        let text = String(repeating:"\\",count:DictationText.maximumBytes)
+        let value = DictationHistoryEntry(id:UUID().uuidString,timestamp:Date(),raw:text,cleaned:text,sourceApplication:nil,durationMilliseconds:300_000,insertion:.init(.unsupportedTarget,.manualOnly))
+        let first = try await SwiftDataDictationHistoryStore.open(url:url)
+        try await first.append(value); await first.close()
+        let reopened = try await SwiftDataDictationHistoryStore.open(url:url)
+        #expect(try await reopened.load() == [value]); await reopened.close()
+    }
+}
+extension VoiceParityFormattingTests {
+    @Test func commonTyposWorkWithoutAnAppleSuggestionAndKeepProtectedTerms() {
+        var options = DictationFormattingOptions(); options.correctSpelling = true
+        options.vocabulary = ["teh"]
+        #expect(DictationFormatting.format("teh adn recieve seperate `adn` /tmp/adn Teh తెలుగు",options:options,whitespace:true) == "teh and receive separate `adn` /tmp/adn Teh తెలుగు")
+        options.correctSpelling = false
+        #expect(DictationFormatting.format("adn recieve",options:options,whitespace:true) == "adn recieve")
+    }
+    @Test func spellingNeverChangesAnAsciiSuffixInsideUnicodeWord() {
+        var options = DictationFormattingOptions(); options.correctSpelling = true
+        #expect(DictationFormatting.format("తెలుగుadn caféadn",options:options,whitespace:true,correction:{ _ in "BAD" }) == "తెలుగుadn caféadn")
+    }
+}
+
+extension GlobalCoordinatorTests {
+    @Test func resourceInstallationIsExplicitAndPreparesWithoutRecordingOrInsertion() async {
+        let input = GInput(), capture = GCapture(), backend = SpeechBackendFixture38L2()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),localeIdentifier:"en-US",speechResources:AppleSpeechResourceService(backend:backend))
+        c.installSpeechResources(); #expect(backend.installationCalls == 0)
+        await c.inspectSpeech(); #expect(backend.installationCalls == 0 && c.canInstallSpeechResources)
+        backend.request.held = true
+        c.installSpeechResources(); c.installSpeechResources(); await backend.request.waitForStart()
+        #expect(!c.canTerminateSafely())
+        c.startManual(); c.pillClicked()
+        #expect(input.starts == 0 && capture.count == 0)
+        backend.request.release(); await c.waitForSpeechResourceSetup()
+        #expect(backend.installationCalls == 1 && backend.preparationCalls == 1)
+        #expect(c.speechPreparation?.engine == .speechTranscriber && c.speechConfiguration?.readyModernEngine == .speechTranscriber)
+        #expect(c.localeIdentifier == "en-US" && c.speechResourceStatus.contains("Preparation verified"))
+        #expect(input.starts == 0 && capture.count == 0 && !c.speechResourceWorking)
+        c.close()
+    }
+    @Test func downloadFailureShowsActualCodeAndNeverRecords() async {
+        let backend = SpeechBackendFixture38L2(), input = GInput()
+        backend.request.failure = NSError(domain:"NSURLErrorDomain",code:-1009)
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),localeIdentifier:"en-US",speechResources:AppleSpeechResourceService(backend:backend))
+        await c.inspectSpeech(); c.installSpeechResources(); await c.waitForSpeechResourceSetup()
+        #expect(c.speechPreparation == nil && c.speechResourceStatus.contains("NSURLErrorDomain") && c.speechResourceStatus.contains("-1009"))
+        #expect(input.starts == 0 && backend.preparationCalls == 0)
+        c.close()
+    }
+    @Test func stoppedResourceWaitCannotPublishLateSuccessOrStartCapture() async {
+        let backend = SpeechBackendFixture38L2(), input = GInput(); backend.request.held = true
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),localeIdentifier:"en-US",speechResources:AppleSpeechResourceService(backend:backend))
+        await c.inspectSpeech(); c.installSpeechResources(); await backend.request.waitForStart()
+        let stopped = c.stopWaitingForSpeechResources(); backend.request.release(); await stopped?.value
+        #expect(c.speechPreparation == nil && !c.speechResourceWorking && c.speechResourceStatus.hasPrefix("Stopped waiting"))
+        #expect(input.starts == 0 && backend.preparationCalls == 0)
+        c.close()
+    }
+    @Test func activeRecordingCannotInitiateAssetInstallation() async {
+        let backend = SpeechBackendFixture38L2(), input = GInput()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),localeIdentifier:"en-US",speechResources:AppleSpeechResourceService(backend:backend))
+        await c.inspectSpeech(); c.startManual(); await c.waitUntilRecording(); c.installSpeechResources()
+        #expect(backend.installationCalls == 0 && !c.speechResourceWorking)
+        c.cancel(); c.close()
+    }
+}
+extension HeldSpeech38Tests {
+    @Test(arguments:[60_000,180_000,300_000])
+    func longCancellationAndMidRecordingPausesNeverInsert(_ duration:Int64) async {
+        let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), shortcut = GShortcut()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history)
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("first తెలుగు")); await clock.advance(1000+duration/2)
+        #expect(c.phase == .recording && input.stops == 0 && capture.target?.replacements == 0)
+        // No result during a long silence pause; the prefix remains available.
+        #expect(c.raw == "first తెలుగు")
+        input.receive?(.transcript("first తెలుగు last English")); await clock.advance(1000+duration)
+        c.cancel(); await c.waitForInsertionCompletion(); shortcut.receive?(.released)
+        #expect(c.latest?.raw == "first తెలుగు last English" && c.latest?.insertion.outcome == .cancelled)
+        #expect(input.cancels > 0 && capture.target?.replacements == 0 && capture.target?.pastes == 0)
+        c.close()
+    }
+}
+
+extension GlobalCoordinatorTests {
+    @Test func networkBlockingCannotBeBypassedBySpeechInstallAction() async {
+        let backend = SpeechBackendFixture38L2()
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),localeIdentifier:"en-US",speechResources:AppleSpeechResourceService(backend:backend))
+        await c.inspectSpeech(); c.preferences.blockNetworkRequests = true
+        #expect(!c.canInstallSpeechResources); c.installSpeechResources()
+        #expect(backend.installationCalls == 0 && c.preferences.blockNetworkRequests)
+        c.close()
+    }
+}
+
+@Suite("38L3 complete transcript failure recovery",.serialized) @MainActor struct SpeechRecovery38L3Tests {
+    @Test(arguments:[20_000,40_000,75_000,180_000,300_000],[1101,1107])
+    func failureWhileHeldRetainsFullAvailableSnapshotWithoutInsertion(_ duration:Int64,_ code:Int) async throws {
+        let input = GInput(), capture = GCapture(), clock = GClock(), history = GHistory(), shortcut = GShortcut()
+        var copies: [String] = []
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences(),history:history,historyCopy:{ copies.append($0); return true })
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("SYNTHETIC_PRIVATE_START")); await clock.advance(1000+duration/2)
+        #expect(c.phase == .recording && input.stops == 0)
+        let full = "SYNTHETIC_PRIVATE_START middle last words"
+        input.receive?(.transcript(full)); await clock.advance(1000+duration)
+        var diagnostic = DictationSpeechDiagnostics(); diagnostic.provider = .legacyOnDevice; diagnostic.stage = .legacyRecognition
+        diagnostic.captureMilliseconds = duration; diagnostic.recognitionMilliseconds = duration
+        diagnostic.captureActiveAtSnapshot = true; diagnostic.stoppedBeforeRelease = true; diagnostic.preservedBytes = full.utf8.count
+        diagnostic.partialResults = 3; diagnostic.preservedSegments = 3
+        diagnostic.nativeError = .init(primary:.init(domain:"kAFAssistantErrorDomain",code:code))
+        input.injectedSpeechDiagnostics = diagnostic
+        input.receive?(.failed(.recognitionFailed)); await c.waitForInsertionCompletion()
+        #expect(c.latest?.raw == full && c.latest?.insertion.reason == .speechFailed)
+        #expect(capture.target?.replacements == 0 && capture.target?.pastes == 0 && copies.isEmpty)
+        #expect(c.message.contains(String(code)) && c.speechFailureDiagnostics?.captureMilliseconds == duration)
+        #expect(c.speechDiagnosticSummary.contains("hotkeyHeldObserved=true"))
+        #expect(!c.speechDiagnosticSummary.contains("SYNTHETIC_PRIVATE_START"))
+        #expect(c.speechFailureDiagnostics?.failure != "timedOut")
+        shortcut.receive?(.released); #expect(capture.target?.replacements == 0)
+        #expect(c.copyReviewedText(try #require(c.latest).raw)); #expect(copies == [full])
+        c.close()
+    }
+    @Test(arguments:[10_000,20_000,40_000,45_000,75_000,180_000,300_000])
+    func releaseWaitsForLateTranscriptAndOneCompletion(_ duration:Int64) async {
+        let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences())
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("start")); await clock.advance(1000+duration)
+        #expect(c.phase == .recording && input.stops == 0 && capture.target?.replacements == 0)
+        shortcut.receive?(.released); #expect(c.phase == .finalizing && input.stops == 1)
+        // Queued recognition completes AFTER release; never insert an earlier hypothesis.
+        input.receive?(.transcript("start middle end")); input.receive?(.finished); await c.waitForInsertionCompletion()
+        #expect(c.latest?.raw == "start middle end" && capture.target?.replacements == 1)
+        input.receive?(.finished); #expect(capture.target?.replacements == 1)
+        c.close()
+    }
+    @Test func terminalMetadataIsBoundedAcrossManySessions() async {
+        let input = GInput()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        for _ in 0..<12 {
+            c.startManual(); await c.waitUntilRecording(); input.receive?(.transcript("synthetic draft")); c.stop(); input.receive?(.finished); await c.waitForInsertionCompletion()
+        }
+        #expect(c.speechRunDiagnostics.count == 8)
+        #expect(!c.speechDiagnosticSummary.contains("synthetic draft"))
+        c.close()
+    }
+}
+
+extension SpeechRecovery38L3Tests {
+    @Test func ambiguousCandidateIsExplicitRecoveryNeverJoinedOrLogged() async {
+        let input = GInput(), capture = GCapture()
+        var copied: [String] = []
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),historyCopy:{ copied.append($0); return true })
+        c.pillClicked(); await c.waitUntilRecording()
+        input.receive?(.transcript("ACCEPTED_PRIVATE_PREFIX"))
+        input.unmergedRecognitionText = "UNMERGED_PRIVATE_CANDIDATE"
+        var diagnostics = DictationSpeechDiagnostics(); diagnostics.stage = .transcriptMerge; diagnostics.mergeRejection = "legacyTimestampReset"
+        diagnostics.preservedBytes = 23; diagnostics.unmergedCandidateBytes = 26
+        input.injectedSpeechDiagnostics = diagnostics
+        input.receive?(.failed(.recognitionFailed)); await c.waitForInsertionCompletion()
+        #expect(c.latest?.raw == "ACCEPTED_PRIVATE_PREFIX")
+        #expect(c.unmergedSpeechRecoveryEntry?.raw == "UNMERGED_PRIVATE_CANDIDATE")
+        #expect(capture.target?.replacements == 0 && capture.target?.pastes == 0 && copied.isEmpty)
+        #expect(!c.speechDiagnosticSummary.contains("ACCEPTED_PRIVATE_PREFIX") && !c.speechDiagnosticSummary.contains("UNMERGED_PRIVATE_CANDIDATE"))
+        c.close()
+    }
+}
+
+@MainActor private final class ActivationCapture38L3R3:InsertionTargetCapturing {
+    var observedApplicationIdentity:DictationApplicationIdentity? = .init(processID:42,launchTime:1,bundleIdentifier:"fixture.Editor")
+    var expected:[DictationActivationContext]=[]
+    var unboundCalls=0
+    var target:GTarget?
+    func capture(session:String) throws -> any InsertionTarget { unboundCalls += 1;throw TextTargetError.unsupported }
+    func capture(session:String,activation:DictationActivationContext) throws -> any InsertionTarget {
+        expected.append(activation)
+        guard activation.permits(observedApplicationIdentity) else { throw TextTargetError.changed }
+        let target=GTarget(session:session);self.target=target;return target
+    }
+}
+@Suite("38L3R3 dictation activation identity",.serialized) @MainActor struct ActivationIdentity38L3R3Tests {
+    func origin(_ process:Int32=42,_ launch:Double=1,_ bundle:String="fixture.Editor",unchanged:Bool=true)->DictationActivationContext {
+        .init(application:.init(processID:process,launchTime:launch,bundleIdentifier:bundle),pressUptime:10,source:"fixture",activationUnchanged:unchanged)
+    }
+    @Test func immutableOriginRejectsOtherAppsRelaunchesAndActivationChanges() {
+        let context=origin()
+        #expect(context.permits(context.application))
+        #expect(!context.permits(origin(43).application))
+        #expect(!context.permits(origin(42,2).application))
+        #expect(!context.permits(origin(42,1,"fixture.Other").application))
+        #expect(!origin(unchanged:false).permits(context.application))
+        #expect(!context.permits(nil))
+        #expect(!DictationActivationContext(application:nil,pressUptime:10,source:"fixture").permits(context.application))
+    }
+    @Test func mailboxGenerationInvalidatesQueuedPressEvenAfterAppReturns() {
+        let app=origin().application,mailbox=DictationActivationIdentityMailbox(origin().application)
+        let first=mailbox.snapshot()
+        mailbox.update(origin(43).application);mailbox.update(app)
+        #expect(first.application==mailbox.snapshot().application && first.epoch != mailbox.snapshot().epoch)
+    }
+    @Test func nativeCaptureRejectsMissingOriginBeforeAnyEditorAXRead() {
+        let capture=NativeInsertionTargetCapture()
+        #expect(throws:TextTargetError.changed) { try capture.capture(session:"fixture",activation:.init(application:nil,pressUptime:10,source:"fixture")) }
+        #expect(capture.captureDiagnostics.allSatisfy { $0.code == .targetChanged })
+        #expect(capture.failureExplanation?.contains("Nothing was redirected") == true)
+    }
+    @Test func boundCaptureCannotSilentlyUseAnUnboundConformer() {
+        let capture=GCapture()
+        #expect(throws:TextTargetError.changed) { try capture.capture(session:"fixture",activation:origin()) }
+        #expect(capture.count==0)
+    }
+    @Test func matchingPressOriginIsCapturedOnceBeforeRecording() async {
+        let input=GInput(),capture=ActivationCapture38L3R3(),shortcut=GShortcut(),clipboard=GClipboard()
+        shortcut.activationContext=origin()
+        let c=SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:shortcut,preferenceStore:preferences())
+        c.enableShortcut();shortcut.receive?(.pressed);await c.waitUntilRecording()
+        #expect(capture.expected==[origin()] && capture.unboundCalls==0)
+        shortcut.activationContext=origin(99);shortcut.receive?(.pressed)
+        input.receive?(.transcript("fixture speech"));shortcut.receive?(.released);input.receive?(.finished);await c.waitForInsertionCompletion()
+        #expect(capture.expected.count==1 && capture.target?.replacements==1)
+        #expect(capture.target?.value=="afixture speechbc")
+        #expect(c.speechDiagnosticSummary.contains("pid=42") && !c.speechDiagnosticSummary.contains("fixture speech"))
+        c.close()
+    }
+    @Test func focusSwitchBeforeCapturePreservesTranscriptWithoutAnyDispatch() async {
+        let input=GInput(),capture=ActivationCapture38L3R3(),shortcut=GShortcut(),clipboard=GClipboard()
+        shortcut.activationContext=origin(99,1,"fixture.Chat")
+        let c=SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:shortcut,preferenceStore:preferences())
+        c.enableShortcut();shortcut.receive?(.pressed);await c.waitUntilRecording()
+        input.receive?(.transcript("all fixture speech"));shortcut.receive?(.released);input.receive?(.finished);await c.waitForInsertionCompletion()
+        #expect(capture.expected.count==1 && capture.unboundCalls==0 && capture.target==nil)
+        #expect(c.latest?.raw=="all fixture speech" && c.latest?.insertion.status == .targetChanged)
+        #expect(c.compactDictationStatus == "Target changed")
+        #expect(clipboard.installed==0 && clipboard.restores==0)
+        #expect(c.speechDiagnosticSummary.contains("fixture.Chat") && c.speechDiagnosticSummary.contains("fixture.Editor"))
+        c.close()
+    }
+}
+
+extension ActivationIdentity38L3R3Tests {
+    @Test func eventPredatingActivationCannotBindToTheNewForegroundApp() {
+        #expect(DictationActivationTiming.accepts(event:21,observed:22,activation:20))
+        #expect(!DictationActivationTiming.accepts(event:19,observed:22,activation:20))
+        #expect(!DictationActivationTiming.accepts(event:0,observed:22,activation:20))
+        #expect(!DictationActivationTiming.accepts(event:23,observed:22,activation:20))
+        #expect(!DictationActivationTiming.accepts(event:.nan,observed:22,activation:20))
+        #expect(DictationActivationTiming.accepts(event:20,observed:20,activation:20))
+    }
+}
+
+@Suite("39A-R1 independent Agent voice") @MainActor struct AgentHotkeyR1Tests {
+    private func prefs() -> DictationPreferenceStore { DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!) }
+    @Test(arguments:[5000,20000,45000]) func agentReleasePlansOnceWithoutInsertionThenDictation(_ duration:Int64) async throws {
+        let input = GInput(), target = GCapture(), board = GClipboard(), clock = GClock(), dictation = GShortcut(), agent = GShortcut(), history = GHistory()
+        let c = SystemWideDictationCoordinator(input:input,targets:target,insertion:TextInsertionService(clipboard:board,clock:clock),shortcut:dictation,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },clock:clock,preferenceStore:prefs(),history:history)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        c.personalAgentQueueURL = root.appendingPathComponent("queue.json"); defer { c.close(); try? FileManager.default.removeItem(at:root) }
+        c.enableShortcut(); c.enableAgentShortcut()
+        #expect(agent.configuredKey == .rightControl); #expect(dictation.configuredKey == .fn)
+        agent.receive?(.pressed); await c.waitUntilRecording(); let old = input.receive
+        #expect(c.pillContent == .label("Agent listening"))
+        agent.receive?(.pressed); dictation.receive?(.pressed); dictation.receive?(.released)
+        #expect(input.starts == 1); #expect(c.phase == .recording)
+        input.receive?(.transcript("Open Safari")); await clock.advance(1000+duration)
+        agent.receive?(.released); #expect(c.pillContent == .label("Processing command"))
+        input.receive?(.finished); agent.receive?(.released); old?(.finished)
+        #expect(c.agentRecords.count == 1); #expect(c.agentPlan?.steps.first?.text == "Safari")
+        #expect(c.agentRecords.first?.state == .awaitingApproval); #expect(c.pillContent == .label("Approval required"))
+        #expect(target.count == 0); #expect(board.installed == 0); #expect(board.restores == 0); #expect(board.text == "original")
+        #expect(try await history.load().isEmpty)
+        if let id = c.agentPlan?.id { c.cancelAgentTask(id) }
+        dictation.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("Open Safari")); dictation.receive?(.released); input.receive?(.finished)
+        await history.waitForEntry()
+        #expect(target.count == 1); #expect(target.target?.value == "aOpen Safaribc"); #expect(c.agentRecords.count == 1)
+    }
+    @Test(arguments:["cancel","failure","unexpected","empty","unknown","secure","overflow"])
+    func incompleteSpeechNeverPlansOrInserts(_ scenario:String) async throws {
+        let input = GInput(), target = GCapture(), board = GClipboard(), agent = GShortcut()
+        let blocked = GSecureGate()
+        let c = SystemWideDictationCoordinator(input:input,targets:target,insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{ if blocked.value { throw TextTargetError.secure } },agentConflict:{ _ in false },preferenceStore:prefs())
+        defer { c.close() }; c.enableAgentShortcut(); agent.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("Open Safari"))
+        switch scenario {
+        case "cancel": agent.receive?(.cancelled)
+        case "failure": input.receive?(.failed(.recognitionFailed))
+        case "unexpected": input.receive?(.finished)
+        case "secure": blocked.value = true; input.receive?(.transcript("Open Safari"))
+        default:
+            input.receive?(.transcript(scenario == "empty" ? "" : scenario == "overflow" ? String(repeating:"x",count:DictationText.maximumBytes+1) : "send a message"))
+            agent.receive?(.released); input.receive?(.finished)
+        }
+        #expect(c.agentPlan == nil); #expect(c.agentRecords.isEmpty); #expect(target.count == 0); #expect(board.installed == 0)
+    }
+    @Test func collisionRebindAndDeniedCapture() async {
+        let input = GInput(), agent = GShortcut()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{ throw TextTargetError.secure },agentConflict:{ $0 == .rightCommand },preferenceStore:prefs())
+        defer { c.close() }; c.enableShortcut(); c.enableAgentShortcut()
+        c.changeAgentKey(.fn); #expect(c.preferences.agentKey == .rightControl)
+        c.changeAgentKey(.rightCommand); #expect(c.preferences.agentKey == .rightControl)
+        c.changeAgentKey(.rightOption); #expect(c.preferences.agentKey == .rightOption)
+        c.changeActivationKey(.rightOption); #expect(c.preferences.activationKey == .fn)
+        agent.receive?(.pressed); #expect(input.starts == 0); #expect(c.agentHUD == "Agent unavailable")
+        c.disableAgentShortcut(); agent.authorizationReady = false; c.enableAgentShortcut(); #expect(!c.agentShortcutEnabled)
+    }
+    @Test func releaseDuringStartupAndStaleCallbacksAreFenced() async {
+        let input = GInput(), agent = GShortcut(); input.hold = true
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },preferenceStore:prefs())
+        defer { c.close() }; c.enableAgentShortcut(); agent.receive?(.pressed); await input.waitForStart()
+        let stale = input.receive; agent.receive?(.released); input.resolve(); await c.waitForCaptureStartup()
+        stale?(.transcript("Open Safari")); stale?(.finished)
+        #expect(!c.busy); #expect(c.agentPlan == nil); #expect(c.agentRecords.isEmpty)
+    }
+    @Test(arguments:[DictationFailure.microphoneDenied,.speechDenied,.unavailable,.assetsMissing,.audioUnavailable,.busy,.recognitionFailed,.overflow,.timedOut,.providerEnded,.anotherInstance], [false,true])
+    func allSpeechFailuresKeepPartialSpeechOutOfPlanner(_ failure:DictationFailure, atStart:Bool) async {
+        let input = GInput(), agent = GShortcut(), board = GClipboard()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },preferenceStore:prefs())
+        input.startFailure = atStart ? failure : nil
+        defer { c.close() }; c.enableAgentShortcut(); agent.receive?(.pressed); await c.waitForCaptureStartup()
+        if !atStart { input.receive?(.transcript("Create a note partial")); input.receive?(.failed(failure)) }
+        agent.receive?(.released); input.receive?(.finished)
+        #expect(!c.busy); #expect(c.agentPlan == nil); #expect(c.agentRecords.isEmpty); #expect(board.installed == 0)
+    }
+    @Test func rapidRepeatRequiresReleaseAndFencesCancelledSession() async {
+        let input = GInput(), agent = GShortcut(), board = GClipboard()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },preferenceStore:prefs())
+        defer { c.close() }; c.enableAgentShortcut(); agent.receive?(.pressed); await c.waitUntilRecording()
+        let stale = input.receive; agent.receive?(.cancelled); agent.receive?(.pressed)
+        #expect(input.starts == 1)
+        agent.receive?(.released); agent.receive?(.pressed); await c.waitUntilRecording()
+        stale?(.transcript("Open Safari")); stale?(.finished)
+        #expect(c.phase == .recording); #expect(c.raw.isEmpty)
+        agent.receive?(.cancelled); agent.receive?(.released)
+        #expect(c.agentRecords.isEmpty); #expect(board.installed == 0)
+    }
+    @Test func spokenAcceptanceExamplesParseOfflineWithoutModels() throws {
+        #expect(try PersonalIntentParser.parse("Open Safari.").steps.first?.tool == .openApp)
+        let now = Date(); let timer = try PersonalIntentParser.parse("Set a timer for two minutes.",now:now)
+        #expect(timer.steps.first?.tool == .timer); #expect(timer.steps.first?.date == now.addingTimeInterval(120))
+        #expect(try PersonalIntentParser.parse("Create a note test shopping").steps.first?.tool == .note)
+    }
+}
+
+@Suite("39A-R1.1 native Agent modifier delivery") @MainActor struct AgentNativeDeliveryTests {
+    @Test(arguments:[DictationActivationKey.rightControl,.rightCommand,.rightOption])
+    func nativeFlagsChangedSnapshotHasItsOwnDownAndUp(_ key:DictationActivationKey) throws {
+        let mask:CGEventFlags = key == .rightControl ? .maskControl : key == .rightCommand ? .maskCommand : .maskAlternate
+        let side = ModifierShortcutDecoder.sideMasks(key)
+        // Construct native events only; never post/inject them or poll physical keys.
+        for rawFlags in [mask.rawValue, mask.rawValue | side.right] {
+            let event = try #require(NSEvent.keyEvent(with:.flagsChanged,location:.zero,modifierFlags:NSEvent.ModifierFlags(rawValue:UInt(rawFlags)),timestamp:1,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:ModifierShortcutDecoder.code(key)))
+            #expect(ModifierShortcutDecoder.decode(event:event,key:key).signal == .pressed)
+        }
+        let up = try #require(NSEvent.keyEvent(with:.flagsChanged,location:.zero,modifierFlags:[],timestamp:2,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:ModifierShortcutDecoder.code(key)))
+        #expect(ModifierShortcutDecoder.decode(event:up,key:key).signal == .released)
+        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:Int64(ModifierShortcutDecoder.code(key)),flags:CGEventFlags(rawValue:mask.rawValue | side.left)).signal == .released)
+        #expect(ModifierShortcutDecoder.decode(key:key,type:.flagsChanged,code:Int64(ModifierShortcutDecoder.code(key)),flags:CGEventFlags(rawValue:mask.rawValue | side.left | side.right)).signal == .cancelled)
+    }
+    @Test func agentAloneKeepsAppAvailableAfterWindowCloseAndActivationDoesNotCancelCapture() async {
+        let input = GInput(), agent = GShortcut(), prefs = DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!)
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{ _ in false },preferenceStore:prefs)
+        defer { c.close() }; c.preferences.holdFnEnabled = false; c.enableAgentShortcut()
+        #expect(c.keepsAppRunningAfterWindowClose)
+        agent.receive?(.pressed); await c.waitUntilRecording(); let enables = agent.enables
+        c.resumeShortcutIfAuthorized()
+        #expect(c.phase == .recording); #expect(agent.enables == enables)
+        c.cancel(); agent.receive?(.released); c.disableAgentShortcut()
+        #expect(!c.keepsAppRunningAfterWindowClose)
+    }
+    @Test func receivedButBlockedKeyHasPersistentReason() async {
+        let agent = GShortcut(), c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{ throw TextTargetError.secure },agentConflict:{ _ in false },preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!))
+        defer { c.close() }; c.enableAgentShortcut(); agent.receive?(.pressed)
+        #expect(c.agentShortcutStatus.contains("Secure input")); #expect(!c.busy)
+    }
+}
+
+private actor FortyMemory:InferenceMemorySource {
+    let bytes:UInt64
+    init(_ bytes:UInt64=8*1024*1024*1024) { self.bytes=bytes }
+    func sample() -> InferenceMemorySample { .init(conservativeAvailableBytes:bytes,pressureNormal:true) }
+}
+private actor FortyGenerator:PersonalIntentGenerating {
+    let ready:Bool
+    let output:[PersonalIntentSlots]
+    var calls=0
+    init(ready:Bool=true,output:[PersonalIntentSlots]=[.init(action:"open",app:"Brave")]) { self.ready=ready;self.output=output }
+    func available(locale:String)->Bool { ready }
+    func generate(_ request:PersonalIntentRequest)->[PersonalIntentSlots] { calls+=1;return output }
+}
+private actor FortyPlanner:PersonalIntentPlanning {
+    func plan(_ request:PersonalIntentRequest) throws -> PersonalPlan { try PersonalConversation.quick(request) }
+    func cancel(id:String) {}
+}
+@MainActor private final class FortyRunner:PersonalToolRunning {
+    var calls:[PersonalStep]=[]
+    var unverified=false
+    func perform(_ step:PersonalStep) -> PersonalReceipt { calls.append(step);return .init(identifier:step.id.uuidString,evidence:"fixture",verified:!unverified) }
+}
+@Suite("Milestone40 natural Agent requests") @MainActor struct PersonalAgent40Tests {
+    static let apps=[PersonalApp(id:"com.apple.Safari",name:"Safari"),PersonalApp(id:"com.brave.Browser",name:"Brave Browser",aliases:["Brave"]),PersonalApp(id:"net.whatsapp.WhatsApp",name:"WhatsApp")]
+    @Test(arguments:["Open Brave","Please launch Brave","Can you open Brave?","close Safari","quit Safari","search for cats on YouTube","search Google Swift concurrency","look up keyboard shortcuts on Google","play some music","pause music","text +15555550123 saying I'm late","create a note do not forget milk"])
+    func commonRequestsNeedNoModel(_ text:String) async throws {
+        let generator=FortyGenerator(ready:false),planner=ApplePersonalPlanner(memory:FortyMemory(0),clock:GClock(),generator:generator)
+        let plan=try await planner.plan(.init(text:text,locale:"en-IN",apps:Self.apps))
+        #expect(!plan.steps.isEmpty);#expect(await generator.calls==0)
+        #expect(PersonalAuthorization.routine(plan) == (plan.steps.first?.tool != .message))
+    }
+    @Test func modelUnderstandsNonTemplatePhrasingButCannotInventSlots() async throws {
+        let generator=FortyGenerator(),planner=ApplePersonalPlanner(memory:FortyMemory(),clock:GClock(),generator:generator)
+        let request=PersonalIntentRequest(text:"I'd appreciate it if you could bring up Brave for me",locale:"en-IN",apps:Self.apps)
+        let plan=try await planner.plan(request)
+        #expect(plan.steps.first?.tool == .openInstalledApp);#expect(await generator.calls==1)
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"open",app:"Safari")],request:request) }
+    }
+    @Test(arguments:[false,true]) func unavailableOrBelowReserveNeverGenerates(_ unavailable:Bool) async {
+        let generator=FortyGenerator(ready:!unavailable),planner=ApplePersonalPlanner(memory:FortyMemory(4*1024*1024*1024-1),clock:GClock(),generator:generator)
+        do { _=try await planner.plan(.init(text:"I'd appreciate it if you could bring up Brave for me",locale:"en-IN",apps:Self.apps));Issue.record("Expected unavailable/reserve failure") } catch {}
+        #expect(await generator.calls==0)
+    }
+    @Test(arguments:["don't open Brave","open Brave and delete my files","search how to close Safari","text John saying close Safari"])
+    func misleadingModelActionCannotEscapePayloadOrNegation(_ text:String) {
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"close",app:"Safari")],request:.init(text:text,locale:"en-IN",apps:Self.apps)) }
+    }
+    @Test func modelMessageCannotInventRecipientOrBody() {
+        let request=PersonalIntentRequest(text:"Text John saying hello",locale:"en-IN",apps:Self.apps)
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"message",content:"send money",recipient:"John")],request:request) }
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"message",content:"hello",recipient:"Mary")],request:request) }
+    }
+    @Test func routineEngineCannotSendAndUnverifiedDispatchCannotReplay() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);defer { try? FileManager.default.removeItem(at:root) }
+        let runner=FortyRunner(),engine=try PersonalAgentEngine(url:root.appendingPathComponent("queue.json"),runner:runner)
+        let message=try PersonalPlan(steps:[.init(tool:.message,text:try PersonalMessage(recipient:"+15555550123",body:"hello",address:"+15555550123").encoded())])
+        try engine.enqueue(message)
+        await #expect(throws:PersonalAgentError.approvalRequired) { try await engine.runRequestedRoutine(message) }
+        #expect(runner.calls.isEmpty)
+        runner.unverified=true;try await engine.approveAndRun(message)
+        #expect(runner.calls.count==1);#expect(engine.records.first?.state == .needsReview);#expect(engine.records.first?.steps == [.uncertain])
+        await #expect(throws:PersonalAgentError.approvalRequired) { try await engine.approveAndRun(message) }
+        #expect(runner.calls.count==1)
+    }
+    @Test func voiceRoutineExecutesWithoutManualAddingOrApprovalAndNeverInserts() async throws {
+        let input=GInput(),agent=GShortcut(),target=GCapture(),board=GClipboard(),runner=FortyRunner()
+        let c=SystemWideDictationCoordinator(input:input,targets:target,insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{Self.apps},personalMessageResolution:NativePersonalMessages.resolve)
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner
+        defer { c.close();try? FileManager.default.removeItem(at:root) }
+        c.enableAgentShortcut();agent.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("Open Brave"));agent.receive?(.released);input.receive?(.finished);input.receive?(.finished)
+        await c.waitForAgentPlanning()
+        #expect(runner.calls.count==1);#expect(c.agentPlan == nil);#expect(c.agentRecords.first?.state == .completed)
+        #expect(target.count==0);#expect(board.installed==0);#expect(board.text=="original")
+    }
+    @Test func messageVoiceStopsAtExactReviewUntilApprove() async throws {
+        let input=GInput(),agent=GShortcut(),runner=FortyRunner()
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{Self.apps},personalMessageResolution:NativePersonalMessages.resolve)
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner
+        defer { c.close();try? FileManager.default.removeItem(at:root) }
+        c.enableAgentShortcut();agent.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("text +15555550123 saying hello"));agent.receive?(.released);input.receive?(.finished);await c.waitForAgentPlanning()
+        #expect(runner.calls.isEmpty);#expect(c.agentPlan?.steps.first?.tool == .message);#expect(c.agentHUD == "Confirm message")
+        c.approveAgentPlan();await c.waitForCommandDispatch();#expect(runner.calls.count==1)
+    }
+    @Test func oldReceiptSchemaStillLoads() throws {
+        let receipt=try JSONDecoder().decode(PersonalReceipt.self,from:Data(#"{"identifier":"old","evidence":"verified readback"}"#.utf8))
+        #expect(receipt.verified)
+    }
+}
+private actor FortyBlockedGenerator:PersonalIntentGenerating {
+    var entered=false
+    var entry:CheckedContinuation<Void,Never>?
+    var pending:CheckedContinuation<[PersonalIntentSlots],Never>?
+    func available(locale:String)->Bool { true }
+    func generate(_ request:PersonalIntentRequest) async -> [PersonalIntentSlots] {
+        entered=true;entry?.resume();entry=nil
+        return await withCheckedContinuation { pending=$0 }
+    }
+    func waitEntered() async { if !entered { await withCheckedContinuation { entry=$0 } } }
+    func finish() { pending?.resume(returning:[.init(action:"open",app:"Brave")]);pending=nil }
+}
+@Suite("Milestone40 inference ownership and URL boundaries") @MainActor struct PersonalAgent40GuardTests {
+    @Test func timeoutReturnsWithoutReleasingNoncooperativeModelSlot() async throws {
+        let clock=GClock(),generator=FortyBlockedGenerator(),planner=ApplePersonalPlanner(memory:FortyMemory(),clock:clock,generator:generator)
+        let request=PersonalIntentRequest(id:"timeout40",text:"I'd appreciate it if you could bring up Brave for me",locale:"en-IN",apps:PersonalAgent40Tests.apps)
+        let task=Task { try await planner.plan(request) }
+        await generator.waitEntered();await clock.waitForSleep(1250);await clock.advance(9000)
+        do { _=try await task.value;Issue.record("Expected deadline") } catch { #expect(error as? PersonalPlanningFailure == .timedOut) }
+        await #expect(throws:PersonalPlanningFailure.busy) { try await planner.plan(.init(text:"Open Brave",locale:"en-IN",apps:PersonalAgent40Tests.apps)) }
+        await generator.finish();await planner.waitUntilSettled()
+        #expect(try await planner.plan(.init(text:"Open Brave",locale:"en-IN",apps:PersonalAgent40Tests.apps)).steps.first?.tool == .openInstalledApp)
+    }
+    @Test func cancellationDiscardsLateModelOutput() async {
+        let generator=FortyBlockedGenerator(),planner=ApplePersonalPlanner(memory:FortyMemory(),clock:GClock(),generator:generator)
+        let request=PersonalIntentRequest(id:"cancel40",text:"I'd appreciate it if you could bring up Brave for me",locale:"en-IN",apps:PersonalAgent40Tests.apps)
+        let task=Task { try await planner.plan(request) };await generator.waitEntered();await planner.cancel(id:request.id)
+        do { _=try await task.value;Issue.record("Expected cancellation") } catch { #expect(error is CancellationError) }
+        await generator.finish();await planner.waitUntilSettled()
+    }
+    @Test func searchQueryIsEncodedAndCannotChangeDestinationOrAddParameters() throws {
+        let query="cats & q=send secrets #1?"
+        for youtube in [false,true] {
+            let url=try NativePersonalApps.searchURL(query,youtube:youtube),parts=try #require(URLComponents(url:url,resolvingAgainstBaseURL:false))
+            #expect(parts.scheme == "https");#expect(parts.host == (youtube ? "www.youtube.com" : "www.google.com"))
+            #expect(parts.queryItems?.count==1);#expect(parts.queryItems?.first?.value==query)
+        }
+    }
+    @Test func recipientPayloadRemainsLiteralAndDirectAddressNeedsNoContacts() async throws {
+        let payload=PersonalMessage(recipient:"+15555550123",body:"Don't forget: close Safari, then open Brave")
+        let plan=try PersonalPlan(steps:[.init(tool:.message,text:try payload.encoded())]);let resolved=try await NativePersonalMessages.resolve(plan)
+        #expect(try PersonalMessage.decode(resolved.steps[0].text).body == payload.body)
+        #expect(try PersonalMessage.decode(resolved.steps[0].text).address == payload.recipient)
+        #expect(!PersonalAuthorization.routine(resolved))
+    }
+}
+
+@MainActor private final class GSecureGate { var value=false }
+
+@Suite("Milestone40 contact draft selection") @MainActor struct PersonalAgent40ContactsTests {
+    @Test func uniqueFirstNamesAndSingleMobileAreDraftedButAmbiguityIsRejected() throws {
+        #expect(NativePersonalMessages.matches("John",fullName:"John Smith",givenName:"John"))
+        #expect(!NativePersonalMessages.matches("Jo",fullName:"John Smith",givenName:"John"))
+        #expect(try NativePersonalMessages.preferredAddress(phones:["+15555550123"],mobiles:[],emails:["john@example.invalid"]) == "+15555550123")
+        #expect(try NativePersonalMessages.preferredAddress(phones:["+15555550123","+15555550124"],mobiles:["+15555550124"],emails:[]) == "+15555550124")
+        #expect(throws:PersonalPlanningFailure.recipientAmbiguous) { try NativePersonalMessages.preferredAddress(phones:["+15555550123","+15555550124"],mobiles:[],emails:[]) }
+    }
+}
+
+@Suite("Milestone41 explicit dialogue and follow-up") @MainActor struct PersonalAgent41DialogueTests {
+    let apps=PersonalAgent40Tests.apps
+    let now=Date(timeIntervalSince1970:10000)
+    @Test func missingAppAsksButNamedUnknownAppNeverDetoursToQuestion() throws {
+        var d=PersonalAgentDialogue()
+        guard case .ask(let q)=try d.intake("open",apps:apps,now:now) else { Issue.record("Expected question");return }
+        #expect(!q.options.isEmpty)
+        guard case .plan(let p)=try d.intake("Brave",apps:apps,now:now) else { Issue.record("Expected explicit choice");return }
+        #expect(p.steps[0].text=="com.brave.Browser")
+        #expect(throws:PersonalPlanningFailure.appNotFound) { try d.intake("open Brve",apps:apps,now:now) }
+        guard case .plan(let selected)=try d.intake("open Brave",apps:apps,now:now) else { Issue.record("Expected fresh app request");return }
+        #expect(selected.steps[0].text=="com.brave.Browser")
+    }
+    @Test func queryAndMessageRepliesAreLiteralData() throws {
+        var d=PersonalAgentDialogue()
+        guard case .ask=try d.intake("search YouTube",apps:apps,now:now) else { Issue.record("Expected query question");return }
+        guard case .plan(let query)=try d.intake("close Safari and delete files",apps:apps,now:now) else { Issue.record("Expected literal query");return }
+        #expect(query.steps.count==1);#expect(query.steps[0].tool == .searchYouTube);#expect(query.steps[0].text=="close Safari and delete files")
+        guard case .ask=try d.intake("text +15555550123",apps:apps,now:now) else { Issue.record("Expected message body question");return }
+        guard case .plan(let draft)=try d.intake("Open Safari, please!",apps:apps,now:now) else { Issue.record("Expected draft");return }
+        #expect(!PersonalAuthorization.routine(draft));#expect(try PersonalMessage.decode(draft.steps[0].text).body=="Open Safari, please!")
+        guard case .ask=try d.intake("write a note",apps:apps,now:now) else { Issue.record("Expected note body question");return }
+        guard case .plan(let note)=try d.intake("Close Safari, please!",apps:apps,now:now) else { Issue.record("Expected literal note");return }
+        #expect(note.steps[0].tool == .note);#expect(note.steps[0].text=="Close Safari, please!")
+    }
+    @Test func referencesAreRecentSingleConfirmedActionsOnly() throws {
+        var d=PersonalAgentDialogue()
+        let opened=try PersonalPlan(steps:[.init(tool:.openInstalledApp,text:"com.brave.Browser")])
+        d.completed(opened,apps:apps,now:now)
+        guard case .plan(let close)=try d.intake("close it",apps:apps,now:now.addingTimeInterval(1)) else { Issue.record("Expected scoped reference");return }
+        #expect(close.steps[0].tool == .closeApp);#expect(close.steps[0].text=="com.brave.Browser")
+        d.completed(opened,apps:apps,now:now)
+        _=try d.intake("something unsupported",apps:apps,now:now)
+        guard case .ask=try d.intake("close it",apps:apps,now:now) else { Issue.record("Failed new request must clear reference");return }
+        d.clear();d.completed(opened,apps:apps,now:now)
+        guard case .ask=try d.intake("close it",apps:apps,now:now.addingTimeInterval(121)) else { Issue.record("Expired reference must ask");return }
+        d.clear();let query=try PersonalPlan(steps:[.init(tool:.searchGoogle,text:"Swift actors")]);d.completed(query,apps:apps,now:now)
+        guard case .plan(let yt)=try d.intake("search that on YouTube",apps:apps,now:now) else { Issue.record("Expected query reference");return }
+        #expect(yt.steps[0].tool == .searchYouTube);#expect(yt.steps[0].text=="Swift actors")
+    }
+    @Test func expiryRollbackAndEmptyOrdinalAreSafe() throws {
+        var d=PersonalAgentDialogue();_=try d.intake("text",apps:apps,now:now)
+        #expect(throws:(any Error).self) { try d.intake("John",apps:apps,now:now.addingTimeInterval(121)) }
+        d.clear();_=try d.intake("text",apps:apps,now:now)
+        let expired=d.expire(now:now.addingTimeInterval(-1));#expect(expired)
+        #expect(throws:(any Error).self) { try d.intake("John",apps:apps,now:now) }
+        #expect(PersonalAgentDialogue.ordinal("1",count:0)==nil)
+        #expect(PersonalAgentDialogue.ordinal("second",count:2)==1)
+    }
+    @Test func commonCourtesyAndScopedGerundsDoNotNeedModel() throws {
+        let p=try PersonalConversation.quick(.init(text:"Would you mind launching Brave for me?",locale:"en-IN",apps:apps))
+        #expect(p.steps[0].tool == .openInstalledApp);#expect(p.steps[0].text=="com.brave.Browser")
+        var dialogue=PersonalAgentDialogue();dialogue.completed(p,apps:apps,now:now)
+        guard case .plan(let closed)=try dialogue.intake("Would you mind closing it for me?",apps:apps,now:now) else { Issue.record("Expected explicitly scoped close");return }
+        #expect(closed.steps[0].tool == .closeApp);#expect(closed.steps[0].text=="com.brave.Browser")
+    }
+    @Test func politeCompoundRequestsAreAtomicAndModelOrderIsChecked() throws {
+        let r=PersonalIntentRequest(text:"Please can you open Brave and then close Safari",locale:"en-IN",apps:apps)
+        let p=try PersonalConversation.quick(r)
+        #expect(p.steps.map(\.tool)==[.openInstalledApp,.closeApp])
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"close",app:"Safari"),.init(action:"open",app:"Brave")],request:r) }
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"open",app:"Brave")],request:r) }
+        #expect(throws:(any Error).self) { try PersonalConversation.quick(.init(text:"open Brave and missing app",locale:"en-IN",apps:apps)) }
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"open",app:"Brave")],request:.init(text:"open Brave open Safari",locale:"en-IN",apps:apps)) }
+    }
+    @Test(arguments:["How do I close Safari?","Should I open Brave?","Maybe quit Safari"])
+    func adviceQuestionsCannotBecomeActions(_ text:String) {
+        let open=text.contains("open"),app=open ? "Brave":"Safari"
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:open ? "open":"close",app:app)],request:.init(text:text,locale:"en-IN",apps:apps)) }
+    }
+    @Test func irrelevantModelFieldsCannotMaskIntentAndNamesAreData() throws {
+        let r=PersonalIntentRequest(text:"Open Brave",locale:"en-IN",apps:apps)
+        #expect(throws:(any Error).self) { try PersonalConversation.ground([.init(action:"open",app:"Brave",recipient:"Open")],request:r) }
+        let message=try PersonalConversation.quick(.init(text:"Text Maybe saying hello",locale:"en-IN",apps:apps))
+        #expect(message.steps[0].tool == .message);#expect(!PersonalAuthorization.routine(message))
+    }
+    @Test func punctuationAndCourtesyInsidePayloadsArePreserved() throws {
+        let p=try PersonalConversation.quick(.init(text:"Please text John saying Help me, please!",locale:"en-IN",apps:apps))
+        #expect(try PersonalMessage.decode(p.steps[0].text).body=="Help me, please!")
+        let n=try PersonalConversation.quick(.init(text:"Create a note Remember this!",locale:"en-IN",apps:apps))
+        #expect(n.steps[0].text=="Remember this!")
+    }
+    @Test func draftAmendmentGetsFreshIdentityAndYesCannotApprove() throws {
+        let p=try PersonalPlan(steps:[.init(tool:.message,text:try PersonalMessage(recipient:"John",body:"old",address:"+15555550123").encoded())])
+        guard case .amend(let amended)=try PersonalAgentDialogue.reviewReply("change the message to Hello, please!",plan:p,now:now) else { Issue.record("Expected amendment");return }
+        #expect(amended.id != p.id);#expect(amended.steps[0].id != p.steps[0].id)
+        #expect(try PersonalMessage.decode(amended.steps[0].text).body=="Hello, please!")
+        #expect(try PersonalMessage.decode(amended.steps[0].text).address=="+15555550123")
+        guard case .keep=try PersonalAgentDialogue.reviewReply("yes send it",plan:amended,now:now) else { Issue.record("Voice cannot approve");return }
+    }
+}
+private actor FortyOneResolver {
+    var requireChoice=true
+    func resolve(_ plan:PersonalPlan) throws -> PersonalPlan {
+        guard let step=plan.steps.first,step.tool == .message else { return plan }
+        let message=try PersonalMessage.decode(step.text)
+        if message.address != nil { return plan }
+        throw PersonalRecipientChoiceRequired(plan:plan,stepID:step.id,options:[.init(name:"John One",address:"+15555550123"),.init(name:"John Two",address:"+15555550124")],prompt:"Which John?")
+    }
+}
+@Suite("Milestone41 dialogue integration",.serialized) @MainActor struct PersonalAgent41IntegrationTests {
+    private func coordinator(input:GInput,agent:GShortcut,runner:FortyRunner,root:URL,resolver:FortyOneResolver?=nil) -> SystemWideDictationCoordinator {
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{ if let resolver { return try await resolver.resolve($0) };return try await NativePersonalMessages.resolve($0) })
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;return c
+    }
+    @Test func voiceCanAnswerQuestionAndHudClickNeverStartsDictation() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),input=GInput(),agent=GShortcut(),runner=FortyRunner()
+        let c=coordinator(input:input,agent:agent,runner:runner,root:root);defer { c.close();try? FileManager.default.removeItem(at:root) }
+        c.reviewAgentCommand("open");let id=try #require(c.agentQuestion?.id)
+        c.pillClicked();#expect(input.starts==0);#expect(runner.calls.isEmpty)
+        c.enableAgentShortcut();agent.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("Brave"));agent.receive?(.released);input.receive?(.finished);await c.waitForAgentPlanning()
+        #expect(runner.calls.count==1);#expect(runner.calls[0].text=="com.brave.Browser");#expect(c.agentQuestion==nil)
+        c.submitAgentReply("Safari",questionID:id);#expect(runner.calls.count==1)
+        c.reviewAgentCommand("close it");await c.waitForAgentPlanning();#expect(runner.calls.last?.tool == .closeApp);#expect(runner.calls.last?.text=="com.brave.Browser")
+    }
+    @Test(arguments:["second","John Two"]) func chooseRecipientThenEditInvalidatesOldApprovalAndNeverAutosends(_ reply:String) async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner(),resolver=FortyOneResolver()
+        let c=coordinator(input:GInput(),agent:GShortcut(),runner:runner,root:root,resolver:resolver);defer { c.close();try? FileManager.default.removeItem(at:root) }
+        c.reviewAgentCommand("text John");#expect(c.agentQuestion != nil)
+        c.submitAgentReply("Hello!");await c.waitForAgentPlanning()
+        let question=try #require(c.agentQuestion);#expect(question.options.count==2);#expect(runner.calls.isEmpty)
+        c.submitAgentReply(reply,questionID:question.id);await c.waitForAgentPlanning()
+        let old=try #require(c.agentPlan);#expect(try PersonalMessage.decode(old.steps[0].text).address=="+15555550124")
+        c.reviewAgentCommand("yes send it");#expect(runner.calls.isEmpty);#expect(c.agentPlan?.id==old.id)
+        c.reviewAgentCommand("change the message to New text, please!");await c.waitForAgentPlanning()
+        #expect(c.agentPlan?.id != old.id);#expect(c.agentRecords.first(where:{$0.id==old.id})?.state == .cancelled)
+        #expect(try PersonalMessage.decode(try #require(c.agentPlan?.steps.first?.text)).body=="New text, please!")
+        c.approveAgentPlan(expectedPlan:old);#expect(runner.calls.isEmpty)
+        let displayed=try #require(c.agentPlan)
+        c.agentReplyText="Literal close Safari, please!\n"
+        c.approveAgentPlan(expectedPlan:displayed);#expect(runner.calls.isEmpty)
+        c.applyAgentMessageEdit();await c.waitForAgentPlanning()
+        let final=try #require(c.agentPlan)
+        #expect(try PersonalMessage.decode(final.steps[0].text).body=="Literal close Safari, please!\n")
+        c.approveAgentPlan(expectedPlan:displayed);#expect(runner.calls.isEmpty)
+        c.approveAgentPlan(expectedPlan:final);await c.waitForCommandDispatch();#expect(runner.calls.count==1)
+        c.approveAgentPlan(expectedPlan:final);#expect(runner.calls.count==1)
+    }
+    @Test func helpClearsOnlyEphemeralQuestionAndNeverApprovesDraft() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner()
+        let c=coordinator(input:GInput(),agent:GShortcut(),runner:runner,root:root);defer { c.close();try? FileManager.default.removeItem(at:root) }
+        c.reviewAgentCommand("open");#expect(c.agentQuestion != nil)
+        c.reviewAgentCommand("help");#expect(c.agentQuestion==nil);#expect(runner.calls.isEmpty)
+        c.reviewAgentCommand("text +15555550123 saying Hello!");await c.waitForAgentPlanning();let id=try #require(c.agentPlan?.id)
+        c.agentReplyText="Unapplied edit"
+        c.reviewAgentCommand("what can you do?");#expect(c.agentPlan?.id==id);#expect(runner.calls.isEmpty);#expect(c.agentReplyText=="Unapplied edit")
+        c.cancelAgentConversation();#expect(c.agentPlan==nil);#expect(runner.calls.isEmpty)
+    }
+    @Test func namedAppVoiceRunsWithoutReplyOrCommandModeRedirect() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),input=GInput(),agent=GShortcut(),runner=FortyRunner()
+        let c=coordinator(input:input,agent:agent,runner:runner,root:root);defer { c.close();try? FileManager.default.removeItem(at:root) }
+        let review=c.agentReviewRequest
+        c.enableAgentShortcut();agent.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("Open Whats App"));agent.receive?(.released);input.receive?(.finished);await c.waitForAgentPlanning()
+        #expect(runner.calls.count==1);#expect(runner.calls[0].text=="net.whatsapp.WhatsApp");#expect(c.agentQuestion==nil);#expect(c.agentReviewRequest==review)
+        c.reviewAgentCommand("Open NoSuchInstalledApp");#expect(c.agentQuestion==nil);#expect(c.agentHUD=="App not found");#expect(c.agentReviewRequest==review);#expect(runner.calls.count==1)
+        c.reviewAgentCommand("Open WhatsApp");await c.waitForAgentPlanning();#expect(runner.calls.count==2);#expect(c.agentReviewRequest==review)
+        c.reviewAgentCommand("Open");#expect(c.agentQuestion != nil)
+        let old=c.agentQuestion!.id
+        c.reviewAgentCommand("Open WhatsApp");await c.waitForAgentPlanning();#expect(runner.calls.count==3);#expect(c.agentQuestion==nil)
+        c.submitAgentReply("Safari",questionID:old);#expect(runner.calls.count==3)
+    }
+    @Test func cancellationFailureDoesNotFalselyWithdrawDraft() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner()
+        let engine=try PersonalAgentEngine(url:root.appendingPathComponent("queue.json"),runner:runner)
+        defer { try? engine.close();try? FileManager.default.removeItem(at:root) }
+        let plan=try PersonalIntentParser.parse("Open Safari");try engine.enqueue(plan)
+        try FileManager.default.removeItem(at:root.appendingPathComponent("queue.json"));try FileManager.default.createDirectory(at:root.appendingPathComponent("queue.json"),withIntermediateDirectories:false)
+        #expect(throws:(any Error).self) { try engine.cancel(plan.id) }
+        #expect(engine.records[0].state == .awaitingApproval);#expect(runner.calls.isEmpty)
+    }
+}
+
+private actor FortyOneBlockingResolver {
+    var entered=false
+    var observer:CheckedContinuation<Void,Never>?
+    var pending:CheckedContinuation<PersonalPlan,Never>?
+    var plan:PersonalPlan?
+    func resolve(_ plan:PersonalPlan) async -> PersonalPlan {
+        self.plan=plan;entered=true;observer?.resume();observer=nil
+        return await withCheckedContinuation { pending=$0 }
+    }
+    func waitEntered() async { if !entered { await withCheckedContinuation { observer=$0 } } }
+    func finish() { if let plan { pending?.resume(returning:plan);pending=nil } }
+}
+@Suite("Milestone41 cancelled resolution") @MainActor struct PersonalAgent41CancellationTests {
+    @Test func lateRecipientResolutionCannotCreateDraftAfterCancellation() async {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),resolver=FortyOneBlockingResolver(),runner=FortyRunner()
+        let c=SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentShortcut:GShortcut(),agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{ await resolver.resolve($0) })
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner
+        defer { c.close();try? FileManager.default.removeItem(at:root) }
+        let request=Task { c.reviewAgentCommand("text +15555550123 saying hello");await c.waitForAgentPlanning() }
+        await resolver.waitEntered();c.cancel();await resolver.finish();await request.value
+        #expect(c.agentPlan==nil);#expect(c.agentQuestion==nil);#expect(c.agentRecords.isEmpty);#expect(runner.calls.isEmpty)
+    }
+}
+
+@Suite("Milestone41A-R1 installed app direct opening",.serialized) @MainActor struct PersonalAgent41AppDiscoveryTests {
+    let apps=[PersonalApp(id:"net.whatsapp.WhatsApp",name:"\u{200e}WhatsApp",aliases:["WhatsApp"]),PersonalApp(id:"example.other",name:"Unusual Tool",aliases:["Tool Display Name","Unusual Tool"])]
+    @Test(arguments:["Open WhatsApp","Open Whats App","Open What's App","Open the app WhatsApp","Open WhatsApp application","Please open application WhatsApp for me","Open WhatsApp.app","Open WhatsApp!","Open Tool Display Name"])
+    func namedAppDoesNotNeedReplyOrModel(_ words:String) throws {
+        var d=PersonalAgentDialogue()
+        guard case .plan(let p)=try d.intake(words,apps:apps,now:Date()) else { Issue.record("Named installed app must plan directly");return }
+        #expect(p.steps.count==1);#expect(p.steps[0].tool == .openInstalledApp)
+        #expect(p.steps[0].text==(words.contains("Tool Display") ? "example.other":"net.whatsapp.WhatsApp"))
+    }
+    @Test func ambiguousUnknownAndEmptyNamesNeverPickAnApp() throws {
+        #expect(throws:PersonalPlanningFailure.appNotFound) { try PersonalConversation.resolveApp("!!!",apps:apps) }
+        #expect(throws:PersonalPlanningFailure.appNotFound) { try PersonalConversation.resolveApp("WhatsUp",apps:apps) }
+        #expect(throws:PersonalPlanningFailure.appAmbiguous) { try PersonalConversation.resolveApp("WhatsApp",apps:apps+[.init(id:"different.app",name:"WhatsApp")]) }
+        let precise=[PersonalApp(id:"exact",name:"The App Example"),PersonalApp(id:"short",name:"Example")]
+        #expect(try PersonalConversation.resolveApp("The App Example",apps:precise).id=="exact")
+    }
+    @Test func catalogBeyondOldAlphabeticalLimitStillOpens() throws {
+        let many=(0..<350).map { PersonalApp(id:"fixture.\($0)",name:"A App \($0)") }+apps
+        let request=PersonalIntentRequest(text:"open WhatsApp",locale:"en-US",apps:many)
+        let plan=try PersonalConversation.quick(request)
+        #expect(try PersonalConversation.resolveApp(plan.steps[0].text,apps:many).id=="net.whatsapp.WhatsApp")
+    }
+    private func fixture(_ root:URL,_ path:String,id:String,name:String,display:String?=nil) throws -> URL {
+        let url=root.appendingPathComponent(path),contents=url.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at:contents,withIntermediateDirectories:true)
+        var info:[String:String]=["CFBundleIdentifier":id,"CFBundleName":name,"CFBundlePackageType":"APPL"]
+        if let display { info["CFBundleDisplayName"]=display }
+        try PropertyListSerialization.data(fromPropertyList:info,format:.xml,options:0).write(to:contents.appendingPathComponent("Info.plist"))
+        return url
+    }
+    @Test func nativeDiscoveryFindsNestedBundlesAndAllInstalledNamesButNotHelpers() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);defer { try? FileManager.default.removeItem(at:root) }
+        let id="fixture."+UUID().uuidString
+        let url=try fixture(root,"Vendor/Utilities.localized/Disk Name.app",id:id,name:"Internal Name",display:"Visible Name")
+        _=try fixture(root,"Vendor/Utilities.localized/Disk Name.app/Contents/Helpers/Helper.app",id:id+".helper",name:"Helper")
+        try FileManager.default.createSymbolicLink(at:root.appendingPathComponent("Alias.app"),withDestinationURL:url)
+        let found=NativePersonalApps.discovered(roots:[root]);try #require(found.count==1);#expect(found[0].url.standardizedFileURL==url.resolvingSymlinksInPath().standardizedFileURL)
+        for name in ["Disk Name","Internal Name","Visible Name","Alias"] { #expect(try PersonalConversation.resolveApp(name,apps:found.map(\.app)).id==id) }
+        // A subsequent install is discovered on the next request, with no registration/restart.
+        _=try fixture(root,"New App.app",id:id+".new",name:"New App")
+        #expect(NativePersonalApps.discovered(roots:[root]).count==2)
+    }
+    @Test func hostWhatsAppReadOnlyResolutionProbe() throws {
+        guard FileManager.default.fileExists(atPath:"/Applications/WhatsApp.app") else { print("41AR1 hostWhatsApp probe: app absent, no live assertion");return }
+        let catalog=NativePersonalApps.catalog();var d=PersonalAgentDialogue()
+        guard case .plan(let p)=try d.intake("Open WhatsApp",apps:catalog,now:Date()) else { Issue.record("Installed WhatsApp incorrectly asks a reply");return }
+        #expect(p.steps[0].text=="net.whatsapp.WhatsApp")
+        #expect(try NativePersonalApps.target(p.steps[0].text).path=="/Applications/WhatsApp.app")
+        print("41AR1 hostWhatsApp probe: installed metadata -> direct plan -> exact bundle path; launches=0")
+    }
+}
+
+@MainActor private final class AgentFastFixture:AgentDictationInput {
+    var agentStarts=0,dictationStarts=0,cancels=0
+    var hold=false
+    var receive:(@MainActor @Sendable (DictationEvent)->Void)?
+    var waiter:CheckedContinuation<DictationInfo,Never>?
+    var entry:CheckedContinuation<Void,Never>?
+    func start(localeIdentifier:String,receive:@escaping @MainActor @Sendable (DictationEvent)->Void) async throws -> DictationInfo { dictationStarts+=1;self.receive=receive;return .init(engine:"dictation fixture",localeIdentifier:localeIdentifier) }
+    func startAgent(localeIdentifier:String,receive:@escaping @MainActor @Sendable (DictationEvent)->Void) async throws -> DictationInfo {
+        agentStarts+=1;self.receive=receive;entry?.resume();entry=nil
+        if hold { return await withCheckedContinuation { waiter=$0 } }
+        return .init(engine:"fast on-device fixture",localeIdentifier:localeIdentifier)
+    }
+    func waitForEntry() async { if agentStarts==0 { await withCheckedContinuation { entry=$0 } } }
+    func finishStart() { waiter?.resume(returning:.init(engine:"late fixture",localeIdentifier:"en-US"));waiter=nil }
+    func stop() {}
+    func cancel() { cancels+=1 }
+}
+@Suite("Milestone41A-R2 full-screen Agent security and startup",.serialized) @MainActor struct PersonalAgent41FullscreenTests {
+    @Test(arguments:[AXError.noValue,.attributeUnsupported,.notImplemented])
+    func explicitNoFocusedElementAllowsGlobalAgent(_ status:AXError) throws {
+        try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:status,elementPresent:false)
+        #expect(throws:TextTargetError.secure) { try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:true,focusStatus:status,elementPresent:false) }
+        #expect(throws:TextTargetError.denied) { try NativeDictationShortcut.validateAgentSecurity(trusted:false,secureInput:false,focusStatus:status,elementPresent:false) }
+    }
+    @Test(arguments:[AXError.cannotComplete,.failure,.invalidUIElement,.success])
+    func unknownFocusFailureStillBlocks(_ status:AXError) {
+        #expect(throws:TextTargetError.unsupported) { try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:status,elementPresent:false) }
+    }
+    @Test func focusedSecureRolesAndPermissionRevocationStillBlock() throws {
+        for role in ["AXSecureTextField","password"] {
+            #expect(throws:TextTargetError.secure) { try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:.success,elementPresent:true,subroleStatus:.success,subrole:role) }
+            #expect(throws:TextTargetError.secure) { try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:.success,elementPresent:true,roleStatus:.success,role:role) }
+        }
+        #expect(throws:TextTargetError.denied) { try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:.apiDisabled,elementPresent:false) }
+        #expect(throws:TextTargetError.unsupported) { try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:.success,elementPresent:true,subroleStatus:.cannotComplete) }
+        try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:.success,elementPresent:true,subroleStatus:.noValue,roleStatus:.success,role:"AXWindow")
+    }
+    private func coordinator(_ input:AgentFastFixture,_ agent:GShortcut,_ ordinary:GShortcut,_ capture:GCapture,_ clipboard:GClipboard,_ clock:GClock)->SystemWideDictationCoordinator {
+        SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:ordinary,agentShortcut:agent,agentCaptureValidation:{ try NativeDictationShortcut.validateAgentSecurity(trusted:true,secureInput:false,focusStatus:.noValue,elementPresent:false) },agentConflict:{_ in false},clock:clock,preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),minimumHoldMilliseconds:1000)
+    }
+    @Test func noTextFocusAgentUsesFastEntryImmediatelyAndOwnsAudio() async {
+        let input=AgentFastFixture(),agent=GShortcut(),ordinary=GShortcut(),capture=GCapture(),clipboard=GClipboard(),clock=GClock()
+        let c=coordinator(input,agent,ordinary,capture,clipboard,clock);defer { c.close() }
+        c.enableShortcut();c.enableAgentShortcut();agent.receive?(.pressed);await c.waitUntilRecording()
+        #expect(input.agentStarts==1);#expect(input.dictationStarts==0);#expect(capture.count==0);#expect(c.agentHUD=="Agent listening");#expect(c.agentStartupMilliseconds != nil)
+        ordinary.receive?(.pressed);c.startManual();#expect(input.agentStarts==1);#expect(input.dictationStarts==0)
+        agent.receive?(.cancelled);ordinary.receive?(.released);agent.receive?(.released)
+        #expect(input.cancels>0);#expect(c.phase != .recording);#expect(capture.count==0);#expect(clipboard.text=="original")
+    }
+    @Test func repeatedCancelledAgentGesturesNeverLatchEitherShortcut() async {
+        let input=AgentFastFixture(),agent=GShortcut(),ordinary=GShortcut(),capture=GCapture()
+        let c=coordinator(input,agent,ordinary,capture,GClipboard(),GClock());defer { c.close() }
+        c.enableAgentShortcut()
+        for _ in 0..<6 {
+            agent.receive?(.pressed);await c.waitUntilRecording();agent.receive?(.cancelled)
+            #expect(c.phase != .recording)
+        }
+        #expect(input.agentStarts==6)
+        c.startManual();await c.waitUntilRecording();#expect(input.dictationStarts==1);c.cancel()
+    }
+    @Test func earlyReleaseCannotTurnLateStartupIntoRecordingOrExecution() async {
+        let input=AgentFastFixture(),agent=GShortcut(),capture=GCapture(),clipboard=GClipboard()
+        input.hold=true;let c=coordinator(input,agent,GShortcut(),capture,clipboard,GClock());defer { c.close() }
+        c.enableAgentShortcut();agent.receive?(.pressed);await input.waitForEntry()
+        #expect(c.phase == .preparing);#expect(c.agentHUD=="Starting mic…");#expect(c.agentStartupMilliseconds==nil)
+        let old=input.receive;agent.receive?(.released);input.finishStart();await c.waitForCaptureStartup()
+        old?(.transcript("open Safari"));old?(.finished)
+        #expect(c.phase != .recording);#expect(c.agentPlan==nil);#expect(c.agentQuestion==nil);#expect(capture.count==0);#expect(clipboard.text=="original")
+    }
+    @Test func nativeAgentKeepsExclusiveAdmissionBeforeAnyPermissionOrCapture() async {
+        let input=AppleDictationInput(exclusiveCapture:{ throw DictationFailure.anotherInstance })
+        await #expect(throws:DictationFailure.anotherInstance) { _=try await input.startAgent(localeIdentifier:"en-US") { _ in Issue.record("Admission denied must never emit") } }
+        #expect(input.speechDiagnostics?.stage == .admission);#expect(input.speechDiagnostics?.failure=="anotherInstance")
+    }
+}
+
+@Suite("41A-R4 spoken application names") @MainActor struct PersonalAgent41SpokenNamesTests {
+    @Test(arguments:["Open WhatsApp","Open What's App","Open up WhatsApp","Open the WhatsApp app","Open VS Code","Open up the Brave browser"])
+    func spokenWrappersResolveOnlyInstalledApps(_ text:String) throws {
+        let apps=[PersonalApp(id:"wa",name:"WhatsApp"),PersonalApp(id:"code",name:"Visual Studio Code",aliases:["VS Code"]),PersonalApp(id:"brave",name:"Brave Browser")]
+        var dialogue=PersonalAgentDialogue()
+        guard case .plan(let p)=try dialogue.intake(text,apps:apps,now:Date()) else { Issue.record("Expected direct installed-app plan");return }
+        #expect(["wa","code","brave"].contains(p.steps[0].text))
+    }
+}
+
+@Suite("41A-R5 deeper explicit focus") @MainActor struct PersonalAgent41FocusDepthTests {
+    @Test func deepComposerRequiresItsOwnFocusFlag() {
+        #expect(FocusedDescendantSearch.find(root:0,limit:256,maximumDepth:16,focusedEditor:{$0==12},children:{n,_ in n<12 ? [n+1]:[]})==12)
+        #expect(FocusedDescendantSearch.find(root:0,limit:256,maximumDepth:16,focusedEditor:{_ in false},children:{n,_ in n<12 ? [n+1]:[]})==nil)
+    }
+}
+
+@Suite("41A-R6 failed Agent followed by Fn",.serialized) @MainActor struct PersonalAgent41RepeatTests {
+    @Test func successfulDictationThenUnknownAppThenDictationKeepsWorking() async throws {
+        let input=AgentFastFixture(),fn=GShortcut(),agent=GShortcut(),target=GCapture(),clipboard=GClipboard(),clock=GClock(),root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let c=SystemWideDictationCoordinator(input:input,targets:target,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:fn,agentShortcut:agent,agentCaptureValidation:{},agentConflict:{_ in false},clock:clock,preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps})
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");defer { c.close();try? FileManager.default.removeItem(at:root) }
+        c.enableShortcut();c.enableAgentShortcut()
+        fn.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("first"));fn.receive?(.released);input.receive?(.finished);await c.waitForInsertionCompletion()
+        agent.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("open NotInstalled"));agent.receive?(.released);input.receive?(.finished);await c.waitForAgentPlanning()
+        #expect(c.agentHUD=="App not found");#expect(c.lastAgentFailure?.contains("open NotInstalled")==true)
+        fn.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("second"));fn.receive?(.released);input.receive?(.finished);await c.waitForInsertionCompletion()
+        #expect(input.dictationStarts==2);#expect(input.agentStarts==1);#expect(clipboard.text=="original")
+    }
+}
+
+@Suite("41A-R7 repeated spoken open intent") @MainActor struct PersonalAgent41RepeatedOpenTests {
+    @Test(arguments:["Open Brave Open brave","Open Safari. Open Safari.","Open WhatsApp Open WhatsApp Open WhatsApp","Open VS Code Open VS Code"])
+    func repeatedIdenticalOpenExecutesOneInstalledIdentity(_ text:String) throws {
+        let apps=PersonalAgent40Tests.apps+[.init(id:"code",name:"VS Code")]
+        var dialogue=PersonalAgentDialogue()
+        guard case .plan(let plan)=try dialogue.intake(text,apps:apps,now:Date()) else { Issue.record("Expected one direct open plan");return }
+        #expect(plan.steps.count==1);#expect(plan.steps[0].tool == .openInstalledApp)
+    }
+    @Test(arguments:["open Safari open Brave","close Safari close Safari","text John saying hi text John saying hi","create a note open Safari open Safari","open Missing open Missing","don't open Safari don't open Safari"])
+    func nonidenticalOrPayloadCommandsNeverFold(_ text:String) {
+        #expect(PersonalConversation.repeatedOpen(text,apps:PersonalAgent40Tests.apps,now:Date())==nil)
+    }
+}
+
+@Suite("41A-R8 repeated close and verb") @MainActor struct PersonalAgent41RepeatedCloseTests {
+    @Test(arguments:["close WhatsApp close WhatsApp","quit Safari quit Safari","close close Safari","Open Open WhatsApp","exit Brave exit Brave"])
+    func repeatedInstalledLifecycleRequestBecomesOneAction(_ text:String) throws {
+        var d=PersonalAgentDialogue()
+        guard case .plan(let plan)=try d.intake(text,apps:PersonalAgent40Tests.apps,now:Date()) else { Issue.record("Expected single app lifecycle plan");return }
+        #expect(plan.steps.count==1);#expect(plan.steps[0].tool==(text.hasPrefix("Open") ? .openInstalledApp:.closeApp))
+    }
+    @Test func actualFullAppNameAndDifferentTargetsAreNeverCollapsed() throws {
+        let apps=PersonalAgent40Tests.apps+[.init(id:"other",name:"Open WhatsApp")]
+        #expect(PersonalConversation.repeatedOpen("Open Open WhatsApp",apps:apps,now:Date(),allowClose:true)==nil)
+        #expect(PersonalConversation.repeatedOpen("close Safari close Brave",apps:apps,now:Date(),allowClose:true)==nil)
+        #expect(PersonalConversation.repeatedOpen("text John saying close close Safari",apps:apps,now:Date(),allowClose:true)==nil)
+    }
+}
+
+@MainActor private final class ClipboardFreeFixture:ClipboardFreeInsertionTarget {
+    let base=GTarget()
+    var info:InsertionTargetInfo {base.info}
+    var original:TargetTextState? {base.original}
+    func validate() throws {try base.validate()}
+    func canReplaceSelection()->Bool {false}
+    func replaceSelection(_ text:String) throws {Issue.record("Unexpected direct mutation")}
+    func postPaste(whileClipboardOwned:()->Bool) throws {Issue.record("Unexpected paste")}
+    func observedText()->String? {base.observedText()}
+    func readbackText() throws ->String {try base.readbackText()}
+    func supportsClipboardFreeText(_ text:String)->Bool {!text.isEmpty && text.utf8.count<=4096 && text.unicodeScalars.allSatisfy { ![Unicode.GeneralCategory.control,.lineSeparator,.paragraphSeparator].contains($0.properties.generalCategory) }}
+    func postText(_ text:String,budgetMilliseconds:Int64)->Bool {base.postText(text,budgetMilliseconds:budgetMilliseconds)}
+}
+@Suite("42A window actions and clipboard-free delivery",.serialized) @MainActor struct PersonalAgent42Tests {
+    @Test(arguments:[("minimise WhatsApp",PersonalTool.minimizeApp),("minimize WhatsApp",.minimizeApp),("restore WhatsApp",.restoreApp),("make WhatsApp full screen",.fullScreenApp),("full screen WhatsApp",.fullScreenApp),("exit full screen WhatsApp",.exitFullScreenApp),("maximise WhatsApp",.maximizeApp),("minimise WhatsApp minimise WhatsApp",.minimizeApp)])
+    func windowRequestsUseOneInstalledTypedTool(_ sample:(String,PersonalTool)) throws {
+        var d=PersonalAgentDialogue()
+        guard case .plan(let plan)=try d.intake(sample.0,apps:PersonalAgent40Tests.apps,now:Date()) else { Issue.record("Expected window plan");return }
+        #expect(plan.steps.count==1);#expect(plan.steps[0].tool==sample.1);#expect(plan.steps[0].text=="net.whatsapp.WhatsApp");#expect(PersonalAuthorization.routine(plan))
+    }
+    @Test func unknownNamesAndLiteralRepliesDoNotChooseAnotherWindow() throws {
+        #expect(throws:PersonalPlanningFailure.appNotFound) {try PersonalConversation.windowCommand("minimise Missing",apps:PersonalAgent40Tests.apps,now:Date())}
+        var d=PersonalAgentDialogue();_=try d.intake("create a note",apps:PersonalAgent40Tests.apps,now:Date())
+        guard case .plan(let p)=try d.intake("minimise WhatsApp",apps:PersonalAgent40Tests.apps,now:Date()) else {Issue.record("Expected literal note");return}
+        #expect(p.steps[0].tool == .note);#expect(p.steps[0].text=="minimise WhatsApp")
+        #expect(try NativePersonalWindows.chooseWindow(focused:1,main:2,windows:[1,2])==1)
+        #expect(throws:PersonalAgentError.unsupported) {try NativePersonalWindows.chooseWindow(focused:nil as Int?,main:nil,windows:[1,2])}
+    }
+    @Test(arguments:[false,true]) func nativeRouteNeverPublishesOrRestoresClipboard(_ readback:Bool) async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard();var snapshots=0;clipboard.beforeSnapshot={snapshots+=1};target.base.hasOriginalContext=readback;target.base.unicodeSupported=true
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let receipt=await service.insert("hello",target:target,session:"s")
+        #expect(receipt.status==(readback ? .insertedVerified:.dispatchedUnverified));#expect(target.base.unicodePosts==1)
+        #expect(snapshots==0);#expect(clipboard.installed==0);#expect(clipboard.restores==0);#expect(clipboard.text=="original");#expect(!service.hasPendingClipboard)
+    }
+    @Test func controlsAndDeniedTargetsNeverUseClipboardFallback() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard();target.base.unicodeSupported=true
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let r=await service.insert("hello\nworld",target:target,session:"s");#expect(!r.attempted);#expect(target.base.unicodePosts==0);#expect(clipboard.installed==0)
+        target.base.validationError = .secure
+        let denied=await service.insert("hello",target:target,session:"s");#expect(!denied.attempted);#expect(target.base.unicodePosts==0);#expect(!service.hasPendingClipboard)
+    }
+    @Test func unacknowledgedTypingIsNeverRetriedOrBackedUp() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard(),clock=GClock();target.base.unicodeSupported=true;target.base.unicodeAcknowledged=false
+        let service=TextInsertionService(clipboard:clipboard,clock:clock)
+        let task=Task {await service.insert("hello",target:target,session:"s")}
+        await clock.waitForSleep(1050);await clock.advance(2500);let r=await task.value
+        #expect(r.status == .dispatchedUnverified);#expect(target.base.unicodePosts==1);#expect(clipboard.installed==0);#expect(!service.hasPendingClipboard)
+    }
+}
+
+@Suite("43A folders and named browser search",.serialized) @MainActor struct PersonalAgent43Tests {
+    @Test(arguments:[("create a folder called Projects in Documents",PersonalTool.createFolder),("open folder Projects in Documents",.openFolder),("close folder Projects in Documents",.closeFolder),("find folder Projects in Documents",.findFolder),("delete folder Projects in Documents",.trashFolder),("create folder Projects in Documents create folder Projects in Documents",.createFolder)])
+    func folderGrammarUsesOneLiteralBoundedTool(_ sample:(String,PersonalTool)) throws {
+        var d=PersonalAgentDialogue();guard case .plan(let p)=try d.intake(sample.0,apps:PersonalAgent40Tests.apps,now:Date()) else {Issue.record("Expected folder plan");return}
+        #expect(p.steps.count==1);#expect(p.steps[0].tool==sample.1)
+        let folder=try PersonalFolderCommand.decode(p.steps[0].text);#expect(folder.name=="Projects");#expect(folder.location == .documents)
+        #expect(PersonalAuthorization.routine(p)==(sample.1 != .trashFolder))
+        #expect(!p.steps[0].displayText.contains("identity"))
+    }
+    @Test(arguments:["../Secrets","a/b","a\\b",".hidden", "bad:name","bad\nname"])
+    func invalidFolderComponentsNeverReachNativeEffects(_ name:String) {
+        #expect(throws:(any Error).self) {try PersonalFolderCommand(name:name,location:.documents)}
+    }
+    @Test func compoundsRejectBeforeCreatingAnAccidentallyNamedFolderAndQuotesPreserveNames() throws {
+        #expect(throws:PersonalPlanningFailure.unsupported) {try PersonalFileIntents.parse("create folder Work in Documents delete folder Other in Documents",now:Date())}
+        let p=try #require(try PersonalFileIntents.parse("create folder \"Research and Development\" in Documents",now:Date()))
+        #expect(try PersonalFolderCommand.decode(p.steps[0].text).name=="Research and Development")
+    }
+    @Test(arguments:["search for cats & dogs in Brave","search Safari for close Safari","search for delete a folder on Safari"])
+    func namedBrowserQueriesRemainLiteralData(_ text:String) throws {
+        let p=try #require(try PersonalFileIntents.parse(text,now:Date()));#expect(p.steps[0].tool == .searchBrowser)
+        let q=try PersonalBrowserQuery.decode(p.steps[0].text)
+        #expect(q.query.contains("cats & dogs") || q.query=="close Safari" || q.query=="delete a folder")
+        #expect(q.browser.bundleID==(text.contains("Brave") ? "com.brave.Browser":"com.apple.Safari"))
+        #expect(try NativePersonalApps.searchURL(q.query,youtube:false).host=="www.google.com")
+    }
+    @Test func nativeFolderCreationIsScopedIdempotentAndRejectsSymlinks() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer {try? FileManager.default.removeItem(at:root)}
+        let request=try PersonalFolderCommand(name:"Projects",location:.documents)
+        _=try NativePersonalFolders.create(request,rootURL:root);let bound=try NativePersonalFolders.bind(request,rootURL:root)
+        _=try NativePersonalFolders.create(request,rootURL:root);try NativePersonalFolders.validateTrash(bound,rootURL:root)
+        try FileManager.default.moveItem(at:root.appendingPathComponent("Projects"),to:root.appendingPathComponent("Original"));try FileManager.default.createDirectory(at:root.appendingPathComponent("Projects"),withIntermediateDirectories:false)
+        #expect(throws:PersonalAgentError.verificationFailed) {try NativePersonalFolders.validateTrash(bound,rootURL:root)}
+        try FileManager.default.createSymbolicLink(at:root.appendingPathComponent("Link"),withDestinationURL:root.appendingPathComponent("Original"))
+        #expect(throws:(any Error).self) {try NativePersonalFolders.create(.init(name:"Link",location:.documents),rootURL:root)}
+        #expect(throws:PersonalAgentError.approvalRequired) {try NativePersonalFolders.validateTrash(.init(name:"",location:.documents),rootURL:root)}
+    }
+    @Test func routineExecutorCannotTrashWithoutApproval() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner();defer {try? FileManager.default.removeItem(at:root)}
+        let engine=try PersonalAgentEngine(url:root.appendingPathComponent("queue.json"),runner:runner);defer {try? engine.close()}
+        let plan=try #require(try PersonalFileIntents.parse("delete folder Projects in Documents",now:Date()));try engine.enqueue(plan)
+        await #expect(throws:PersonalAgentError.approvalRequired) {try await engine.runRequestedRoutine(plan)}
+        #expect(runner.calls.isEmpty)
+    }
+}
+
+@Suite("43A post-trash verification and missing folder scope") @MainActor struct PersonalAgent43CompletionTests {
+    @Test func incompleteFolderRequestCannotBecomeWebSearch() {
+        #expect(throws:PersonalPlanningFailure.unsupported) {try PersonalFileIntents.parse("search for folder Projects",now:Date())}
+        #expect(throws:PersonalPlanningFailure.unsupported) {try PersonalFileIntents.parse("create a folder",now:Date())}
+    }
+    @Test func verifiedMoveRequiresSourceAbsenceAndSameDirectoryIdentity() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer {try? FileManager.default.removeItem(at:root)}
+        let request=try PersonalFolderCommand(name:"Projects",location:.documents)
+        _=try NativePersonalFolders.create(request,rootURL:root)
+        let bound=try NativePersonalFolders.bind(request,rootURL:root),moved=root.appendingPathComponent("Moved")
+        try FileManager.default.moveItem(at:root.appendingPathComponent("Projects"),to:moved)
+        #expect(try NativePersonalFolders.verifyTrashCompletion(bound,rootURL:root,moved:moved))
+        let other=root.appendingPathComponent("Other");try FileManager.default.createDirectory(at:other,withIntermediateDirectories:false)
+        #expect(throws:PersonalAgentError.verificationFailed) {try NativePersonalFolders.verifyTrashCompletion(bound,rootURL:root,moved:other)}
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Projects"),withIntermediateDirectories:false)
+        #expect(throws:PersonalAgentError.verificationFailed) {try NativePersonalFolders.verifyTrashCompletion(bound,rootURL:root,moved:moved)}
+    }
+}
+
+@Suite("43A folder-result HUD navigation",.serialized) @MainActor struct PersonalAgent43ResultTests {
+    @Test func clickingSearchResultsNeverStartsDictation() async throws {
+        let input=GInput(),root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner()
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{$0})
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;defer {c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("find folder Projects in Documents");await c.waitForAgentPlanning()
+        #expect(c.agentHUD=="Folder results");let before=c.agentReviewRequest
+        c.pillClicked();#expect(c.agentReviewRequest != before);#expect(input.starts==0);#expect(runner.calls.count==1)
+    }
+}
+
+
+@Suite("44A Mac audio and browser/player actions",.serialized) @MainActor struct PersonalAgent44Tests {
+    @Test(arguments:[("set volume to forty five percent",45),("set the volume to 0%",0),("set volume to one hundred",100),("change volume to 72 percent",72)])
+    func numericSpeechAndBoundaries(_ sample:(String,Int)) throws {
+        let p=try #require(try PersonalControlIntents.parse(sample.0,now:Date()))
+        #expect(p.steps.count==1);#expect(p.steps[0].tool == .systemAudio)
+        let c=try PersonalAudioCommand.decode(p.steps[0].text);#expect(c.action == .set);#expect(c.percent==sample.1)
+    }
+    @Test(arguments:["set volume to -1","set volume to 101 percent","set volume to lots","next tab","open a new tab in Firefox","volume up then delete folder Projects in Documents","mute and open Safari"])
+    func unsupportedControlsCannotFallIntoOtherTools(_ text:String) {
+        #expect(throws:(any Error).self) {try PersonalConversation.quick(.init(text:text,locale:"en",apps:PersonalAgent40Tests.apps))}
+    }
+    @Test(arguments:[("volume up",PersonalAudioCommand.Action.up),("turn down the volume",.down),("mute",.mute),("unmute audio",.unmute),("what is the volume",.status)])
+    func routineAudioPhrases(_ sample:(String,PersonalAudioCommand.Action)) throws {
+        var d=PersonalAgentDialogue();guard case .plan(let p)=try d.intake(sample.0,apps:[],now:Date()) else {Issue.record("Expected native audio plan");return}
+        #expect(try PersonalAudioCommand.decode(p.steps[0].text).action==sample.1);#expect(PersonalAuthorization.routine(p));#expect(!p.steps[0].displayText.contains("{"))
+    }
+    @Test(arguments:["new tab in Safari","open a new window in Brave","switch to the next tab in Safari","previous tab in Brave"])
+    func browserUsesExplicitFixedIdentity(_ text:String) throws {
+        let p=try #require(try PersonalControlIntents.parse(text,now:Date()));let c=try PersonalBrowserControl.decode(p.steps[0].text)
+        #expect(p.steps[0].tool == .browserControl);#expect(c.browser.bundleID==(text.contains("Brave") ? "com.brave.Browser":"com.apple.Safari"))
+    }
+    @Test(arguments:["next track in Spotify","play the previous song in Music","skip to next track","next track in Apple Music"])
+    func playerCommandsStayClosed(_ text:String) throws {
+        let p=try #require(try PersonalControlIntents.parse(text,now:Date()));#expect(p.steps[0].tool==(text.contains("Spotify") ? .spotify:.music));#expect(["next","previous"].contains(p.steps[0].text))
+    }
+    @Test func repeatAndPayloadAreHandledSeparately() throws {
+        let p=try #require(try PersonalControlIntents.parse("volume up volume up",now:Date()));#expect(p.steps.count==1)
+        let note=try PersonalConversation.quick(.init(text:"create a note next tab in Safari",locale:"en",apps:[]));#expect(note.steps[0].tool == .note);#expect(note.steps[0].text=="next tab in Safari")
+        #expect(throws:(any Error).self) {try PersonalAudioCommand.decode("{\"action\":\"set\",\"percent\":200}")}
+        #expect(throws:(any Error).self) {try PersonalAudioCommand(action:.mute,percent:5)}
+    }
+    @Test func nativeAudioReadbackMustBeValid() throws {
+        #expect(try NativePersonalControls.audioEvidence("45:true").contains("muted"))
+        for bad in ["200:true","40:maybe","unverified", "-1:false"] {#expect(throws:PersonalAgentError.verificationFailed) {try NativePersonalControls.audioEvidence(bad)}}
+    }
+    @Test func fixedAudioAndBrowserScriptsCompileWithoutExecuting() throws {
+        var sources:[String]=[]
+        for action in [PersonalAudioCommand.Action.status,.set,.up,.down,.mute,.unmute] {sources.append(NativePersonalControls.audioSource(try .init(action:action,percent:action == .set ? 40:nil)))}
+        for browser in [PersonalBrowserQuery.Browser.safari,.brave] {for action in [PersonalBrowserControl.Action.newTab,.newWindow,.nextTab,.previousTab] {sources.append(NativePersonalControls.browserSource(.init(browser:browser,action:action)))}}
+        for source in sources {var failure:NSDictionary?;let script=try #require(NSAppleScript(source:source));let ok=script.compileAndReturnError(&failure);#expect(ok,"Fixed native template failed compile: \(String(describing:failure))")}
+    }
+}
+
+@Suite("44A delayed player verification") @MainActor struct PersonalAgent44TrackTests {
+    @Test func slowReadbackIsObservedWithoutSendingAnotherCommand() async throws {
+        var reads=0,pauses=0
+        try await NativePersonalControls.observeChangedTrack("original",read:{reads+=1;return reads>=3 ? "changed":"original"},pause:{pauses+=1})
+        #expect(reads==3);#expect(pauses==2)
+    }
+    @Test func unchangedOrMissingTrackNeverVerifies() async {
+        var reads=0
+        await #expect(throws:PersonalAgentError.verificationFailed) {try await NativePersonalControls.observeChangedTrack("original",read:{reads+=1;return "original"},pause:{})}
+        #expect(reads==12)
+        await #expect(throws:PersonalAgentError.verificationFailed) {try await NativePersonalControls.observeChangedTrack("original",read:{""},pause:{})}
     }
 }

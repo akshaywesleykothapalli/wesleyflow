@@ -46,14 +46,14 @@ public enum DictationFormatting {
             #"[\"'][^\"'\n]*[/\\][^\"'\n]*[\"']"#,
             #"(?m)^[\t ]*(?:\$\s|(?:sudo|git|npm|swift|python3?|curl|rm|cd|ssh|brew)\s)[^\n]*"#,
             #"\S*[/\\_@=<>$|{}\[\]()0-9]\S*|\b[a-z]+[A-Z][A-Za-z]*\b|\b[A-Z]{2,}\b|\b[A-Za-z][A-Za-z0-9]*\.[A-Za-z0-9]{1,12}\b"#]
-        patterns += options.vocabulary.map { #"(?i)(?<![\p{L}\p{N}_])"# + NSRegularExpression.escapedPattern(for:$0) + #"(?![\p{L}\p{N}_])"# }
+        patterns += options.vocabulary.map { #"(?i)(?<![\p{L}\p{M}\p{N}_])"# + NSRegularExpression.escapedPattern(for:$0) + #"(?![\p{L}\p{M}\p{N}_])"# }
         let ns = raw as NSString
         let baseRanges = patterns.flatMap { pattern in
             (try? NSRegularExpression(pattern:pattern).matches(in:raw,range:NSRange(location:0,length:ns.length)).map(\.range)) ?? []
         }
         // Explicit expansions become protected output; never spellcheck/rewrite their result.
         let aliases = options.replacements.flatMap { rule -> [NSRange] in
-            let pattern = #"(?i)(?<![\p{L}\p{N}_])"# + NSRegularExpression.escapedPattern(for:rule.phrase) + #"(?![\p{L}\p{N}_])"#
+            let pattern = #"(?i)(?<![\p{L}\p{M}\p{N}_])"# + NSRegularExpression.escapedPattern(for:rule.phrase) + #"(?![\p{L}\p{M}\p{N}_])"#
             return ((try? NSRegularExpression(pattern:pattern).matches(in:raw,range:NSRange(location:0,length:ns.length)).map(\.range)) ?? []).filter { r in !baseRanges.contains(where:{ NSIntersectionRange($0,r).length > 0 }) }
         }
         let ranges = (baseRanges + aliases).sorted { $0.location == $1.location ? $0.length > $1.length : $0.location < $1.location }
@@ -70,7 +70,7 @@ public enum DictationFormatting {
             spans.append(.init(text:replacement ?? original,protected:true)); offset = NSMaxRange(r)
         }
         if offset < ns.length { spans.append(.init(text:ns.substring(from:offset),protected:false)) }
-        var budget = 128
+        var budget = 2048
         for index in spans.indices where !spans[index].protected {
             var text = spans[index].text
             // Only a fully explicit current-utterance restart, with no protected spans.
@@ -89,16 +89,16 @@ public enum DictationFormatting {
                 text = text.replacingOccurrences(of:#"[\t ]+([,.;:!?])"#,with:"$1",options:.regularExpression)
             }
             // Only isolated hesitation interjections; never delete conjunctions or repeated ordinary words.
-            if options.removeFillers { text = text.replacingOccurrences(of:#"(?i)(?<![\p{L}\p{N}_])(?:um|uh|erm)(?:[, ]+|$)"#,with:"",options:.regularExpression) }
+            if options.removeFillers { text = text.replacingOccurrences(of:#"(?i)(?<![\p{L}\p{M}\p{N}_])(?:um|uh|erm)(?:[, ]+|$)"#,with:"",options:.regularExpression) }
             else if options.removeRepeatedFillers { text = text.replacingOccurrences(of:#"(?i)\b(um|uh|erm)(?:[ ,]+\1)+\b"#,with:"$1",options:.regularExpression) }
-            if options.correctSpelling, let correction, let regex = try? NSRegularExpression(pattern:#"\b[a-z]{3,40}\b"#) {
+            if options.correctSpelling, let regex = try? NSRegularExpression(pattern:#"(?<![\p{L}\p{M}\p{N}_])[a-z]{3,40}(?![\p{L}\p{M}\p{N}_])"#) {
                 let before = text
                 for match in regex.matches(in:before,range:NSRange(before.startIndex...,in:before)).reversed() {
                     guard budget > 0 else { break }; budget -= 1
                     guard let r = Range(match.range,in:before) else { continue }; let word = String(before[r])
                     // Preserve programming keywords and meaningful small words, even when a dictionary disagrees.
                     guard !["and","or","but","not","let","var","func","class","struct","enum","actor","async","await","throws","nil","true","false","return","import","print"].contains(word),
-                          let fixed = correction(word), fixed.count <= 64, !fixed.isEmpty,
+                          let fixed = commonTypos[word] ?? correction?(word), fixed.count <= 64, !fixed.isEmpty,
                           fixed.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }), let destination = Range(match.range,in:text) else { continue }
                     text.replaceSubrange(destination,with:fixed)
                 }
@@ -125,8 +125,9 @@ public enum DictationFormatting {
         let output = spans.map(\.text).joined().trimmingCharacters(in:.whitespacesAndNewlines)
         return output.utf8.count <= DictationText.maximumBytes ? output : raw
     }
+    private static let commonTypos = ["teh":"the", "adn":"and", "recieve":"receive", "seperate":"separate", "definately":"definitely", "occured":"occurred"]
     private static func replacingWord(_ phrase: String,in text: String,with replacement: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern:#"(?i)(?<![\p{L}\p{N}_])"# + NSRegularExpression.escapedPattern(for:phrase) + #"(?![\p{L}\p{N}_])"#) else { return text }
+        guard let regex = try? NSRegularExpression(pattern:#"(?i)(?<![\p{L}\p{M}\p{N}_])"# + NSRegularExpression.escapedPattern(for:phrase) + #"(?![\p{L}\p{M}\p{N}_])"#) else { return text }
         return regex.stringByReplacingMatches(in:text,range:NSRange(text.startIndex...,in:text),withTemplate:NSRegularExpression.escapedTemplate(for:replacement))
     }
 }

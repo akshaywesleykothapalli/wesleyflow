@@ -47,22 +47,22 @@ import Combine
     override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(convert(point,from:superview)) ? self : nil }
     override func mouseDown(with event: NSEvent) { coordinator?.pillClicked(clickCount:event.clickCount) }
     override func rightMouseDown(with event: NSEvent) {
-        let menu = NSMenu(), item = NSMenuItem(title:"Cancel dictation",action:#selector(cancelDictation),keyEquivalent:"")
-        item.target = self; item.isEnabled = coordinator?.busy == true || coordinator?.inPlaceRunning == true; menu.addItem(item)
+        let menu = NSMenu(), item = NSMenuItem(title:coordinator?.agentHUD == nil ? "Cancel dictation" : "Cancel Agent",action:#selector(cancelDictation),keyEquivalent:"")
+        item.target = self; item.isEnabled = coordinator?.busy == true || coordinator?.inPlaceRunning == true || (coordinator?.agentPlan != nil || coordinator?.agentQuestion != nil); menu.addItem(item)
         NSMenu.popUpContextMenu(menu,with:event,for:self)
     }
-    @objc private func cancelDictation() { coordinator?.cancel() }
+    @objc private func cancelDictation() { if coordinator?.agentQuestion != nil { coordinator?.cancelAgentConversation() } else if let id = coordinator?.agentPlan?.id { coordinator?.cancelAgentTask(id) } else { coordinator?.cancel() } }
     override func accessibilityPerformPress() -> Bool { coordinator?.pillClicked(); return coordinator != nil }
-    func updateAccessibility() { setAccessibilityLabel("Dictation status"); setAccessibilityHelp(coordinator?.message); toolTip = "Hold the selected key to speak. Click to start/stop; right-click to cancel." }
+    func updateAccessibility() { setAccessibilityLabel(coordinator?.agentHUD == nil ? "Dictation status" : "Agent status"); setAccessibilityHelp(coordinator?.message); toolTip = (coordinator?.agentPlan != nil || coordinator?.agentQuestion != nil) ? "Click to review or reply; right-click to cancel." : "Hold the Dictation key to insert, or the separate Agent key for commands. Right-click to cancel." }
 }
 enum DictationHUDContent: Equatable {
-    case waveform, label(String), idle, verified, hidden
+    case waveform, label(String), idle, hidden
     static func resolve(phase:SystemWideDictationCoordinator.Phase,ai:SystemWideDictationCoordinator.InPlaceHUD,verified:Bool) -> Self {
         switch ai {
         case .polishing: return .label("Polishing…")
         case .structuring: return .label("Structuring…")
-        case .success: return .verified
-        case .error: return .hidden
+        case .success: return .hidden
+        case .error: return .label("Check dictation")
         case .idle: break
         }
         switch phase {
@@ -70,8 +70,8 @@ enum DictationHUDContent: Equatable {
         case .preparing: return .hidden
         case .finalizing: return .label("Transcribing…")
         case .inserting: return .label("Transcribing…")
-        case .success: return verified ? .verified : .label("Ready")
-        case .error: return .hidden
+        case .success: return .hidden
+        case .error: return .label("Check dictation")
         case .idle: return .idle
         }
     }
@@ -79,7 +79,9 @@ enum DictationHUDContent: Equatable {
 @MainActor extension SystemWideDictationCoordinator {
     var pillContent:DictationHUDContent {
         // Keep actionable AI status as text; ordinary errors stay in Dictation.
-        inPlaceHUD == .error ? .label(compactAIStatus) : DictationHUDContent.resolve(phase:phase,ai:inPlaceHUD,verified:latest?.insertion.status == .insertedVerified)
+        if let agentHUD { return .label(agentHUD) }
+        if hideCompletedDictationPill { return .hidden }
+        return inPlaceHUD == .error ? .label(compactAIStatus) : phase == .error ? .label(compactDictationStatus) : DictationHUDContent.resolve(phase:phase,ai:inPlaceHUD,verified:latest?.insertion.status == .insertedVerified)
     }
 }
 @MainActor private struct GlobalDictationWaveform: View {
@@ -90,9 +92,8 @@ enum DictationHUDContent: Equatable {
         Group {
             switch content {
             case .idle: Image(systemName:"mic.fill").foregroundStyle(.secondary)
-            case .verified: Image(systemName:"checkmark").foregroundStyle(.green)
             case .hidden: EmptyView()
-            case .label(let text): Text(text).font(.system(size:10)).lineLimit(2).multilineTextAlignment(.center).padding(.horizontal,3)
+            case .label(let text): Text(text).overlay(alignment:.bottom) { if text == "Agent listening" { HStack(spacing:2) { ForEach(0..<7) { i in Capsule().fill(Color.teal).frame(width:3,height:CGFloat(1+coordinator.audioBars[i]*3)) } }.offset(y:5) } }.font(.system(size:10)).lineLimit(2).multilineTextAlignment(.center).padding(.horizontal,3)
             case .waveform:
                 HStack(spacing:3) {
                     ForEach(0..<7) { index in Capsule().fill(Color.teal).frame(width:3,height:CGFloat(5+coordinator.audioBars[index]*15)) }

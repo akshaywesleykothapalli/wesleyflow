@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Foundation
 import Domain
 import TaskExecution
@@ -39,7 +40,7 @@ struct AppComposition {
 
     func makeShellState() -> FoundationStatus { statusProvider.status() }
     func makeRootView(dictation: DictationModel? = nil) -> FoundationView { FoundationView(state: makeShellState(), dictation: dictation ?? makeDictationModel()) }
-    func makeDictationModel(input: any DictationInput = AppleDictationInput()) -> DictationModel {
+    func makeDictationModel(input: any DictationInput = AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership)) -> DictationModel {
         guard let endpoint = try? OllamaEndpoint() else { return DictationModel(input: input) }
         let provider = OllamaProvider(endpoint:endpoint,transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
         return DictationModel(input:input,rewriter:LocalPromptRewriter(provider:provider,clock:SystemTaskClock()))
@@ -52,9 +53,9 @@ struct AppComposition {
             let provider = try OllamaProvider(endpoint:OllamaEndpoint(),transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
             return try await provider.discover() // Metadata only; no generate/cancel/unload call.
         }
-        return SystemWideDictationCoordinator(input:AppleDictationInput(),targets:NativeInsertionTargetCapture(),
+        return SystemWideDictationCoordinator(input:AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership),targets:NativeInsertionTargetCapture(),
             insertion:TextInsertionService(clipboard:NativeDictationPasteboard(),clock:clock),shortcut:NativeDictationShortcut(),clock:clock,
-            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250)
+            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },personalPlanner:ApplePersonalPlanner(memory:SystemInferenceMemory(),clock:clock),personalMessageResolution:{plan in try NativePersonalFolders.resolve(try await NativePersonalMessages.resolve(plan))},modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250)
     }
 
 }
@@ -86,5 +87,18 @@ extension AppComposition {
         do { try await coordinator.start() }
         catch { await repository.close(); throw error }
         return TaskServices(coordinator: coordinator, repository: repository, approvals: permission.authority)
+    }
+}
+
+/// No process is terminated and no clipboard state is changed. The oldest running
+/// copy owns native capture; secondary copies fail before permissions or microphone start.
+@MainActor enum NativeDictationInstanceGuard {
+    static func requireOwnership() throws {
+        let current = NSRunningApplication.current
+        guard let bundle = current.bundleIdentifier else { throw DictationFailure.anotherInstance }
+        let copies = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == bundle && !$0.isTerminated }
+        guard !copies.isEmpty, copies.count <= 32, copies.allSatisfy({ $0.launchDate != nil }) else { throw DictationFailure.anotherInstance }
+        let instances = copies.map { DictationInstance(processID:$0.processIdentifier,launchedAt:$0.launchDate!.timeIntervalSinceReferenceDate) }
+        guard DictationInstanceAdmission.permits(processID:current.processIdentifier,instances:instances) else { throw DictationFailure.anotherInstance }
     }
 }

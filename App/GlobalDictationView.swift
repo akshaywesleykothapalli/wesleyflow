@@ -1,9 +1,11 @@
 import SwiftUI
 import AppKit
 import Domain
+import VoiceInput
 
 @MainActor struct GlobalDictationView: View {
     @ObservedObject var coordinator: SystemWideDictationCoordinator
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var page: DictationPage = .dictation
     @State private var selectedEntry: DictationHistoryEntry?
@@ -11,6 +13,7 @@ import Domain
     @State private var phraseInput = ""
     @State private var replacementInput = ""
     @State private var confirmClear = false
+    @State private var commandLibraryExpanded = false
     @State private var deletingEntry: DictationHistoryEntry?
     @State private var copyError: String?
     @StateObject private var copyFeedback = HistoryCopyFeedback()
@@ -91,12 +94,23 @@ import Domain
         .frame(minWidth:CompactWindowLayout.minimumSize.width,minHeight:CompactWindowLayout.minimumSize.height)
         .preferredColorScheme(coordinator.preferences.appearance.colorScheme)
         .sheet(item:$selectedEntry) { entry in
-            DictationEntryDetail(entry:entry,canCopy:coordinator.historyCopyAllowed,copyText:coordinator.copyReviewedText,feedback:copyFeedback)
+            VStack(alignment:.leading,spacing:0) {
+                if entry.id == coordinator.unmergedSpeechRecoveryEntry?.id {
+                    Text("Unmerged recognition candidate: may overlap earlier speech. Review separately before copying. Kept in memory until the next dictation or quit; never inserted automatically.")
+                        .font(.callout).foregroundStyle(.orange).padding(.horizontal,24).padding(.top,16).frame(width:640)
+                }
+                DictationEntryDetail(entry:entry,canCopy:coordinator.historyCopyAllowed,copyText:coordinator.copyReviewedText,feedback:copyFeedback)
+            }
         }
         .confirmationDialog("Delete this dictation?",isPresented:Binding(get:{ deletingEntry != nil },set:{ if !$0 { deletingEntry = nil } }),presenting:deletingEntry) { entry in
             Button("Delete",role:.destructive) { let id = entry.id; Task { await coordinator.deleteHistory(id:id) } }
         } message: { _ in Text("This permanently removes this entry from local history. Other entries are preserved.") }
         .onDisappear { copyFeedback.cancelAll() }
+        .onChange(of:coordinator.agentReviewRequest) { _,_ in
+            page = .commands
+            commandLibraryExpanded = coordinator.agentHUD == "Agent help"
+            if NSClassFromString("XCTestCase") == nil { openWindow(id:"foundation"); NSApplication.shared.activate() }
+        }
         .onChange(of:page) { _,_ in copyFeedback.cancelAll(); copyError = nil }
         .onChange(of:coordinator.entries.map(\.id)) { _,ids in copyFeedback.retain(ids:Set(ids)) }
         .confirmationDialog("Clear all local dictation history?",isPresented:$confirmClear) {
@@ -122,11 +136,15 @@ import Domain
                         Button("Review clipboard restoration…") { recoveryID = coordinator.clipboardRecoveryID; confirmRestore = recoveryID != nil }.disabled(coordinator.busy)
                     }
                     if let latest = coordinator.latest, !coordinator.busy {
-                        Button("Copy latest dictation") {
+                        Button(latest.insertion.reason == .speechFailed ? "Copy partial recognized text" : "Copy latest dictation") {
                             if coordinator.copyReviewedText(latest.cleaned) { copyError = nil }
                             else { copyError = "Resolve clipboard recovery before copying. Your latest transcript remains available for review." }
                         }.disabled(!coordinator.historyCopyAllowed)
                         .help("Explicit copy only. Pending clipboard recovery must be resolved first.")
+                    }
+                    if let candidate = coordinator.unmergedSpeechRecoveryEntry, !coordinator.busy {
+                        Button("Review unmerged speech candidate") { selectedEntry = candidate }
+                            .help("May overlap earlier recognized speech. Review separately; never inserted automatically.")
                     }
                     if let error = coordinator.historyError { Text(error).font(.callout).foregroundStyle(.orange); Button("Retry history") { Task { await coordinator.loadHistory() } } }
                     if let copyError { Text(copyError).font(.callout).foregroundStyle(.orange) }
@@ -134,7 +152,7 @@ import Domain
                 Divider()
             }
             if let latest = coordinator.latest, !coordinator.entries.contains(where:{ $0.id == latest.id }) {
-                Button("Review latest unsaved dictation") { selectedEntry = latest }.padding(.horizontal,22).padding(.vertical,8)
+                Button(latest.insertion.reason == .speechFailed ? "Review partial recognized text" : "Review latest unsaved dictation") { selectedEntry = latest }.padding(.horizontal,22).padding(.vertical,8)
             }
             ScrollView {
                 LazyVStack(alignment:.leading,spacing:0,pinnedViews:[.sectionHeaders]) {
@@ -183,15 +201,89 @@ import Domain
             }.background(FlowSurface.card,in:RoundedRectangle(cornerRadius:16))
                 .clipShape(RoundedRectangle(cornerRadius:16))
                 .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(FlowSurface.border,lineWidth:1))
-            Text("Exact app names only: WhatsApp (also ‘Whats App’), Browser (also ‘default browser’), Settings (also ‘system settings’), Finder, Notes and Music. No arbitrary app names, scripts, messages or coding actions.").font(FlowTypography.secondary).foregroundStyle(.secondary)
+            Text("Speak normally with the separate Agent key. Installed apps can be opened or normally quit. Google/YouTube searches open in your default browser. Music controls the existing player. Messages require a final recipient and text confirmation.").font(FlowTypography.secondary).foregroundStyle(.secondary)
+            Text(coordinator.agentShortcutStatus).font(.caption).foregroundStyle(.secondary)
+            if let failure=coordinator.lastAgentFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
+            Text("Hold the Agent key, speak, then release. Routine requests run directly. Ambiguous requests stop for clarification; messages require confirmation. Dictation always inserts text.").font(.caption).foregroundStyle(.secondary)
+            Divider()
+            Text("On-device personal agent · 44A").font(.headline)
+            TextField("Ask the agent…", text:$coordinator.agentCommandText).disabled(coordinator.agentQuestion != nil)
             HStack {
-                Text(coordinator.commandStatus).foregroundStyle(.secondary)
-                Spacer()
-                Button(coordinator.commandArmed ? "Cancel command" : "Arm next gesture") {
-                    if coordinator.commandArmed { coordinator.disarmCommand() } else { coordinator.armCommand() }
-                }.disabled(coordinator.busy || !coordinator.shortcutEnabled)
+                Button("Run text request") { coordinator.reviewAgentCommand() }.disabled(coordinator.busy)
+                Button("What can you do?") { commandLibraryExpanded=true;coordinator.showAgentHelp() }.disabled(coordinator.busy)
+                Button("Load saved tasks") { coordinator.loadAgentQueue() }.disabled(coordinator.busy)
             }
-            Text("Enable hold-to-talk in General first. Arming applies to one gesture; normal dictation resumes afterwards.").font(.caption).foregroundStyle(.secondary)
+            Text(coordinator.agentNotice).font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("Command library",isExpanded:$commandLibraryExpanded) {
+                ForEach(PersonalCommandLibrary.examples,id:\.self) { example in Text(example).font(.caption).textSelection(.enabled) }
+            }
+            Text("Folder commands use Documents, Desktop or Downloads. Delete moves to Trash only after review; it never permanently erases. Finder controls and protected folders may need macOS consent. Browser searches use the named installed browser.").font(.caption).foregroundStyle(.secondary)
+            if !coordinator.agentHeard.isEmpty {
+                DisclosureGroup("Latest request") {
+                    Text("Your words: " + coordinator.agentHeard).textSelection(.enabled)
+                    if !coordinator.agentInterpretation.isEmpty { Text("Understood: " + coordinator.agentInterpretation).textSelection(.enabled) }
+                }.font(.caption)
+            }
+            if let question=coordinator.agentQuestion {
+                VStack(alignment:.leading,spacing:8) {
+                    Text(question.prompt).font(.headline)
+                    Text("Reply with the Agent key or type below. Cancel starts over. This question expires after two minutes.").font(.caption).foregroundStyle(.secondary)
+                    ForEach(question.options) { option in
+                        Button(option.label) { coordinator.submitAgentReply(option.answer,questionID:question.id) }.disabled(coordinator.busy)
+                    }
+                    TextField("Your reply…",text:$coordinator.agentReplyText).onSubmit { coordinator.submitAgentReply(questionID:question.id) }
+                    HStack {
+                        Button("Continue") { coordinator.submitAgentReply(questionID:question.id) }.disabled(coordinator.busy || coordinator.agentReplyText.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                        Button("Cancel request") { coordinator.cancelAgentConversation() }.disabled(coordinator.busy)
+                    }
+                }.padding(12).background(FlowSurface.card,in:RoundedRectangle(cornerRadius:12))
+            }
+            if let plan = coordinator.agentPlan {
+                ForEach(plan.steps) { step in
+                    Text(step.userSummary(apps:[]))
+                }
+                if plan.steps.count==1,plan.steps.first?.tool == .message {
+                    Text("Say ‘change the message to …’ or ‘change the recipient to …’ to replace this draft. Voice ‘yes’ never sends it.").font(.caption).foregroundStyle(.secondary)
+                    TextField("New message text…",text:$coordinator.agentReplyText).onSubmit { coordinator.applyAgentMessageEdit() }
+                    HStack {
+                        Button("Apply message change") { coordinator.applyAgentMessageEdit() }.disabled(coordinator.busy || coordinator.agentReplyText.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                        Button("Clear edit") { coordinator.agentReplyText="" }.disabled(coordinator.busy || coordinator.agentReplyText.isEmpty)
+                    }
+                    if !coordinator.agentReplyText.isEmpty { Text("Apply or clear this edit before sending.").font(.caption).foregroundStyle(.secondary) }
+                }
+                Button(plan.steps.contains(where:{$0.tool == .message}) ? "Send this reviewed message" : plan.steps.contains(where:{$0.tool == .trashFolder}) ? "Move reviewed folder to Trash" : "Approve these actions and run") { coordinator.approveAgentPlan(expectedPlan:plan) }.disabled(coordinator.busy || (plan.steps.contains(where:{$0.tool == .message}) && !coordinator.agentReplyText.isEmpty))
+                Button("Reject plan") { coordinator.cancelAgentTask(plan.id) }.disabled(coordinator.busy)
+            }
+            ForEach(coordinator.agentRecords.reversed()) { record in
+                VStack(alignment:.leading,spacing:4) {
+                    Text(record.id.uuidString.prefix(8) + " · " + record.state.rawValue).font(.caption)
+                    ForEach(Array(record.plan.steps.enumerated()),id:\.element.id) { index, step in
+                        Text(step.tool.rawValue + ": " + record.steps[index].rawValue + " · " + (record.receipts[index]?.evidence ?? "No verified receipt")).font(.caption)
+                    }
+                    HStack {
+                        if record.state == .awaitingApproval { Button("Review") { coordinator.reviewQueuedAgent(record.id) } }
+                        if record.state == .running || record.state == .awaitingApproval { Button("Cancel remaining steps") { coordinator.cancelAgentTask(record.id) } }
+                        Button("Delete task record") { coordinator.deleteAgentTask(record.id) }.disabled(coordinator.busy)
+                    }
+                }
+            }
+            Divider()
+            Toggle("Explicit local memory (off each launch)",isOn:Binding(get:{coordinator.agentMemoryEnabled},set:{coordinator.setAgentMemory($0)}))
+            Text("Only text you save here is remembered for 30 days. No passive activity or sensitive capture. Task receipts are separate and can be deleted above.").font(.caption).foregroundStyle(.secondary)
+            TextField("Memory text, search, or correction",text:$coordinator.agentMemoryText)
+            HStack {
+                Button("Remember") { coordinator.rememberAgentText() }.disabled(!coordinator.agentMemoryEnabled)
+                Button("Search") { coordinator.searchAgentMemory() }.disabled(!coordinator.agentMemoryEnabled)
+                Button("Delete all memory") { coordinator.deleteAgentMemory() }
+            }
+            ForEach(coordinator.agentMemories) { memory in
+                HStack {
+                    Text(memory.text).font(.caption)
+                    Button("Replace with entered text") { coordinator.correctAgentMemory(memory.id) }
+                    Button("Delete") { coordinator.deleteAgentMemory(memory.id) }
+                }
+            }
+
         }
     }
     private var historyPage: some View { dictationPage }
@@ -294,7 +386,7 @@ import Domain
     private var formattingPage: some View {
         FlowPage {
             FlowSettingsGroup("Smart formatting & spelling") {
-                FlowSettingsRow("Format text automatically",description:"Normalize whitespace only; other transformations remain separate choices.") { Toggle("Format text automatically",isOn:$coordinator.preferences.spacingCleanup) }
+                FlowSettingsRow("Clean up spacing",description:"Whitespace only. Enable the transformations below separately; they apply to the next completed dictation.") { Toggle("Clean up spacing",isOn:$coordinator.preferences.spacingCleanup) }
                 FlowSettingsRow("Fix spelling and common typos",description:"Suggestions may be wrong. Protected terms are excluded.") { Toggle("Fix spelling and common typos",isOn:$coordinator.preferences.formatting.correctSpelling) }
                 FlowSettingsRow("Spelling engine") { Text("Apple NSSpellChecker").foregroundStyle(.secondary) }
                 FlowSettingsRow("Smart typography",description:"Spoken ‘open quote’, ‘close quote’, and ‘em dash’. Existing punctuation is preserved.") { Toggle("Smart typography",isOn:$coordinator.preferences.formatting.smartTypography) }
@@ -384,8 +476,12 @@ import Domain
     private var generalPage: some View {
         FlowPage {
             FlowSettingsGroup("General") {
-                FlowSettingsRow("Mode for next gesture",description:"One-shot command selection; returns to dictation afterwards.") {
-                    Picker("Mode for next gesture",selection:Binding(get:{ coordinator.commandArmed },set:{ if $0 { coordinator.armCommand() } else { coordinator.disarmCommand() } })) { Text("Dictation").tag(false); Text("Open app command").tag(true) }.pickerStyle(.menu).disabled(coordinator.busy || !coordinator.shortcutEnabled)
+                FlowSettingsRow("Agent hold-to-talk",description:coordinator.agentShortcutStatus) {
+                    Toggle("Enable Agent shortcut",isOn:Binding(get:{ coordinator.preferences.agentHotkeyEnabled },set:{ if $0 { coordinator.enableAgentShortcut() } else { coordinator.disableAgentShortcut() } })).disabled(coordinator.busy)
+                }
+                FlowSettingsRow("Agent key delivery",description:"Live key counts only; no typed text or audio is recorded here.") { Text(coordinator.agentShortcutDiagnostics).font(.caption).textSelection(.enabled) }
+                FlowSettingsRow("Agent key",description:"Separate from dictation. Chords cancel. Check other apps for custom modifier bindings.") {
+                    Picker("Agent key",selection:Binding(get:{ coordinator.preferences.agentKey },set:{ coordinator.changeAgentKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
                 }
                 FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
                 if loginItem.status == .requiresApproval { FlowSettingsRow("Login approval") { Button("Open Login Items") { loginItem.openSettings() } } }
@@ -394,13 +490,35 @@ import Domain
                 FlowSettingsRow("Show clickable pill while idle") { Toggle("Show clickable pill while idle",isOn:$coordinator.preferences.idlePillEnabled) }
             }
             FlowSettingsGroup("Speech engine") {
-                FlowSettingsRow("Recognition engine",description:"Installed SpeechTranscriber, then DictationTranscriber, then on-device legacy recognition. Manual provider selection is unsupported.") { Text("Automatic Apple Speech").foregroundStyle(.secondary) }
+                FlowSettingsRow("Recognition engine",description:"Installed modern engines are preferred. Legacy compatibility can stop at about one minute; continuous long dictation requires modern resources.") { Text(coordinator.busy ? (coordinator.engine?.engine ?? "Preparing capture") : (coordinator.speechConfiguration?.recommendedEngineLabel ?? "Inspect availability")).foregroundStyle(.secondary) }
+                if let actual = coordinator.engine { FlowSettingsRow("Last capture engine",description:"Actual engine: \(actual.engine). Actual Apple locale: \(actual.localeIdentifier).") { Text(actual.localeIdentifier).foregroundStyle(.secondary) } }
                 FlowSettingsRow("Language") { Text(Locale.current.localizedString(forIdentifier:coordinator.localeIdentifier) ?? coordinator.localeIdentifier).foregroundStyle(.secondary) }
-                FlowSettingsRow("Installed speech assets",description:"Inspection only. No downloads or installation controls.") { Button("Inspect availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy) }
+                FlowSettingsRow("Installed speech assets",description:"Inspection never downloads. Install explicitly requests Apple language resources; macOS may continue or retry that request in the background.") { Button("Inspect availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking) }
                 if let speech = coordinator.speechConfiguration {
                     FlowSettingsRow("SpeechTranscriber") { Text(speech.speechAssets).foregroundStyle(.secondary) }
                     FlowSettingsRow("DictationTranscriber") { Text(speech.dictationAssets).foregroundStyle(.secondary) }
-                    FlowSettingsRow("Legacy on-device support") { Text(speech.legacyOnDeviceAvailable ? "Available" : "Unavailable").foregroundStyle(.secondary) }
+                    FlowSettingsRow("App reserved locales") { Text(speech.reservedLocales.isEmpty ? "None reported" : speech.reservedLocales.joined(separator:", ")).foregroundStyle(.secondary) }
+                    FlowSettingsRow("Legacy on-device support") { Text(speech.legacyOnDeviceAvailable ? "Compatibility only · about one minute" : "Unavailable").foregroundStyle(.secondary) }
+                    if let candidate = speech.installCandidate {
+                        FlowSettingsRow("Modern speech resources",description:coordinator.preferences.blockNetworkRequests ? "Apple resource downloads are disabled by Block network requests. Your setting is preserved." : "Requested language: \(coordinator.localeIdentifier). Apple resolves this to \(speech.resources(for:candidate).resolvedLocale ?? "unsupported"). Language preference stays unchanged.") {
+                            Button("Install Apple speech resources") { coordinator.installSpeechResources() }.disabled(!coordinator.canInstallSpeechResources)
+                        }
+                    }
+                    if speech.readyModernEngine != nil {
+                        FlowSettingsRow("Modern engine preparation",description:"Checks the real on-device analyzer without starting the microphone. Capture prepares the same configuration again on the next hold.") {
+                            Button("Prepare modern engine") { coordinator.prepareModernSpeech() }.disabled(!coordinator.canPrepareModernSpeech)
+                        }
+                    }
+                }
+                FlowSettingsRow("Speech diagnostics",description:coordinator.speechFailureDiagnostics?.failureDescription ?? "Metadata only: provider, locale, capture timing, native error codes and delivery counters. No text or audio.") {
+                    Button("Copy speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
+                }
+                FlowSettingsRow("Speech readiness",description:coordinator.speechResourceStatus) {
+                    if coordinator.speechResourceWorking {
+                        if let fraction = coordinator.speechDownloadProgress?.fraction { ProgressView(value:fraction).frame(width:90) }
+                        else { ProgressView().controlSize(.small) }
+                        Button("Stop waiting") { coordinator.stopWaitingForSpeechResources() }
+                    }
                 }
                 FlowSettingsRow("Ollama models",description:"Metadata only; inference stays gated.") { Button("Inspect metadata") { Task { await coordinator.inspectModels() } }.disabled(coordinator.busy) }
                 ForEach(coordinator.modelInventory,id:\.name) { model in FlowSettingsRow(model.name) { Text("Installed · inference gated").foregroundStyle(.secondary) } }
@@ -502,7 +620,8 @@ private enum FlowSurface {
         let configuration:ButtonStyleConfiguration
         let selected:Bool
         @State private var hovered = false
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @ScaledMetric(relativeTo:.body) private var symbolSize = 14
         private var presentation: SidebarPresentation { .init(selected:selected,hovered:hovered,pressed:configuration.isPressed) }
         private var iconColor: Color {
@@ -624,6 +743,7 @@ private enum FlowSurface {
 @MainActor private struct HistoryHeaderSearch: View {
     @Binding var text: String
     @FocusState private var focused: Bool
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(spacing:6) {

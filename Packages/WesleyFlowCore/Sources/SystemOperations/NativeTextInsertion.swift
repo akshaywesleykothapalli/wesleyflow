@@ -30,7 +30,7 @@ import CryptoKit
     static func find<Element>(root: Element, limit: Int = 64, maximumDepth: Int = 8,
                              permitted: () -> Bool = { true }, focusedEditor: (Element) -> Bool,
                              children: (Element,Int) -> [Element]) -> Element? {
-        guard limit > 0, limit <= 64, maximumDepth >= 0, maximumDepth <= 8 else { return nil }
+        guard limit > 0, limit <= 256, maximumDepth >= 0, maximumDepth <= 16 else { return nil }
         var queue: [(Element,Int)] = [(root,0)], index = 0
         while index < queue.count, permitted() {
             let (element,depth) = queue[index]; index += 1
@@ -123,11 +123,20 @@ enum NativeEditorCapability {
         captureDiagnostics.append(value)
         #endif
     }
+    public private(set) var observedApplicationIdentity:DictationApplicationIdentity?
     public init() {}
-    public func capture(session: String) throws -> any InsertionTarget {
+    public func capture(session:String,activation:DictationActivationContext) throws -> any InsertionTarget { try captureBound(session:session,activation:activation) }
+    public func capture(session: String) throws -> any InsertionTarget { try captureBound(session:session,activation:nil) }
+    private func captureBound(session:String,activation:DictationActivationContext?) throws -> any InsertionTarget {
         failureExplanation = nil; captureDiagnostics = []
         let originatingApplication = NSWorkspace.shared.frontmostApplication
-        captureBundleIdentifier = originatingApplication?.bundleIdentifier
+        observedApplicationIdentity = originatingApplication.flatMap { app in app.launchDate.map { DictationApplicationIdentity(processID:app.processIdentifier,launchTime:$0.timeIntervalSinceReferenceDate,bundleIdentifier:app.bundleIdentifier) } }
+        captureBundleIdentifier = activation?.application?.bundleIdentifier ?? originatingApplication?.bundleIdentifier
+        if let activation, !activation.permits(observedApplicationIdentity) {
+            failureExplanation = "The app identity at the dictation press changed or could not be verified before target capture. Nothing was redirected. The transcript will remain available for explicit copy."
+            record(.init(.target,.targetChanged,.failure))
+            throw TextTargetError.changed
+        }
         do {
             let target = try NativeInsertionTarget(session:session,application:originatingApplication,reportStage:{ self.failureExplanation = $0 },reportDiagnostic:record)
             failureExplanation = nil; return target
@@ -141,7 +150,7 @@ enum NativeEditorCapability {
         }
     }
 }
-@MainActor private final class NativeInsertionTarget: InsertionTarget, DictationRewriteAnchorProviding {
+@MainActor private final class NativeInsertionTarget: ClipboardFreeInsertionTarget, DictationRewriteAnchorProviding {
     let info: InsertionTargetInfo
     let original: TargetTextState?
     private let initialSelection:TextSelection?
@@ -302,9 +311,9 @@ enum NativeEditorCapability {
             return try focusElementAttribute(system,kAXFocusedUIElementAttribute,code:.systemFocus,record:record)
         },window:{
             guard let window = try focusElementAttribute(root,kAXFocusedWindowAttribute,code:.focusedWindow,record:record) else { return nil }
-            let deadline = ContinuousClock.now.advanced(by:.milliseconds(250))
+            let deadline = ContinuousClock.now.advanced(by:.milliseconds(500))
             var visited = 0, deadlineReached = false
-            let found = FocusedDescendantSearch.find(root:window,permitted:{
+            let found = FocusedDescendantSearch.find(root:window,limit:256,maximumDepth:16,permitted:{
                 if ContinuousClock.now >= deadline { deadlineReached = true; return false }
                 return AXIsProcessTrusted()
             },focusedEditor:{ element in
@@ -322,7 +331,7 @@ enum NativeEditorCapability {
                 return values
             })
             record(.init(.target,.focusedSearch,found == nil ? .unsupported : .success,observed:visited))
-            if found == nil && visited == 64 { record(.init(.target,.focusSearchLimit,.failure)) }
+            if found == nil && visited == 256 { record(.init(.target,.focusSearchLimit,.failure)) }
             if deadlineReached { record(.init(.target,.focusSearchDeadline,.failure)) }
             guard AXIsProcessTrusted() else { throw TextTargetError.denied }
             return found
@@ -376,8 +385,11 @@ enum NativeEditorCapability {
         guard AXValueGetType(value) == .cfRange, AXValueGetValue(value,.cfRange,&range),
               range.location == original.selection.location, range.length == original.selection.length else { throw TextTargetError.changed }
     }
+    func supportsClipboardFreeText(_ text:String)->Bool {
+        !NativeEditorCapability.isConsole(application.bundleIdentifier) && !text.isEmpty && text.utf8.count<=4096 && text.unicodeScalars.allSatisfy { ![Unicode.GeneralCategory.control,.lineSeparator,.paragraphSeparator].contains($0.properties.generalCategory) }
+    }
     func postText(_ text: String, budgetMilliseconds: Int64) -> Bool {
-        guard original != nil, !NativeEditorCapability.isConsole(application.bundleIdentifier), budgetMilliseconds > 0, budgetMilliseconds <= 1500 else { return false }
+        guard supportsClipboardFreeText(text), !NativeEditorCapability.isConsole(application.bundleIdentifier), budgetMilliseconds > 0, budgetMilliseconds <= 1500 else { return false }
         let deadline = ContinuousClock.now.advanced(by:.milliseconds(budgetMilliseconds))
         guard let events = NativeUnicodeKeystrokes.make(text), !Task.isCancelled,
               (try? validate()) != nil, ContinuousClock.now < deadline else { return false }

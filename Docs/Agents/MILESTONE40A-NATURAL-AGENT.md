@@ -1,0 +1,88 @@
+# MILESTONE 40A — Natural requests and direct Agent execution
+
+29 October 2026 (Asia/Kolkata). Build **40.0.1**. Implementation complete for the capabilities below; physical acceptance of this build is pending. General on-device inference was **blocked by host reserve admission**, not accepted from mocks.
+
+## Why the working Agent key still felt like macros
+
+The user confirmed that the separate Agent key now captured “Open Safari” and opened Safari after review. This confirms that the earlier no-response correction reached a working physical gesture for that example. It does not accept this new build's tools.
+
+39A’s `PersonalIntentParser` recognized a closed English grammar, `AppOpeningCommand` listed seven names, and every voice plan went through `reviewAgentCommand` → enqueue → a manual Approve action. “Close Safari” and “Open Brave” were absent. Understanding and execution policy were separate shortcomings from the now-working voice key. There was no model-assisted personal-intent planning. The user now explicitly requests direct routine execution and broader language understanding; that authorizes this scoped change in policy.
+
+## Request path now implemented
+
+Production composition supplies **ApplePersonalPlanner** to the existing coordinator. Both Agent-key speech and optional typed requests use the same path:
+
+Agent press/release → existing on-device transcription → reliable final text → fast whole-request parser when possible → otherwise guarded on-device FoundationModels **schema-constrained** intent slots → source grounding and installed-app resolution → optional contact resolution → durable enqueue → routine execution or final message confirmation → native tool receipt.
+
+There is no need to type/add/register a command for each app or voice request. Routine requests execute after release without the old app-level plan approval. Typed input is an optional alternative, not a prerequisite. Ordinary dictation never enters this path and retains its original insertion/history/clipboard behavior.
+
+| Capability | Actual implementation / boundary |
+| --- | --- |
+| Open Safari / WhatsApp / Brave and other indexed installed apps | Existing known names or dynamically resolved installed app names/aliases. App catalog comes from standard `/Applications`, `/System/Applications`, and the user's Applications root, bounded to 300 identities. No user-managed per-command registration, shell, executable arguments or generated URL scheme. Nested utility bundles and missing/ambiguous names may be unsupported. |
+| Close / quit Safari or another indexed app | `NSRunningApplication.terminate()` only, then observes termination for up to five seconds. Closing means quitting the app, not just one window. No force termination. Native unsaved-work/download prompts remain the app's responsibility; a prompt, cancellation or unresolved timeout yields needsReview rather than fake completion. Wesley Flow cannot close itself through this tool. |
+| Google / YouTube search | Query is percent-encoded as one URL query item on fixed HTTPS Google/YouTube destinations and handed to the default browser. Receipt verifies OS acceptance of that handoff, not loaded results, page content, research or a factual answer. Browser/site access needs internet. No DOM, script or account control. |
+| Play / pause music | Existing fixed Music and Spotify play/pause adapters, with native player-state readback. “Play some music”, “Pause music”, and “Play some music on Spotify” are supported. Specific song/artist/genre selection is not implemented; the existing playable queue/library and account/TCC state determine success. |
+| Create a note | Existing native Notes adapter, common grammar plus grounded local-model note-body extraction. Literal body only, fixed native script, UUID marker/readback strength as before. Notes automation permission may be needed. |
+| Reminders / Calendar / timers | Existing typed tools and grounded explicit/minute date grammar remain. These ordinary explicitly requested personal additions can execute directly. Calendar is a 30-minute event without attendees. General natural-language date interpretation, invitations and recurring workflows remain unsupported. Timers are OS notifications; scheduling is not proof of delivery. |
+| Text / message someone | **Apple Messages/iMessage service**, with final recipient/address/body confirmation. Explicit phone/email requires no Contacts access. Name resolution requests native Contacts access only for an explicit message request, accepts an exact full or given name only if one contact matches, then chooses a single phone or unique mobile/iPhone number, otherwise one email when no phone exists. Ambiguous contacts/addresses stop for clarification. The resolved full name, address and literal message appear before Approve. No silent sends. |
+| WhatsApp sending / other channels | Not implemented. WhatsApp opening works; sending through WhatsApp, Telegram, Signal, email, SMS forwarding, groups or attachments is not supported. The model must not silently substitute another channel; supported sends visibly name Messages at confirmation. Native system transport/account behavior still needs physical verification. |
+
+Examples: “Open Brave”, “Please launch Brave”, “Close Safari”, “Search for guitar lessons on YouTube”, “Search Google Swift concurrency”, “Play some music”, “Text John saying I'll be ten minutes late”. Polite/non-template phrasing can use the on-device model when admitted. This is a tool-using intent planner, not unrestricted computer control, an arbitrary question-answering assistant, or a claim that every phrasing is understood. Unavailable/ambiguous/unsupported requests fail visibly; they never become dictation or fake completed actions.
+
+## Local AI boundaries and real admission result
+
+`ApplePersonalIntentGenerator` uses `LanguageModelSession` with **no executable model tools**, a private `@Generable` closed action enum/slot schema, temperature zero and a 512-response-token ceiling. It proposes actions and literal slots, not code, AppleScript, permissions, recipients from private data or execution grants. Apps must uniquely resolve to the installed metadata catalog. Query, app, recipient and body spans must come from the request; proposed actions inside query/message/note payloads cannot become separate commands. Negation, unsupported effect verbs and omitted explicit open/close/search/message intents are rejected by grounding checks. This reduces interpretation risk; it is not a formal proof of perfect semantics.
+
+The planner preserves the existing **4 GiB conservative available-memory floor, normal-pressure requirement and no-swap-growth guard**. It checks readiness before generation and resources before/during/after it, with an eight-second deadline. Cancellation/deadline returns without releasing the planner slot until a noncooperative framework generation settles. Late output cannot enqueue or run a task. A shared native generation lease also prevents this new driver and the existing rewrite driver from generating concurrently. The rewrite fidelity contract and opt-ins remain intact.
+
+Fast common requests do not need a model or inference admission. Other phrasing does: if Apple Intelligence/model language support is unavailable, memory admission fails, or generation times out, the HUD/status says so. No cloud API, Ollama/MLX fallback, model download, reserve reduction, training or private-history/contact disclosure to the model was introduced. Only the user's current request and bounded app-name metadata reach the local model; contacts resolve afterward in native trusted code.
+
+**One actual synthetic understanding probe**, with network access denied, attempted “Would you mind launching Brave for me” using a static synthetic app catalog and no executor. It returned:
+
+`syntheticProposal=blocked-or-failed reason=resourceBlocked effects=0`
+
+This reached the native availability/admission path but **did not start generation**. No second generation/admission retry was made. Therefore native model generation quality and actual non-template language understanding are **not physically accepted** here. The local model integration is real and compiled; passing injected-generator tests do not erase this host resource block. Future deliberate user requests get their own normal admission check. No application was closed to manipulate headroom.
+
+## Execution authority, persistence and truthfulness
+
+A fresh human Agent gesture/text request authorizes supported routine actions. `PersonalAgentEngine.runRequestedRoutine` rejects any plan containing a message. The provider has no access to the trusted execution interface. Existing exact-plan equality, write-ahead execution state, exclusive journal lease, one-active-plan guard, cancellation and conservative restart recovery remain.
+
+Saved pending tasks are not automatically drained or approved after restart. A duplicate final speech callback cannot create another request; repeated human requests intentionally get new IDs. Completed/uncertain records cannot replay under the same ID. This is not a general exactly-once transaction across macOS apps and the journal.
+
+Messages always retain an explicit exact-plan Approve action. The fixed native Messages script sends only the confirmed literal body to the confirmed address using the current native iMessage service. A returned send call is **not verified delivery**: a new backward-compatible `PersonalReceipt.verified` flag records that as uncertain/needsReview, stops following steps and forbids automatic replay. The HUD says “Message submitted”, not “Delivered”. Inspect Messages before any retry. Older receipts default to their prior verified semantics when decoding. New tool enum values require this version or later to read new task records; older versions fail closed without wiping the queue.
+
+The queue stores exact action text, resolved message address/body and receipts locally for approval/recovery, separately from opt-in memory. It remains bounded to 100 task records / 4 MiB and protected by app-specific 0700/0600 paths; plaintext/backup/forensic-deletion limitations remain. Full history stops intake until records are explicitly removed; no uncertain effect is automatically deleted/retried. Contacts, microphone, speech, notification and automation consent remain native and user-controlled. No Contacts permission is requested at launch or for non-message actions.
+
+HUD flow is Agent listening → Understanding / Processing command → Done / Search opened / Confirm message / Message submitted / explicit failure. When inference is unavailable, the compact label says Local AI unavailable and the full persistent status describes the resource/model problem. Message recipient ambiguity and Contacts denial have their own statuses. Existing normal dictation waveform and Transcribing states remain unchanged.
+
+Native AppleScript/TCC calls can still block the main actor or wait on native dialogs; no hard overall executor deadline or general background scheduler is claimed. Cancellation stops remaining work and cannot undo an in-flight external effect. App-owned networking preferences do not firewall websites, streaming, Messages or OS-managed services.
+
+## Verification on final source
+
+- Focused app suites: **97 expanded cases passed**, zero failures (29 new natural-request/model/contact cases plus 68 retained Agent voice/core cases).
+- Full headless Debug build/run: **1,473 expanded cases passed**, zero failures. Independent test-without-building replay: **1,473 passed**. Existing CI selection validation confirmed required regression identities and the unchanged four graphical exclusions; those graphical checks are not claimed passed.
+- Final-source Release and `SWIFT_STRICT_CONCURRENCY=complete` builds: **passed**, Swift 6 / Xcode 27.0, macOS 27 SDK, **arm64**. `ONLY_ACTIVE_ARCH=YES`, indexing disabled and dwarf debug information were used to fit available disk space. No new Swift concurrency warning accepted; existing AppIntents metadata/test-runner OS notices are retained.
+- CI helper: **13 tests passed**. `git diff --check`: passed. Repository scan result is retained in evidence.
+- New cases cover ordinary requests with unavailable model/zero inference budget, fake-generator natural slots and hallucinated slot rejection, payload/negation boundaries, resource admission denial, cancellation, late output and noncooperative timeout slot ownership, routine voice execution without adding/approving a command, duplicate final callbacks, no target capture/insertion/clipboard mutation, message review before any execution, recipient endpoint selection and ambiguity rejection, URL query encoding, unverified receipt no-replay and old receipt schema decoding.
+- Model generation is injected in those cases. Native app effects, microphone hardware, actual Contacts/TCC, save dialogs, Messages dispatch/delivery, music playback and live websites are **pending user-operated acceptance**. No actual message or native productive action was executed by verification. The probe above had zero effects.
+- Early setup attempts encountered stale build/test module variants and disk-full errors before tests ran; these are retained and not counted as passing. Only unused Wesley Flow scratch compilation products were removed, with older final test evidence preserved. The running Xcode app, user data, source, model caches and previous milestone work were not deleted or terminated.
+
+Evidence: `Evidence/Milestone40A/manifest.json`, final summaries/trees/xcresults, build logs, synthetic probe source/build/result, prior-work patch/source backups and preserved voice/insertion hashes. Source map: `Domain/PersonalConversation.swift`, `Domain/PersonalAgent.swift`; `ModelProviders/ApplePersonalPlanner.swift`, `FoundationGenerationLease.swift`, small rewrite-driver lease wiring; `SystemOperations/NativePersonalApps.swift`, `NativePersonalTools.swift`, `PersonalAgentEngine.swift`; existing App composition/coordinator/Commands view and consumed app tests. New Contacts usage text and **40.0.1** identity are in the project settings.
+
+## Identified build and physical acceptance
+
+Prepared **Release 40.0.1**, signature verified, **not launched**:
+
+`/Users/akshaywesley/Developer/WesleyFlow/Run/Milestone40A-40.0.1-60289fdd/Wesley Flow.app`
+
+Executable SHA-256: `60289fddfa23a916f9b8b5e51e51cadb1b91d9808566c341f5f9924bfa51b82e`.
+
+1. Resolve any pending clipboard recovery and finish/cancel any active task in the old copy. Quit normally; do not force quit or launch two production copies. Open this exact bundle and confirm General's **40 / speech38L3R3** marker and build **40.0.1**. Keep the already-working Agent key and unchanged dictation key.
+2. From a disposable normal TextEdit window, hold Agent and say “Open Brave”; release. It should run directly, without typing/adding a command or clicking Approve. Repeat “Open WhatsApp” and “Open Safari”. Check actual app activation and the receipt, not only the HUD. Confirm no text is inserted and a clipboard sentinel is preserved.
+3. Say “Close Safari”. It requests a normal app quit and verifies termination. Separately test a disposable unsaved-document case in an appropriate indexed app: native save/cancel UI must be respected, no force quit, no false Done if termination remains unresolved. Do not use valuable unsaved work for this test.
+4. With internet available for the browser only, say “Search for guitar lessons on YouTube” and “Search Google Swift concurrency”. Check the default browser's exact query. A URL handoff receipt is not evidence that results were read or a question answered. Then test “Play some music” and “Pause music” with an already playable queue, explicitly allowing/denying Music automation as desired.
+5. For messaging, use a consenting test recipient or your own test address. Say “Text [exact number/email] saying [disposable message]”. Nothing may send before confirmation. Read **Messages**, resolved address and exact body. Reject first and verify no send. In a separate deliberate test, approve once and inspect the actual Messages conversation; dispatch is not delivery verification. Do not retry an uncertain task blindly. Then test a unique first name, ambiguous duplicate names/multiple addresses, Contacts denial and explicit-address fallback. WhatsApp sending is unsupported and must not be mistaken for this service.
+6. Test freer phrasing such as “Would you mind launching Brave for me”. If the unchanged host reserve/model guard is blocked, expect Local AI unavailable and no effect, as in the probe. No cloud/model-download fallback should occur. A future admitted generation must still resolve the exact requested app/query and execute only supported tools. Test cancellation during understanding and rapid new requests; late output must not run.
+7. Repeat normal dictation, including words like “Open Brave”, into a disposable supported editor. It must remain text and must not create an agent task. Repeat back-to-back Agent/dictation, secure-field denial, source range/error recovery and the previous held-duration acceptance checks. Existing 38 speech/insertion code and shortcut/preference implementation remain preserved byte-for-byte, as recorded in `preserved-voice-insertion.json`.
+
+The user's physical confirmation applies to the previous working key/Open Safari example, not these new capabilities. No claim of perfect natural-language understanding, live message delivery, arbitrary app control or production-release compatibility is made. Nothing was staged, committed, pushed or merged; branch/HEAD remain unchanged.

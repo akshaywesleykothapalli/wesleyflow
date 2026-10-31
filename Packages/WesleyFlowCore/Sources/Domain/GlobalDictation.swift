@@ -110,8 +110,14 @@ public extension InsertionTarget {
     var captureBundleIdentifier:String? { get }
     var captureDiagnostics:[InsertionVerificationDiagnostic] { get }
     func capture(session: String) throws -> any InsertionTarget
+    func capture(session:String,activation:DictationActivationContext) throws -> any InsertionTarget
+    var observedApplicationIdentity:DictationApplicationIdentity? { get }
 }
-public extension InsertionTargetCapturing { var captureBundleIdentifier:String? { nil }; var captureDiagnostics:[InsertionVerificationDiagnostic] { [] }; var failureExplanation: String? { nil } }
+public extension InsertionTargetCapturing {
+    // Capturers must explicitly support binding; never silently discard an origin.
+    func capture(session:String,activation:DictationActivationContext) throws -> any InsertionTarget { throw TextTargetError.changed }
+    var observedApplicationIdentity:DictationApplicationIdentity? { nil }
+    var captureBundleIdentifier:String? { nil }; var captureDiagnostics:[InsertionVerificationDiagnostic] { [] }; var failureExplanation: String? { nil } }
 public struct ClipboardSnapshot: Sendable {
     public let changeCount: Int
     public let items: [[String:[UInt8]]]
@@ -173,7 +179,7 @@ public struct DictationHistoryEntry: Identifiable, Codable, Equatable, Sendable 
     public func validate() throws {
         guard UUID(uuidString:id) != nil, timestamp.timeIntervalSince1970.isFinite, raw.utf8.count <= DictationText.maximumBytes,
               cleaned.utf8.count <= DictationText.maximumBytes, (sourceApplication?.utf8.count ?? 0) <= 256,
-              (0...120_000).contains(durationMilliseconds) else { throw DictationHistoryFailure.invalidEntry }
+              (0...DictationText.maximumDurationMilliseconds).contains(durationMilliseconds) else { throw DictationHistoryFailure.invalidEntry }
         if insertion.outcome == .inserted && (!insertion.attempted || insertion.reason != .verified) { throw DictationHistoryFailure.invalidEntry }
     }
 }
@@ -234,4 +240,9 @@ public struct InsertionVerificationDiagnostic: Sendable, Equatable {
         self.stage = stage; self.code = code; self.status = status; self.timing = timing; self.axError = axError; self.elapsedMilliseconds = elapsedMilliseconds
         expectedUTF16 = expected; observedUTF16 = observed; rangeLocation = range?.location; rangeLength = range?.length
     }
+}
+
+/// Opt-in native target route: no clipboard publication, restoration or backup.
+@MainActor public protocol ClipboardFreeInsertionTarget:InsertionTarget {
+    func supportsClipboardFreeText(_ text:String)->Bool
 }

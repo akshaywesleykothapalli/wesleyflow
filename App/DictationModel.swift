@@ -57,8 +57,7 @@ import SystemOperations
                 let info = try await self.input.start(localeIdentifier: self.localeIdentifier) { [weak self] event in self?.receive(event, generation: token) }
                 guard self.generation == token, !Task.isCancelled, self.phase == .preparing else { return }
                 self.info = info; self.phase = .recording
-                self.message = "Listening… Release Fn when finished. Maximum 60 seconds."
-                self.armTimer(milliseconds: 60_000, generation: token, finalizing: false)
+                self.message = "Release the held key when finished."
             } catch {
                 guard self.generation == token else { return }
                 self.discardDestination(); self.input.cancel(); self.phase = .failed
@@ -67,6 +66,7 @@ import SystemOperations
             if self.generation == token { self.startup = nil }
         }
     }
+    func waitForCaptureStartup() async { await startup?.value }
     func stop() {
         guard phase == .recording else { return }
         phase = .finalizing; message = "Finishing transcription…"; timer?.cancel()
@@ -87,12 +87,12 @@ import SystemOperations
     }
     func edit(_ text: String) {
         guard !busy else { return }
-        guard text.utf8.count <= DictationText.maximumBytes else { message = "Text is limited to 16 KiB."; return }
+        guard text.utf8.count <= DictationText.maximumBytes else { message = "Text is limited to 64 KiB."; return }
         if isRewriting { cancelRewrite() }
         edited = text
     }
     func editPrompt(_ text: String) {
-        guard text.utf8.count <= DictationText.maximumBytes else { message = "Prompt is limited to 16 KiB."; return }
+        guard text.utf8.count <= DictationText.maximumBytes else { message = "Prompt is limited to 64 KiB."; return }
         if isRewriting { cancelRewrite() }
         prompt = text
     }
@@ -163,6 +163,7 @@ import SystemOperations
             guard text.utf8.count <= DictationText.maximumBytes else { fail(.overflow); return }
             raw = text // Full snapshot replaces earlier partial text; never append callback snapshots.
         case .finished:
+            guard phase == .finalizing else { fail(.providerEnded); return }
             timer?.cancel(); timer = nil; startup = nil; edited = cleaned
             phase = edited.isEmpty ? .failed : .complete
             message = edited.isEmpty ? "No speech was recognized. You can try again or type below." : "Ready to review. Cleanup changes whitespace only."
@@ -251,6 +252,8 @@ import SystemOperations
         case .recognitionFailed: "Dictation stopped unexpectedly. Review any partial text or try again."
         case .overflow: "Dictation stopped because its audio or text limit was reached. Review the partial text."
         case .timedOut: "Speech did not finish in time. Capture was stopped; review any partial text."
+        case .anotherInstance: "Another Wesley Flow copy owns dictation. Finish or cancel capture and resolve clipboard recovery, then quit the other copy normally. Nothing was recorded."
+        case .providerEnded: "The on-device speech provider ended before release, possibly at its duration limit. Recording stopped. Available text is retained for manual copy; nothing was inserted."
         }
     }
 }

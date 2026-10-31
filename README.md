@@ -1,6 +1,6 @@
 # Wesley Flow
 
-A native, local-first voice dictation app for Apple Silicon Macs, built with SwiftUI, AppKit and Swift 6.
+A native, local-first voice dictation and personal-agent app for Apple Silicon Macs, built with SwiftUI, AppKit and Swift 6.
 
 ## Current capabilities
 
@@ -11,9 +11,20 @@ A native, local-first voice dictation app for Apple Silicon Macs, built with Swi
 - Permission-aware insertion into supported editable fields, with original-target validation, observed-result verification and clipboard recovery safeguards.
 - Optional Smart Polish and structured-prompt organization using Apple's on-device FoundationModels provider. Explicit manual previews support review and Copy. Separately enabled in-place shortcuts require a fresh verified dictation receipt, unchanged exact context and a supported editor; nothing is submitted.
 
+## Agent commands — build 44.0.1
+
+A separate configurable hold-to-talk Agent shortcut routes spoken requests directly to a closed native planner/executor. Fn dictation remains independent. Agent commands do not paste their transcripts or submit conversations.
+
+Supported commands include installed-app opening/closing, selected window states, scoped folder creation/opening/closing/search/Trash, Safari/Brave searches and tab/window controls, output volume/mute, Notes/Reminders/Calendar/timers and basic Music/Spotify controls. Trash and Messages require explicit review of the final target/content. Protected folders and native app automation require the relevant macOS permissions. Unsupported requests fail transparently; this is not unrestricted computer control.
+
+- [Current Mac/app controls and examples](Docs/Agents/MILESTONE44A-MAC-APP-CONTROLS.md)
+- [Folder and browser search commands](Docs/Agents/MILESTONE43A-FOLDERS-BROWSERS-COMMANDS.md)
+- [100 proposed future commands](Docs/Agents/COMMAND-ROADMAP-100.md) — planning only
+- [Current verification and release checkpoint](Docs/Agents/BUILD44-PUBLICATION-CHECKPOINT.md)
+
 ## Important limits
 
-A dispatched paste is not proof that text appeared. An identity-bound editable field can receive one ordinary paste without exact readback; its outcome stays uncertain, its clipboard backup remains pending, and it grants no AI replacement authority. Changed or unsafe targets fail closed. On 28 October 2026 the user confirmed **3/3 physical ChatGPT dictations passed on 37R2**. This does not verify other editors, clipboard/focus edge cases or AI replacement. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
+A dispatched native insertion is not proof that text appeared. Current supported native dictation uses verified direct editing or bounded clipboard-free Unicode events; an unreadable target remains unverified, and unsupported text is retained for manual copy. Legacy clipboard routes retain ownership-bound recovery safeguards; an existing backup is never discarded to quit or update. Changed or unsafe targets fail closed. The user has reported the later app/dictation/Agent builds working, while the newly added 44A controls still require physical acceptance. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
 
 Option+1/Option+2 request in-place Smart Polish/Prompt Engineering and show only pill status; they never open a preview editor. Physical AI shortcut delivery and replacement remain unverified. Automatic replacement in the affected ChatGPT/WhatsApp editors remains unsupported; use the explicit manual preview and Copy workflow. Distinct tone quality and real structured-prompt output remain unverified after the latest native generation was blocked by the unchanged 4 GiB host-memory floor. The preservation gate permits only conservative copyediting; Prompt Engineering organizes supplied lines without inventing requirements. No cloud AI fallback, coding-agent execution, automatic source modification or custom model training is enabled.
 

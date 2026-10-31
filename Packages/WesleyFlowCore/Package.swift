@@ -13,9 +13,11 @@ let package = Package(
         .library(name: "CodingAgents", targets: ["CodingAgents"]),
         .library(name: "Workspace", targets: ["Workspace"]),
         .library(name: "ModelProviders", targets: ["ModelProviders"]),
+        .executable(name: "PersonalAgentHarness", targets: ["PersonalAgentHarness"]),
         .executable(name: "OllamaEvaluation", targets: ["OllamaEvaluation"])
     ],
     targets: [
+        .executableTarget(name: "PersonalAgentHarness", dependencies: ["Domain", "SystemOperations"], path: "Tools/PersonalAgentHarness"),
         .executableTarget(name: "OllamaEvaluation", dependencies: ["Domain", "ModelProviders", "Workspace", "SystemOperations"], path: "Tools/OllamaEvaluation", resources: [.copy("Corpus.json")]),
         .target(name: "Domain"),
         .target(name: "VoiceInput", dependencies: ["Domain"]),

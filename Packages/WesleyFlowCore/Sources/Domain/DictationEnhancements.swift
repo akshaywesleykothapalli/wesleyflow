@@ -3,7 +3,11 @@ import Foundation
 public struct DictationAudioLevel: Sendable, Equatable {
     public let sequence: UInt32
     public let rms: Float
-    public init(sequence: UInt32 = 0, rms: Float = 0) { self.sequence = sequence; self.rms = rms.isFinite ? min(1,max(0,rms)) : 0 }
+    public let peak: Float
+    public init(sequence: UInt32 = 0, rms: Float = 0, peak: Float = 0) {
+        self.sequence = sequence; self.rms = rms.isFinite ? min(1,max(0,rms)) : 0
+        self.peak = peak.isFinite ? min(1,max(0,peak)) : 0
+    }
 }
 @MainActor public protocol DictationAudioMetering: AnyObject { func audioLevel() -> DictationAudioLevel }
 
@@ -17,9 +21,9 @@ public struct DictationAudioEnvelope: Sendable {
     public mutating func reset() { self = .init() }
     public mutating func update(_ sample: DictationAudioLevel) {
         if sample.sequence == sequence { staleTicks += 1 } else { staleTicks = 0; sequence = sample.sequence }
-        let rms = staleTicks >= 3 ? 0 : Double(sample.rms)
-        let target = rms <= 0.00056 ? 0 : min(1,max(0,(20*log10(rms)+60)/48))
-        envelope += (target-envelope) * (target > envelope ? 0.7 : 0.25)
+        let rms = staleTicks >= 3 ? 0 : max(Double(sample.rms), Double(sample.peak)*0.18)
+        let target = rms <= 0.001 ? 0 : min(1,max(0,(20*log10(rms)+60)/42))
+        envelope += (target-envelope) * (target > envelope ? 0.8 : 0.18)
         if envelope < 0.002 { envelope = 0 }
         bars.removeFirst(); bars.append(envelope)
     }

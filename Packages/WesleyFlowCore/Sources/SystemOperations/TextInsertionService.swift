@@ -85,6 +85,26 @@ import Foundation
             failureExplanation = "The app's direct text update could not be verified. " + Self.readbackExplanation(result.failure) + " Nothing was retried; check the field before trying again."
             return .init(.uncertain,result.failure == .cancelled ? .cancelled : .verificationUnavailable,attempted:true)
         }
+        if let native=target as? any ClipboardFreeInsertionTarget {
+            guard native.supportsClipboardFreeText(text) else {
+                failureExplanation="Clipboard-free delivery supports single-line text up to 4 KiB. This text was retained for manual copy; no clipboard was changed."
+                return .init(.unsupportedTarget,.clipboardUnsupported)
+            }
+            let now=await clock.now()
+            guard !Task.isCancelled,now<deadline else { return .init(.cancelled,.cancelled) }
+            do { try target.validate() } catch { return Self.failure(error) }
+            guard target.postText(text,budgetMilliseconds:deadline-now) else {
+                failureExplanation="The bound editor could not accept clipboard-free text. Nothing was retried; use manual copy."
+                return .init(.unsupportedTarget,.clipboardUnsupported)
+            }
+            record(.init(.dispatch,.typingDispatched,.success))
+            if let expectation {
+                let result=await verify(expectation,target:target,deadline:deadline,settleMismatch:true)
+                if result.verified { return .init(.inserted,.verified,attempted:true) }
+            }
+            failureExplanation="Text events were sent once to the captured editor. Delivery could not be verified; no clipboard was used and nothing was retried."
+            return .init(.uncertain,.verificationUnavailable,attempted:true)
+        }
         guard pending == nil else { return .init(.denied,.clipboardPending,clipboardPending:true) }
         let snapshot: ClipboardSnapshot, ownership: ClipboardOwnership
         do { snapshot = try clipboard.snapshot() }

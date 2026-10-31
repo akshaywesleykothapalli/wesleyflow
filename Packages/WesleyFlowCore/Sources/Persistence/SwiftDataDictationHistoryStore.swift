@@ -63,7 +63,7 @@ public actor SwiftDataDictationHistoryStore: DictationHistoryStore {
         let rows = try ctx().fetch(fetch)
         guard rows.count <= entryLimit else { throw DictationHistoryFailure.corrupt }
         return try rows.map { row in
-            guard row.payload.count <= 100_000, let entry = try? JSONDecoder().decode(DictationHistoryEntry.self,from:row.payload),
+            guard row.payload.count <= DictationText.maximumBytes * 12 + 8192, let entry = try? JSONDecoder().decode(DictationHistoryEntry.self,from:row.payload),
                   entry.id == row.identity, entry.timestamp == row.timestamp else { throw DictationHistoryFailure.corrupt }
             try entry.validate(); return entry
         }.sorted { ($0.timestamp,$0.id) > ($1.timestamp,$1.id) }
@@ -76,7 +76,7 @@ public actor SwiftDataDictationHistoryStore: DictationHistoryStore {
         let size = ["","-wal","-shm"].reduce(0) { sum,suffix in
             sum + ((try? FileManager.default.attributesOfItem(atPath:url.path+suffix)[.size] as? NSNumber)?.intValue ?? 0)
         }
-        guard size < 100 * 1024 * 1024 - 200_000 else { throw DictationHistoryFailure.full }
+        guard size < 100 * 1024 * 1024 - (DictationText.maximumBytes * 12 + 8192) * 2 else { throw DictationHistoryFailure.full }
         do { context.insert(StoredDictationEntry(entry,payload:try JSONEncoder().encode(entry))); try context.save() }
         catch { context.rollback(); throw DictationHistoryFailure.unavailable }
     }

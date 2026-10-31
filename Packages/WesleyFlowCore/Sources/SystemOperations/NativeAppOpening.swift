@@ -3,7 +3,7 @@ import Domain
 
 private extension AppOpeningCommand {
     var bundleIdentifier: String? {
-        switch self { case .whatsapp:"net.whatsapp.WhatsApp"; case .browser:nil; case .settings:"com.apple.systempreferences"; case .finder:"com.apple.finder"; case .notes:"com.apple.Notes"; case .music:"com.apple.Music" }
+        switch self { case .safari:"com.apple.Safari"; case .whatsapp:"net.whatsapp.WhatsApp"; case .browser:nil; case .settings:"com.apple.systempreferences"; case .finder:"com.apple.finder"; case .notes:"com.apple.Notes"; case .music:"com.apple.Music" }
     }
 }
 

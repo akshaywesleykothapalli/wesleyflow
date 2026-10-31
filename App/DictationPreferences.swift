@@ -43,6 +43,8 @@ struct DictationPreferences: Codable, Equatable {
     var holdFnEnabled = true
     var formatting = DictationFormattingOptions()
     var activationKey: DictationActivationKey = .fn
+    var agentKey: DictationActivationKey = .rightControl
+    var agentHotkeyEnabled = true
     var idlePillEnabled = false
     var blockNetworkRequests = false
     var polishTone: OfflineRewriteTone = .natural
@@ -52,7 +54,7 @@ struct DictationPreferences: Codable, Equatable {
     var previewShortcutsEnabled = false
     var offlineAIRewriting = false
     init() {}
-    private enum CodingKeys: String, CodingKey { case inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
+    private enum CodingKeys: String, CodingKey { case agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         version = try c.decode(Int.self,forKey:.version)
@@ -62,6 +64,8 @@ struct DictationPreferences: Codable, Equatable {
         appearance = try c.decode(DictationAppearance.self,forKey:.appearance)
         formatting = try c.decodeIfPresent(DictationFormattingOptions.self,forKey:.formatting) ?? .init()
         activationKey = try c.decodeIfPresent(DictationActivationKey.self,forKey:.activationKey) ?? .fn
+        agentKey = try c.decodeIfPresent(DictationActivationKey.self,forKey:.agentKey) ?? .rightControl
+        agentHotkeyEnabled = try c.decodeIfPresent(Bool.self,forKey:.agentHotkeyEnabled) ?? true
         idlePillEnabled = try c.decodeIfPresent(Bool.self,forKey:.idlePillEnabled) ?? false
         promptEngineeringEnabled = try c.decodeIfPresent(Bool.self,forKey:.promptEngineeringEnabled) ?? false
         inPlaceAIRewrite = try c.decodeIfPresent(Bool.self,forKey:.inPlaceAIRewrite) ?? false
@@ -252,7 +256,7 @@ struct DictationInsightsMetrics {
     init(entries:[DictationHistoryEntry],activity:DictationActivity) {
         // Zero is also the existing writer's missing-clock fallback; do not assert it
         // means a reliably measured zero-length recording. No storage migration.
-        let reliable = entries.filter { (1...120_000).contains($0.durationMilliseconds) }
+        let reliable = entries.filter { (1...DictationText.maximumDurationMilliseconds).contains($0.durationMilliseconds) }
         let missing = entries.count - reliable.count
         let sum = reliable.reduce(Int64(0)) { value,entry in
             let addition = value.addingReportingOverflow(entry.durationMilliseconds)
@@ -291,7 +295,7 @@ struct SketchInsightsSummary {
         var seen = Set<String>()
         let saved = entries.filter { seen.insert($0.id).inserted }
         let words = saved.reduce(0) { $0 + $1.wordCount }
-        let timed = saved.filter { (1...120_000).contains($0.durationMilliseconds) }
+        let timed = saved.filter { (1...DictationText.maximumDurationMilliseconds).contains($0.durationMilliseconds) }
         let milliseconds = timed.reduce(0.0) { $0 + Double($1.durationMilliseconds) }
         let completeTiming = !saved.isEmpty && timed.count == saved.count && milliseconds > 0
         let wpm = completeTiming ? (Double(words)*60_000/milliseconds).formatted(.number.precision(.fractionLength(0))) : "Unavailable"
