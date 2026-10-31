@@ -22,7 +22,7 @@ public struct PersonalBrowserControl:Codable,Sendable,Equatable {
     public var label:String {let verb=switch action {case .newTab:"New tab";case .newWindow:"New window";case .nextTab:"Next tab";case .previousTab:"Previous tab"};return verb+" in "+browser.rawValue.capitalized}
 }
 public enum PersonalControlIntents {
-    private static func number(_ text:String)->Int? {
+    public static func number(_ text:String)->Int? {
         let value=text.replacingOccurrences(of:"-",with:" ").lowercased()
         if let n=Int(value) {return n}
         let small=["zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,"thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,"seventeen":17,"eighteen":18,"nineteen":19]

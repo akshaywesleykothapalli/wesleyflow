@@ -25,11 +25,13 @@ private final class PersonalJournalLease: Sendable {
     public var onChange: (@MainActor ([PersonalTaskRecord]) -> Void)?
     private let url: URL
     private let runner: any PersonalToolRunning
+    private let now:@MainActor () ->Date
     private var lease: PersonalJournalLease?
     private var active: UUID?
     private var cancellation = false
-    public init(url: URL, runner: any PersonalToolRunning) throws {
-        self.url = url; self.runner = runner
+    private var pauseRequested=false
+    public init(url: URL, runner: any PersonalToolRunning,now:@escaping @MainActor () ->Date={Date()}) throws {
+        self.url = url; self.runner = runner;self.now=now
         try FileManager.default.createDirectory(at:url.deletingLastPathComponent(),withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
         lease = try PersonalJournalLease(url:url.appendingPathExtension("lock"))
         if FileManager.default.fileExists(atPath:url.path) {
@@ -75,11 +77,12 @@ private final class PersonalJournalLease: Sendable {
         guard lease != nil, active == nil else { throw PersonalAgentError.busy }
         guard let i = records.firstIndex(where: { $0.id == reviewed.id }), records[i].plan == reviewed,
               records[i].state == .awaitingApproval else { throw PersonalAgentError.approvalRequired }
-        active = reviewed.id; cancellation = false
+        active = reviewed.id; cancellation = false;pauseRequested=false
         defer { active = nil }
         records[i].state = .running
         do { try persist() } catch { records[i].state = .awaitingApproval; throw error }
         for j in reviewed.steps.indices {
+            if pauseRequested && !cancellation && !Task.isCancelled {records[i].state = .paused;try persist();return}
             if cancellation || Task.isCancelled {
                 let previous=records[i].state; records[i].state = .cancelled
         do { try persist() } catch { records[i].state=previous;throw error }; return
@@ -105,7 +108,54 @@ private final class PersonalJournalLease: Sendable {
             do { try persist() } catch { records[i].state = .needsReview; records[i].steps[j] = .uncertain; throw error }
         }
         records[i].state = cancellation || Task.isCancelled ? .cancelled : .completed
+        if records[i].state == .completed {records[i].completedAt=now()}
         try persist()
+    }
+    /// A native read-only observation may settle only its original pending quit, never execute or resume a step.
+    public func reconcileAppClose(_ id:UUID,expectedStep:PersonalStep,receipt:PersonalReceipt) throws {
+        guard lease != nil,active != id,expectedStep.tool == .closeApp,let i=records.firstIndex(where:{$0.id==id}),records[i].state == .needsReview,records[i].supersededBy==nil,let j=records[i].plan.steps.firstIndex(of:expectedStep),records[i].steps[j] == .uncertain,let before=records[i].receipts[j]?.appClose,let after=receipt.appClose else {throw PersonalAgentError.approvalRequired}
+        _=try before.validated();_=try after.validated()
+        guard [PersonalAppCloseObservation.Outcome.pending,.refused].contains(before.outcome),before.token==after.token,before.bundleID==expectedStep.text,after.bundleID==before.bundleID,after.processes==before.processes,receipt.identifier==before.bundleID,(after.outcome == .closed && receipt.verified) || ([PersonalAppCloseObservation.Outcome.reopened,.unconfirmed].contains(after.outcome) && !receipt.verified) else {throw PersonalAgentError.verificationFailed}
+        let prior=records;records[i].receipts[j]=receipt
+        if after.outcome == .closed {records[i].steps[j] = .verified;records[i].diagnostic="native-process-exit-observed-no-retry";if records[i].steps.allSatisfy({$0 == .verified}) {records[i].state = .completed;records[i].completedAt=now()}}
+        else {records[i].diagnostic=after.outcome == .reopened ? "app-reopened-no-retry":"quit-not-confirmed-after-observation"}
+        do {try persist()} catch {records=prior;throw error}
+    }
+    /// Trusted native UI only: an explicit user observation records evidence; it never calls a tool.
+    public func confirmObservedOutcome(_ id:UUID,expectedStep:PersonalStep) throws {
+        guard lease != nil,active==nil,let i=records.firstIndex(where:{$0.id==id}),records[i].state == .needsReview,records[i].supersededBy==nil,let j=records[i].plan.steps.firstIndex(where:{$0==expectedStep}),records[i].steps[j] == .uncertain else {throw PersonalAgentError.approvalRequired}
+        let prior=records
+        let old=records[i].receipts[j]
+        records[i].receipts[j] = .init(identifier:old?.identifier ?? expectedStep.id.uuidString,evidence:"User explicitly checked the exact requested outcome in the native app. Human observation, not automatic native verification or proof of recipient delivery.")
+        records[i].steps[j] = .verified;records[i].diagnostic="human-observed-outcome-no-replay"
+        if records[i].steps.allSatisfy({$0 == .verified}) {records[i].state = .completed;records[i].completedAt=now()}
+        do {try persist()} catch {records=prior;throw error}
+    }
+    public func pause(_ id:UUID) throws {
+        guard lease != nil,active==id else {throw PersonalAgentError.busy}
+        pauseRequested=true
+    }
+    public func continuationPlan(_ id:UUID,now:Date) throws ->PersonalPlan {
+        guard active==nil,let source=records.first(where:{$0.id==id}),source.supersededBy==nil,[PersonalTaskState.paused,.cancelled,.needsReview].contains(source.state),!source.steps.contains(where:{[PersonalStepState.executing,.uncertain,.failed].contains($0)}) else {throw PersonalAgentError.approvalRequired}
+        for i in source.steps.indices where source.steps[i] == .verified {guard source.receipts[i]?.verified==true else {throw PersonalAgentError.verificationFailed}}
+        let remaining=try source.plan.steps.enumerated().filter{source.steps[$0.offset] == .pending}.map {entry in
+            let step=entry.element
+            var date=step.date
+            if let prior=date {
+                if step.tool == .timer {let delay=prior.timeIntervalSince(source.plan.createdAt);guard delay>0,delay<=31536000 else {throw PersonalAgentError.invalidCommand};date=now.addingTimeInterval(delay)}
+                else {guard prior>now else {throw PersonalAgentError.invalidCommand}}
+            }
+            return PersonalStep(tool:step.tool,text:step.text,date:date)
+        }
+        return try .init(steps:remaining,createdAt:now,requiresReview:true)
+    }
+    public func enqueueContinuation(_ plan:PersonalPlan,from id:UUID) throws {
+        guard lease != nil,active==nil,plan.requiresReview,let i=records.firstIndex(where:{$0.id==id}),records[i].supersededBy==nil else {throw PersonalAgentError.approvalRequired}
+        _=try continuationPlan(id,now:plan.createdAt)
+        let pending=records[i].plan.steps.enumerated().filter{records[i].steps[$0.offset] == .pending}.map{$0.element.tool}
+        guard plan.steps.map(\.tool)==pending,records.count<100,!records.contains(where:{$0.id==plan.id}) else {throw PersonalAgentError.approvalRequired}
+        let prior=records;records[i].supersededBy=plan.id;records.append(PersonalTaskRecord(plan:plan))
+        do {try persist()} catch {records=prior;throw error}
     }
     public func cancel(_ id: UUID) throws {
         guard lease != nil else { throw PersonalAgentError.interrupted }

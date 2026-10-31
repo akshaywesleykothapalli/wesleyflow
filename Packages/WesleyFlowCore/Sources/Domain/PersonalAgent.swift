@@ -2,7 +2,7 @@ import Foundation
 
 /// Closed capabilities: no script, shell, generated tool, URL scheme or recipient execution.
 public enum PersonalTool: String, Codable, Sendable, CaseIterable {
-    case note, reminder, calendar, openApp, safari, timer, music, spotify, openInstalledApp, closeApp, minimizeApp, restoreApp, fullScreenApp, exitFullScreenApp, maximizeApp, searchGoogle, searchYouTube, createFolder, openFolder, closeFolder, findFolder, trashFolder, searchBrowser, systemAudio, browserControl, message
+    case website, note, reminder, calendar, openApp, safari, timer, music, spotify, openInstalledApp, closeApp, minimizeApp, restoreApp, fullScreenApp, exitFullScreenApp, maximizeApp, searchGoogle, searchYouTube, createFolder, openFolder, closeFolder, findFolder, trashFolder, searchBrowser, systemAudio, browserControl, layoutApp, macControl, ownedTimers, recordAction, notesAction, mediaAction, contactAction, fileAction, screenCapture, browserExtra, routineSave, mailAction, menuAction, messageSchedule, message
 }
 public struct PersonalStep: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
@@ -17,12 +17,19 @@ public struct PersonalPlan: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public let steps: [PersonalStep]
     public let createdAt: Date
-    public init(id: UUID = UUID(), steps: [PersonalStep], createdAt: Date = Date()) throws {
+    public let requiresReview:Bool
+    public init(id: UUID = UUID(), steps: [PersonalStep], createdAt: Date = Date(),requiresReview:Bool=false) throws {
         guard !steps.isEmpty, steps.count <= 8, Set(steps.map(\.id)).count == steps.count,
-              steps.allSatisfy({ !$0.text.isEmpty && $0.text.utf8.count <= 2048 }) else { throw PersonalAgentError.invalidCommand }
-        self.id = id; self.steps = steps; self.createdAt = createdAt
+              steps.allSatisfy({ !$0.text.isEmpty && $0.text.utf8.count <= $0.maximumPayloadBytes }) else { throw PersonalAgentError.invalidCommand }
+        self.id = id; self.steps = steps; self.createdAt = createdAt;self.requiresReview=requiresReview
+    }
+    private enum CodingKeys:String,CodingKey {case id,steps,createdAt,requiresReview}
+    public init(from decoder:any Decoder) throws {
+        let c=try decoder.container(keyedBy:CodingKeys.self)
+        try self.init(id:c.decode(UUID.self,forKey:.id),steps:c.decode([PersonalStep].self,forKey:.steps),createdAt:c.decode(Date.self,forKey:.createdAt),requiresReview:c.decodeIfPresent(Bool.self,forKey:.requiresReview) ?? false)
     }
 }
+public extension PersonalStep {var maximumPayloadBytes:Int {tool == .routineSave ? 32768:tool == .mailAction ? 16384:tool == .messageSchedule ? 4096:2048}}
 public enum PersonalAgentError: Error, Equatable, Sendable {
     case invalidCommand, unsupported, permissionDenied, verificationFailed, busy, storageFull, approvalRequired, interrupted
 }
@@ -87,17 +94,19 @@ public enum PersonalIntentParser {
     }
 }
 public enum PersonalStepState: String, Codable, Sendable { case pending, executing, verified, failed, uncertain }
-public enum PersonalTaskState: String, Codable, Sendable { case awaitingApproval, running, completed, failed, cancelled, needsReview }
+public enum PersonalTaskState: String, Codable, Sendable { case awaitingApproval, running, completed, failed, cancelled, needsReview, paused }
 public struct PersonalReceipt: Codable, Equatable, Sendable {
     public let identifier: String
     public let evidence: String
     public let verified: Bool
-    public init(identifier: String, evidence: String, verified:Bool = true) { self.identifier = identifier; self.evidence = evidence; self.verified=verified }
-    private enum CodingKeys:String,CodingKey { case identifier,evidence,verified }
+    public let appClose:PersonalAppCloseObservation?
+    public init(identifier: String, evidence: String, verified:Bool = true,appClose:PersonalAppCloseObservation?=nil) { self.identifier = identifier; self.evidence = evidence; self.verified=verified;self.appClose=appClose }
+    private enum CodingKeys:String,CodingKey { case identifier,evidence,verified,appClose }
     public init(from decoder:any Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         identifier=try c.decode(String.self,forKey:.identifier);evidence=try c.decode(String.self,forKey:.evidence)
         verified=try c.decodeIfPresent(Bool.self,forKey:.verified) ?? true
+        appClose=try c.decodeIfPresent(PersonalAppCloseObservation.self,forKey:.appClose)?.validated()
     }
 }
 public struct PersonalTaskRecord: Codable, Equatable, Sendable, Identifiable {
@@ -107,6 +116,8 @@ public struct PersonalTaskRecord: Codable, Equatable, Sendable, Identifiable {
     public var steps: [PersonalStepState]
     public var receipts: [Int:PersonalReceipt] = [:]
     public var diagnostic: String?
+    public var supersededBy:UUID?
+    public var completedAt:Date?
     public init(plan: PersonalPlan) { self.plan = plan; self.steps = plan.steps.map { _ in .pending } }
 }
 @MainActor public protocol PersonalToolRunning {

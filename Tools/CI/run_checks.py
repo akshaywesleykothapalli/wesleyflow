@@ -23,6 +23,23 @@ MANUAL_TESTS = [
 MIN_APP_CASES = 1374
 MIN_MODEL_LAB_TESTS = 152
 REQUIRED_APP_TESTS = {
+    'PersonalCloseR3Tests/earlierSuccessfulQuitCannotHideALaterPendingQuit()',
+    'PersonalCloseR3Tests/slowQuitReleasesForegroundThenReadOnlyObserverConfirms()',
+    'PersonalCloseR3Tests/scopedLateProofCompletesOriginalOnlyAndNeverRunsRemainingSteps()',
+    'PersonalCloseR3Tests/genericAgentFailurePillNeverStartsDictation()',
+    'PersonalCloseR3Tests/lateProofDoesNotReplaceNewFnRecordingOrInsertAgentText()',
+    'PersonalNaturalR2Tests/naturalRequestsWorkWithUnavailableModelAndZeroInferenceBudget()',
+    'PersonalNaturalR2Tests/nativeAppPriorityAndExplicitWebsiteDisambiguation()',
+    'PersonalNaturalR2Tests/literalNoteAndMessageRepliesDoNotBecomeOpenCommands()',
+    'PersonalNaturalR2Tests/unknownWebsiteNeedsExactAddressWithoutGuessing()',
+    'PersonalWebsiteR1Tests/agentSnapshotsExecuteOnceWithoutInsertion()',
+    'PersonalWebsiteR1Tests/searchesAndLiteralRepliesRetainRepeatedWords()',
+    'PersonalWebsiteR1Tests/targetBrowserAndAppIdentityArePreserved()',
+    'PersonalAgent45CatalogTests/catalogIsExactlyTheFrozen100UniqueIDs()',
+    'PersonalAgent45SafetyTests/pauseAndContinueNeverReplayVerifiedOrCreateTwoContinuations()',
+    'PersonalAgent45ContextTests/savedRoutineRunAndEditUseRealContextWithoutAutoexecution()',
+    'PersonalAgent45ContextTests/schedulingBindsExactPendingMessageAndRequestsSpecificTime()',
+
     'ActivationIdentity38L3R3Tests/eventPredatingActivationCannotBindToTheNewForegroundApp()',
     'ActivationIdentity38L3R3Tests/immutableOriginRejectsOtherAppsRelaunchesAndActivationChanges()',
     'ActivationIdentity38L3R3Tests/mailboxGenerationInvalidatesQueuedPressEvenAfterAppReturns()',
@@ -136,7 +153,9 @@ def preflight(env):
 def xcode_command(action, directory):
     common = ['/usr/bin/xcodebuild', '-project', 'WesleyFlow.xcodeproj', '-scheme', 'WesleyFlow',
               '-destination', 'platform=macOS,arch=arm64', '-derivedDataPath', str(directory / 'DerivedData'),
-              '-disableAutomaticPackageResolution', '-skipPackageUpdates', '-jobs', '2']
+              '-disableAutomaticPackageResolution', '-skipPackageUpdates', '-jobs', '2',
+              'ONLY_ACTIVE_ARCH=YES', 'ARCHS=arm64', 'COMPILER_INDEX_STORE_ENABLE=NO',
+              'DEBUG_INFORMATION_FORMAT=dwarf']
     if action == 'test':
         return common + ['-configuration', 'Debug', '-parallel-testing-enabled', 'NO',
                          '-resultBundlePath', str(directory / 'tests.xcresult'), 'test'] + [
@@ -182,6 +201,62 @@ def require_test_results(data, tree):
     return cases
 
 
+
+def failure_diagnostics(log, result_bundle=None, env=None):
+    """Only static source locations/categories and declaration IDs leave the runner."""
+    text = log.read_text(errors='replace') if log.is_file() else ''
+    diagnostics = {}
+    categories = set()
+    locations = []
+    for match in re.finditer(r'(?m)^([^:\n]+\.swift):(\d+):\d+:\s+error:\s+(.+)$', text):
+        # A source filename is useful; local paths, source lines and diagnostic text stay private.
+        name = Path(match[1]).name
+        if re.fullmatch(r'[A-Za-z0-9_.-]{1,100}\.swift', name):
+            locations.append({'file': name, 'line': int(match[2])})
+        message = match[3].lower()
+        if 'unable to type-check' in message:
+            categories.add('swift-type-check-timeout')
+        elif 'has no member' in message or 'cannot find' in message:
+            categories.add('swift-missing-symbol')
+        elif 'isolation' in message or 'sendable' in message:
+            categories.add('swift-concurrency')
+        else:
+            categories.add('swift-compile')
+    for needle, category in [('CodeSign failed', 'code-signing'),
+                             ('Failed to establish communication', 'test-host-communication'),
+                             ('Failed to launch', 'test-host-launch'),
+                             ('Testing cancelled because the build failed', 'build-failed')]:
+        if needle in text:
+            categories.add(category)
+    if result_bundle and result_bundle.exists():
+        try:
+            result = subprocess.run(['/usr/bin/xcrun', 'xcresulttool', 'get', 'test-results', 'tests', '--path', str(result_bundle)],
+                                    env=env, capture_output=True, timeout=60)
+            if not result.returncode:
+                declarations = set()
+                def visit(node):
+                    if isinstance(node, dict):
+                        identifier = node.get('nodeIdentifier', '')
+                        if (node.get('result') == 'Failed' and isinstance(identifier, str)
+                                and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*/[A-Za-z_][A-Za-z0-9_]*\([A-Za-z0-9_:, ]*\)', identifier)):
+                            declarations.add(identifier)
+                        for value in node.values():
+                            visit(value)
+                    elif isinstance(node, list):
+                        for value in node:
+                            visit(value)
+                visit(json.loads(result.stdout))
+                if declarations:
+                    diagnostics['failedDeclarations'] = sorted(declarations)[:20]
+                    categories.add('test-assertion')
+        except (OSError, ValueError, subprocess.SubprocessError):
+            categories.add('test-result-unavailable')
+    if categories:
+        diagnostics['categories'] = sorted(categories)
+    if locations:
+        diagnostics['sourceLocations'] = locations[:12]
+    return diagnostics
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['preflight', 'test', 'debug', 'release', 'concurrency', 'model-lab'])
@@ -219,6 +294,7 @@ def main():
                 break
         if code:
             summary['exitCode'] = code
+            summary['failureDetails'] = failure_diagnostics(directory / f'{args.action}-{index}.log', directory / 'tests.xcresult' if args.action == 'test' else None, env)
         elif args.action == 'test':
             command = ['/usr/bin/xcrun', 'xcresulttool', 'get', 'test-results', 'summary', '--path', str(directory / 'tests.xcresult')]
             result = subprocess.run(command, env=env, capture_output=True, timeout=60)

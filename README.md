@@ -11,20 +11,25 @@ A native, local-first voice dictation and personal-agent app for Apple Silicon M
 - Permission-aware insertion into supported editable fields, with original-target validation, observed-result verification and clipboard recovery safeguards.
 - Optional Smart Polish and structured-prompt organization using Apple's on-device FoundationModels provider. Explicit manual previews support review and Copy. Separately enabled in-place shortcuts require a fresh verified dictation receipt, unchanged exact context and a supported editor; nothing is submitted.
 
-## Agent commands — build 44.0.1
+## Agent commands — build 45.0.4
 
 A separate configurable hold-to-talk Agent shortcut routes spoken requests directly to a closed native planner/executor. Fn dictation remains independent. Agent commands do not paste their transcripts or submit conversations.
 
-Supported commands include installed-app opening/closing, selected window states, scoped folder creation/opening/closing/search/Trash, Safari/Brave searches and tab/window controls, output volume/mute, Notes/Reminders/Calendar/timers and basic Music/Spotify controls. Trash and Messages require explicit review of the final target/content. Protected folders and native app automation require the relevant macOS permissions. Unsupported requests fail transparently; this is not unrestricted computer control.
+The 100-command expansion adds window tiling, scoped file operations, Notes edits/export, reminder and calendar management, browser/media controls, reviewed email, contact/chat lookup, local scheduled drafts and saved routines. Native availability and permissions apply. Existing private-item changes and communications require exact review. Spotify album search and Safari bookmarking require native selection/confirmation; scheduled messages require fresh review when due. Unsupported requests fail transparently; this is not unrestricted computer control.
 
-- [Current Mac/app controls and examples](Docs/Agents/MILESTONE44A-MAC-APP-CONTROLS.md)
+- [Normal quit verification and result-pill correction](Docs/Agents/MILESTONE45A-R3-QUIT-VERIFICATION.md)
+- [Natural local website/app requests](Docs/Agents/MILESTONE45A-R2-NATURAL-NAVIGATION.md)
+- [Website routing correction](Docs/Agents/MILESTONE45A-R1-WEBSITE-ROUTING.md)
+- [100-command implementation and acceptance](Docs/Agents/MILESTONE45A-100-COMMANDS.md)
+- [All 100 commands and actual limits](Docs/Agents/COMMAND-GUIDE-100.md)
+- [Previous Mac/app controls and examples](Docs/Agents/MILESTONE44A-MAC-APP-CONTROLS.md)
 - [Folder and browser search commands](Docs/Agents/MILESTONE43A-FOLDERS-BROWSERS-COMMANDS.md)
-- [100 proposed future commands](Docs/Agents/COMMAND-ROADMAP-100.md) — planning only
-- [Current verification and release checkpoint](Docs/Agents/BUILD44-PUBLICATION-CHECKPOINT.md)
+- [Original 100-command roadmap](Docs/Agents/COMMAND-ROADMAP-100.md) — retained requirements; current scope is in the guide
+- [Current source publication checkpoint](Docs/Agents/BUILD45-PUBLICATION-CHECKPOINT.md)
 
 ## Important limits
 
-A dispatched native insertion is not proof that text appeared. Current supported native dictation uses verified direct editing or bounded clipboard-free Unicode events; an unreadable target remains unverified, and unsupported text is retained for manual copy. Legacy clipboard routes retain ownership-bound recovery safeguards; an existing backup is never discarded to quit or update. Changed or unsafe targets fail closed. The user has reported the later app/dictation/Agent builds working, while the newly added 44A controls still require physical acceptance. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
+A dispatched native insertion is not proof that text appeared. Current supported native dictation uses verified direct editing or bounded clipboard-free Unicode events; an unreadable target remains unverified, and unsupported text is retained for manual copy. Legacy clipboard routes retain ownership-bound recovery safeguards; an existing backup is never discarded to quit or update. Changed or unsafe targets fail closed. The user has reported the later app/dictation/Agent builds working, while the newly added 45A command paths still require physical acceptance. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
 
 Option+1/Option+2 request in-place Smart Polish/Prompt Engineering and show only pill status; they never open a preview editor. Physical AI shortcut delivery and replacement remain unverified. Automatic replacement in the affected ChatGPT/WhatsApp editors remains unsupported; use the explicit manual preview and Copy workflow. Distinct tone quality and real structured-prompt output remain unverified after the latest native generation was blocked by the unchanged 4 GiB host-memory floor. The preservation gate permits only conservative copyediting; Prompt Engineering organizes supplied lines without inventing requirements. No cloud AI fallback, coding-agent execution, automatic source modification or custom model training is enabled.
 

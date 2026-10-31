@@ -13,6 +13,7 @@ import VoiceInput
     @State private var phraseInput = ""
     @State private var replacementInput = ""
     @State private var confirmClear = false
+    @State private var observedAgentSteps:Set<UUID>=[]
     @State private var commandLibraryExpanded = false
     @State private var deletingEntry: DictationHistoryEntry?
     @State private var copyError: String?
@@ -206,7 +207,7 @@ import VoiceInput
             if let failure=coordinator.lastAgentFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
             Text("Hold the Agent key, speak, then release. Routine requests run directly. Ambiguous requests stop for clarification; messages require confirmation. Dictation always inserts text.").font(.caption).foregroundStyle(.secondary)
             Divider()
-            Text("On-device personal agent · 44A").font(.headline)
+            Text("On-device personal agent · 45A-R3").font(.headline)
             TextField("Ask the agent…", text:$coordinator.agentCommandText).disabled(coordinator.agentQuestion != nil)
             HStack {
                 Button("Run text request") { coordinator.reviewAgentCommand() }.disabled(coordinator.busy)
@@ -216,6 +217,17 @@ import VoiceInput
             Text(coordinator.agentNotice).font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Command library",isExpanded:$commandLibraryExpanded) {
                 ForEach(PersonalCommandLibrary.examples,id:\.self) { example in Text(example).font(.caption).textSelection(.enabled) }
+                Text("Natural requests: Hey, open WhatsApp · Go open Google · Open Gmail in Safari · Open YouTube and search for piano music").font(.caption).textSelection(.enabled)
+                Text("Known website names: "+PersonalWebsiteNames.sites.map(\.name).joined(separator:", ")).font(.caption).foregroundStyle(.secondary)
+                Text("Command understanding is local. Loading online websites still needs an internet connection. Unknown website names require an exact address.").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Text("100-command expansion").font(.headline)
+                ForEach(PersonalRoadmapCatalog.commands) { command in
+                    VStack(alignment:.leading,spacing:2) {
+                        Text(String(format:"%03d",command.id)+" · "+command.example).font(.caption).textSelection(.enabled)
+                        Text(command.mode.label+" · "+command.detail).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             Text("Folder commands use Documents, Desktop or Downloads. Delete moves to Trash only after review; it never permanently erases. Finder controls and protected folders may need macOS consent. Browser searches use the named installed browser.").font(.caption).foregroundStyle(.secondary)
             if !coordinator.agentHeard.isEmpty {
@@ -251,17 +263,46 @@ import VoiceInput
                     }
                     if !coordinator.agentReplyText.isEmpty { Text("Apply or clear this edit before sending.").font(.caption).foregroundStyle(.secondary) }
                 }
-                Button(plan.steps.contains(where:{$0.tool == .message}) ? "Send this reviewed message" : plan.steps.contains(where:{$0.tool == .trashFolder}) ? "Move reviewed folder to Trash" : "Approve these actions and run") { coordinator.approveAgentPlan(expectedPlan:plan) }.disabled(coordinator.busy || (plan.steps.contains(where:{$0.tool == .message}) && !coordinator.agentReplyText.isEmpty))
+                Button(plan.steps.contains(where:{$0.tool == .mailAction && (try? PersonalMailCommand.decode($0.text).action) == .send}) ? "Send this reviewed email" : plan.steps.contains(where:{$0.tool == .message}) ? "Send this reviewed message" : plan.steps.contains(where:{$0.tool == .trashFolder}) ? "Move reviewed folder to Trash" : "Approve these actions and run") { coordinator.approveAgentPlan(expectedPlan:plan) }.disabled(coordinator.busy || (plan.steps.contains(where:{$0.tool == .message}) && !coordinator.agentReplyText.isEmpty))
                 Button("Reject plan") { coordinator.cancelAgentTask(plan.id) }.disabled(coordinator.busy)
+            }
+            if !coordinator.agentScheduledDrafts.isEmpty {
+                Text("Scheduled local message drafts").font(.headline)
+                Text("These drafts never send automatically. At the due time, Review opens a fresh exact-send approval. Notification delivery depends on macOS settings.").font(.caption).foregroundStyle(.secondary)
+                ForEach(coordinator.agentScheduledDrafts) { draft in
+                    VStack(alignment:.leading,spacing:4) {
+                        Text(verbatim:[draft.message.recipient,draft.date.formatted(),draft.state.rawValue].joined(separator:" · ")).font(.caption)
+                        Text(draft.message.body).font(.caption).textSelection(.enabled)
+                        HStack {
+                            Button("Review due message") {coordinator.reviewScheduledDraft(draft.id)}.disabled(coordinator.busy || draft.state != .pending)
+                            if draft.state != .pending {Button("Delete local draft record") {coordinator.deleteScheduledDraft(draft.id)}.disabled(coordinator.busy)}
+                        }
+                    }
+                }
+                Button("Refresh scheduled drafts") {coordinator.loadScheduledDrafts()}.disabled(coordinator.busy)
+            }
+            if let name=coordinator.agentEditingRoutine {
+                Text("Edit routine: "+name).font(.headline)
+                ForEach(Array(coordinator.agentRoutineExistingSteps.enumerated()),id:\.offset) { _,summary in Text(summary).font(.caption) }
+                Text("Enter one complete replacement command per line, up to eight steps. Saving does not run them.").font(.caption)
+                TextEditor(text:$coordinator.agentRoutineEditText).frame(minHeight:80)
+                HStack {Button("Review revised routine") {coordinator.saveAgentRoutineEdits()};Button("Cancel editing") {coordinator.cancelAgentRoutineEdits()}}
             }
             ForEach(coordinator.agentRecords.reversed()) { record in
                 VStack(alignment:.leading,spacing:4) {
-                    Text(record.id.uuidString.prefix(8) + " · " + record.state.rawValue).font(.caption)
+                    Text(verbatim:agentTaskHeading(record)).font(.caption)
                     ForEach(Array(record.plan.steps.enumerated()),id:\.element.id) { index, step in
-                        Text(step.tool.rawValue + ": " + record.steps[index].rawValue + " · " + (record.receipts[index]?.evidence ?? "No verified receipt")).font(.caption)
+                        Text(step.displayText + " · " + record.steps[index].rawValue + " · " + (record.receipts[index]?.evidence ?? "No verified receipt")).font(.caption)
+                        if record.state == .needsReview,record.steps[index] == .uncertain,record.supersededBy==nil {
+                            Toggle("I checked this exact action’s outcome in the native app",isOn:Binding(get:{observedAgentSteps.contains(step.id)},set:{if $0 {observedAgentSteps.insert(step.id)} else {observedAgentSteps.remove(step.id)}})).toggleStyle(.checkbox).font(.caption)
+                            Button("Record my observation; do not replay") {coordinator.confirmObservedAgentStep(record.id,expectedStep:step);observedAgentSteps.remove(step.id)}.disabled(coordinator.busy || !observedAgentSteps.contains(step.id))
+                            Text("Use only after actually checking. This does not prove message delivery, undo an effect or grant another send attempt.").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     HStack {
                         if record.state == .awaitingApproval { Button("Review") { coordinator.reviewQueuedAgent(record.id) } }
+                        if record.state == .running {Button("Pause after current step") {coordinator.pauseAgentTask(record.id)}}
+                        if [PersonalTaskState.paused,.cancelled,.needsReview].contains(record.state),record.supersededBy==nil {Button("Continue with review") {coordinator.continueAgentTask(record.id)}.disabled(coordinator.busy)}
                         if record.state == .running || record.state == .awaitingApproval { Button("Cancel remaining steps") { coordinator.cancelAgentTask(record.id) } }
                         Button("Delete task record") { coordinator.deleteAgentTask(record.id) }.disabled(coordinator.busy)
                     }
@@ -759,4 +800,15 @@ private enum FlowSurface {
             .overlay(Capsule().strokeBorder(focused ? FlowSurface.accent : FlowSurface.border,lineWidth:1))
             .animation(reduceMotion ? nil : .easeInOut(duration:0.12),value:focused)
     }
+}
+
+private func agentTaskHeading(_ record:PersonalTaskRecord)->String {
+    let shortID=String(record.id.uuidString.prefix(8))
+    let status:String=agentTaskStatusLabel(record)
+    return shortID+" · "+status
+}
+
+func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
+    guard record.state == .needsReview,let close=record.receipts.values.first(where:{!$0.verified && $0.appClose != nil})?.appClose else {return record.state.rawValue}
+    return switch close.outcome {case .pending:"Quit pending";case .refused:"Quit refused";case .reopened:"App reopened";case .unavailable:"Can't check app";case .unconfirmed,.closed:"Check app"}
 }

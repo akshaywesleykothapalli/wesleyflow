@@ -1,3 +1,4 @@
+import UserNotifications
 import Foundation
 import SwiftUI
 import Domain
@@ -60,7 +61,7 @@ import VoiceInput
         let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown"
         let executable = Bundle.main.executableURL?.path ?? "unknown"
         let current = speechFailureDiagnostics ?? (input as? any DictationCaptureReporting)?.speechDiagnostics
-        return "44A / speech38L3R3 build=\(build) pid=\(ProcessInfo.processInfo.processIdentifier) executable=\(executable) hotkeyHeldObservedNow=\(shortcutHeld) · "
+        return "45A-R3 / speech38L3R3 build=\(build) pid=\(ProcessInfo.processInfo.processIdentifier) executable=\(executable) hotkeyHeldObservedNow=\(shortcutHeld) · "
             + "agentStartupMs=" + (agentStartupMilliseconds.map(String.init) ?? "unmeasured") + " · "
             + (current?.summary ?? "speechTelemetry=unavailable")
             + "\nDestination binding: " + destinationBindingSummary
@@ -308,7 +309,7 @@ import VoiceInput
     @Published private var verificationDetail = "No verification requested"
     var verificationDiagnosticSummary: String {
         let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown"
-        return "44A / speech38L3R3 build=" + build + " lifecycle=" + (closed ? "closed" : phase.rawValue)
+        return "45A-R3 / speech38L3R3 build=" + build + " lifecycle=" + (closed ? "closed" : phase.rawValue)
             + " outcome=" + latestInsertionOutcome + " verifiedReceipt=" + String(verifiedReceiptCreated)
             + " eligibleReceipt=" + String(eligibleReceiptPresent) + " reason=" + provenanceReason.rawValue
             + " expiration=" + (provenanceReason == .expired ? "expired" : (eligibleReceiptPresent ? "native120sRecheckedOnUse" : "noActiveAnchor"))
@@ -653,12 +654,14 @@ import VoiceInput
         if let personalEngine { return personalEngine }
         if personalAgentQueueURL == nil { try NativeDictationInstanceGuard.requireOwnership() }
         let base = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("WesleyFlow/PersonalAgent")
-        let engine = try PersonalAgentEngine(url:personalAgentQueueURL ?? base.appendingPathComponent("queue.json"),runner:personalToolRunner ?? NativePersonalTools())
+        let engine = try PersonalAgentEngine(url:personalAgentQueueURL ?? base.appendingPathComponent("queue.json"),runner:personalToolRunner ?? NativePersonalTools(routineURL:agentRoutineStoreURL ?? personalAgentQueueURL?.deletingLastPathComponent().appendingPathComponent("routines.json")),now:wallTime)
         engine.onChange = { [weak self] records in self?.agentRecords = records }
         personalEngine = engine; agentRecords = engine.records
         return engine
     }
     func reviewAgentCommand(_ text: String? = nil) {
+        let control=PersonalAgentDialogue.canonical(text ?? agentCommandText).lowercased()
+        if ["pause this routine after the current step","pause this routine after current step"].contains(control),let id=agentExecutingID {pauseAgentTask(id);return}
         guard !busy, !closed else { return }
         if personalPlanner != nil { interactWithAgent(text ?? agentCommandText); return }
         agentPlan = nil
@@ -677,7 +680,7 @@ import VoiceInput
         agentStatus("Reviewing this saved task. Nothing resumes automatically.",hud:"Review required")
     }
     func loadAgentQueue() {
-        do { agentRecords = try getPersonalEngine().records }
+        do { agentRecords = try getPersonalEngine().records;loadScheduledDrafts() }
         catch { agentNotice = "Queue could not be loaded; existing data is preserved." }
     }
     func waitForAgentPlanning() async { await work?.value; if phase == .inserting { await work?.value } }
@@ -700,7 +703,8 @@ import VoiceInput
             do { try getPersonalEngine().cancel(plan.id);agentRecords=personalEngine?.records ?? [] ;agentPlan=nil }
             catch { agentStatus("Cancellation could not be saved. This draft still needs review; nothing was sent.",hud:"Cancellation failed");return }
         }
-        agentDialogue.clear();agentRecipientChoice=nil;agentQuestion=nil;agentReplyText="";phase = .idle
+        for task in closeObservers.values {task.cancel()};closeObservers.removeAll()
+        agentDialogue.clear();agentRecipientChoice=nil;agentQuestion=nil;agentReplyText="";agentContinuationSource=nil;phase = .idle
         agentStatus("Request cancelled. Nothing else will run.",hud:"Agent cancelled")
     }
     func showAgentHelp() {
@@ -709,6 +713,137 @@ import VoiceInput
         agentStatus("Supported commands are listed below. Name installed apps, or a folder and its location. Folder deletion moves to Trash and requires exact review, as does sending messages. Cancel rejects a pending action.",hud:"Agent help")
         requestAgentReview()
     }
+    @Published private(set) var agentScheduledDrafts:[PersonalScheduledMessage]=[]
+    var agentScheduledStoreURL:URL?
+    private func scheduledStore()->PersonalScheduledMessageStore {PersonalScheduledMessageStore(url:agentScheduledStoreURL ?? personalAgentQueueURL?.deletingLastPathComponent().appendingPathComponent("scheduled-message-drafts.json") ?? PersonalScheduledMessageStore.defaultURL)}
+    func loadScheduledDrafts() {
+        do {agentScheduledDrafts=try scheduledStore().records()}
+        catch {agentStatus("Scheduled draft data could not be read; it is preserved.",hud:"Check scheduled drafts")}
+    }
+    func reviewScheduledDraft(_ id:UUID) {
+        guard !busy,!closed,agentPlan==nil else {return}
+        do {
+            let engine=try getPersonalEngine()
+            if let existing=engine.records.first(where:{$0.id==id}) {
+                if existing.state == .awaitingApproval {reviewQueuedAgent(id)}
+                else {agentStatus("This scheduled draft already has a task record. Inspect that record before any retry; no new send attempt was created.",hud:"Inspect saved task")}
+                return
+            }
+            // Persist the one-use claim before enqueueing: a crash cannot create an automatic retry.
+            let record=try scheduledStore().claim(id,now:wallTime())
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers:[NativeScheduledMessages.notificationID(id)])
+            let plan=try PersonalPlan(id:id,steps:[.init(id:id,tool:.message,text:try record.message.encoded())],createdAt:wallTime(),requiresReview:true)
+            loadScheduledDrafts();try proposeContextPlan(plan,request:"Review due scheduled message")
+        } catch {loadScheduledDrafts();agentStatus("This draft is not due, was already claimed, or needs storage review. Nothing is sent automatically.",hud:"Check scheduled draft")}
+    }
+    func deleteScheduledDraft(_ id:UUID) {
+        guard !busy,!closed else {return}
+        do {try scheduledStore().delete(id);loadScheduledDrafts()}
+        catch {agentStatus("Cancel the pending scheduled draft first. Its data is preserved.",hud:"Cancel draft first")}
+    }
+    @Published private(set) var agentEditingRoutine:String?
+    @Published var agentRoutineEditText=""
+    @Published private(set) var agentRoutineExistingSteps:[String]=[]
+    var agentRoutineStoreURL:URL?
+    private var agentRoutineReplacing:UUID?
+    private var agentContinuationSource:UUID?
+    private func routineStore()->PersonalRoutineStore {PersonalRoutineStore(url:agentRoutineStoreURL ?? personalAgentQueueURL?.deletingLastPathComponent().appendingPathComponent("routines.json") ?? PersonalRoutineStore.defaultURL)}
+    private func proposeContextPlan(_ plan:PersonalPlan,request:String,source:UUID?=nil) throws {
+        if let pending=agentPlan {try getPersonalEngine().cancel(pending.id);agentPlan=nil}
+        agentQuestion=nil;agentDialogue.clear();agentContinuationSource=source
+        understandAgentCommand(request,proposed:plan)
+    }
+    private func contextCommand(_ text:String)->Bool {
+        let value=PersonalAgentDialogue.canonical(text),lower=value.lowercased(),now=wallTime()
+        func capture(_ pattern:String)->String? {guard let re=try? NSRegularExpression(pattern:pattern,options:.caseInsensitive),let match=re.firstMatch(in:value,range:NSRange(value.startIndex...,in:value)),let range=Range(match.range(at:1),in:value) else {return nil};return String(value[range])}
+        do {
+            if let time=capture(#"^schedule a reviewed message for (.+)$"#) {
+                guard agentReplyText.isEmpty else {agentStatus("Apply or clear the pending message edit before scheduling it.",hud:"Apply edit first");return true}
+                guard let current=agentPlan,current.steps.count==1,let step=current.steps.first,step.tool == .message,try getPersonalEngine().records.contains(where:{$0.id==current.id && $0.state == .awaitingApproval}) else {agentStatus("Prepare and review an exact Messages draft first. Already dispatched or uncertain messages cannot be scheduled again.",hud:"Prepare message draft");return true}
+                let message=try PersonalMessage.decode(step.text)
+                if let date=PersonalRecordCommand.date(time,now:now) {try proposeContextPlan(PersonalMessageSchedule.plan(message:message,date:date,now:now),request:text)}
+                else {try getPersonalEngine().cancel(current.id);agentPlan=nil;agentDialogue.clear();if case .ask(let question)=agentDialogue.askScheduleDate(message,now:now) {askAgent(question)}}
+                return true
+            }
+            if lower=="restore the folder i just trashed" {
+                let engine=try getPersonalEngine()
+                guard let last=engine.records.last,last.state == .completed,last.plan.steps.count==1,let step=last.plan.steps.first,step.tool == .trashFolder,now.timeIntervalSince(last.completedAt ?? last.plan.createdAt)>=0,now.timeIntervalSince(last.completedAt ?? last.plan.createdAt)<=120,let receipt=last.receipts[0],receipt.verified else {agentStatus("Choose the exact recently completed Trash task first, or restore it manually in Finder. No folder was guessed.",hud:"Restore details needed");return true}
+                let original=try PersonalFolderCommand.decode(step.text)
+                var command=try PersonalFileAction(action:.restore,folder:true,name:URL(fileURLWithPath:receipt.identifier).lastPathComponent,location:original.location,destinationName:original.name,destinationLocation:original.location)
+                command.trashPath=receipt.identifier;command.sourceIdentity=original.identity;command.destinationRootIdentity=original.rootIdentity
+                try proposeContextPlan(.init(steps:[.init(tool:.fileAction,text:try command.encoded())],createdAt:now,requiresReview:true),request:text)
+                return true
+            }
+            if let name=capture(#"^save these reviewed steps as (.+)$"#) {
+                guard agentReplyText.isEmpty else {agentStatus("Apply or clear the pending edit before saving reviewed steps.",hud:"Apply edit first");return true}
+                let source:PersonalPlan
+                if let current=agentPlan {source=current}
+                else {
+                    guard let record=try getPersonalEngine().records.last,record.state == .completed,now.timeIntervalSince(record.completedAt ?? record.plan.createdAt)>=0,now.timeIntervalSince(record.completedAt ?? record.plan.createdAt)<=120 else {agentStatus("First run or review the exact steps you want to save, then name the routine.",hud:"Routine details needed");return true};source=record.plan
+                }
+                let definition=try PersonalRoutineDefinition(name:name,steps:source.steps,createdAt:source.createdAt)
+                let save=PersonalRoutineSave(definition:definition)
+                try proposeContextPlan(.init(steps:[.init(tool:.routineSave,text:try save.encoded())],createdAt:now,requiresReview:true),request:text)
+                return true
+            }
+            if let name=capture(#"^edit my (.+) routine$"#) {
+                guard agentPlan==nil else {agentStatus("Review or reject the pending action before editing a routine.",hud:"Review required");return true}
+                let definition=try routineStore().named(name)
+                agentEditingRoutine=definition.name;agentRoutineReplacing=definition.id;agentRoutineExistingSteps=definition.steps.map{$0.userSummary(apps:personalApps())};agentRoutineEditText=""
+                agentStatus("Enter one complete replacement command per line, then review and save the revised routine. Nothing runs while editing.",hud:"Edit routine");requestAgentReview();return true
+            }
+            if let name=capture(#"^run my (.+) routine$"#) {
+                guard agentPlan==nil else {agentStatus("Review or reject the pending action first.",hud:"Review required");return true}
+                try proposeContextPlan(routineStore().named(name).freshPlan(now:now),request:text);return true
+            }
+            if ["open my development apps together","arrange my work windows"].contains(lower) {
+                let name=lower.hasPrefix("open") ? "Development apps":"Work windows"
+                guard agentPlan==nil else {agentStatus("Review or reject the pending action first.",hud:"Review required");return true}
+                if let definition=try? routineStore().named(name) {try proposeContextPlan(definition.freshPlan(now:now),request:text)}
+                else {agentEditingRoutine=name;agentRoutineReplacing=nil;agentRoutineExistingSteps=[];agentRoutineEditText="";agentStatus("Define your exact "+name.lowercased()+" first: enter one complete app or window command per line. Review and save; then ask again to run it.",hud:"Set up routine");requestAgentReview()}
+                return true
+            }
+            if lower=="continue this interrupted routine" {
+                let records=try getPersonalEngine().records.filter{[PersonalTaskState.paused,.cancelled,.needsReview].contains($0.state) && $0.supersededBy==nil}
+                guard records.count==1,let record=records.first else {agentStatus("Select an interrupted task’s Continue button. No task was guessed or replayed.",hud:"Choose interrupted task");return true}
+                continueAgentTask(record.id);return true
+            }
+        } catch {agentStatus("This routine or context cannot be used safely. Check the exact saved name, supported steps and target; nothing ran.",hud:"Check routine details");return true}
+        return false
+    }
+    func saveAgentRoutineEdits() {
+        guard !busy,!closed,let name=agentEditingRoutine else {return}
+        do {
+            let lines=agentRoutineEditText.split(whereSeparator:{$0.isNewline}).map{String($0).trimmingCharacters(in:.whitespaces)}.filter{!$0.isEmpty}
+            guard !lines.isEmpty,lines.count<=8 else {throw PersonalAgentError.invalidCommand}
+            let now=wallTime(),apps=personalApps()
+            let steps=try lines.flatMap{try PersonalConversation.quick(.init(text:$0,locale:localeIdentifier,apps:apps,now:now)).steps}
+            if name=="Development apps" {guard steps.allSatisfy({$0.tool == .openInstalledApp || $0.tool == .openApp}) else {throw PersonalAgentError.invalidCommand}}
+            if name=="Work windows" {guard steps.allSatisfy({[PersonalTool.layoutApp,.minimizeApp,.restoreApp,.fullScreenApp,.exitFullScreenApp,.maximizeApp].contains($0.tool)}) else {throw PersonalAgentError.invalidCommand}}
+            let definition=try PersonalRoutineDefinition(name:name,steps:steps,createdAt:now),save=PersonalRoutineSave(definition:definition,replacing:agentRoutineReplacing)
+            let plan=try PersonalPlan(steps:[.init(tool:.routineSave,text:try save.encoded())],createdAt:now,requiresReview:true)
+            cancelAgentRoutineEdits();try proposeContextPlan(plan,request:"Save revised routine "+name)
+        } catch {agentStatus("Use one complete supported command per line, at most eight total steps. Dated reminders/events and nested routine saves cannot be stored. Nothing changed.",hud:"Check routine steps")}
+    }
+    func cancelAgentRoutineEdits() {agentEditingRoutine=nil;agentRoutineEditText="";agentRoutineExistingSteps=[];agentRoutineReplacing=nil}
+    func confirmObservedAgentStep(_ id:UUID,expectedStep:PersonalStep) {
+        guard !busy,!closed else {return}
+        do {let engine=try getPersonalEngine();try engine.confirmObservedOutcome(id,expectedStep:expectedStep);agentRecords=engine.records;agentStatus("Your observation was recorded for this exact step. Nothing was replayed. Remaining steps still require a fresh review.",hud:"Observation saved")}
+        catch {agentStatus("This step changed or cannot accept an observation now. Its original record is preserved.",hud:"Check saved task")}
+    }
+    func pauseAgentTask(_ id:UUID) {
+        guard !closed else {return}
+        do {try getPersonalEngine().pause(id);agentStatus("Pause requested after the current step verifies. No in-flight effect is undone.",hud:"Pausing routine")}
+        catch {agentStatus("This task cannot be paused now.",hud:"Check task")}
+    }
+    func continueAgentTask(_ id:UUID) {
+        guard !busy,!closed,agentPlan==nil else {return}
+        do {
+            let engine=try getPersonalEngine(),plan=try engine.continuationPlan(id,now:wallTime())
+            try proposeContextPlan(plan,request:"Continue reviewed remaining steps",source:id)
+        } catch {agentStatus("Cannot continue this task automatically: an uncertain/executing effect, changed target or existing continuation needs review. No effect is replayed.",hud:"Inspect interrupted task")}
+    }
+
     private func interactWithAgent(_ text:String) {
         guard !busy,!closed else { return }
         guard !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { agentStatus("Please give a request or reply.",hud:"Reply needed");return }
@@ -730,7 +865,13 @@ import VoiceInput
                 }
                 else if PersonalMessage.validAddress(text.trimmingCharacters(in:.whitespacesAndNewlines)) {
                     guard let step=choice.plan.steps.first(where:{$0.id==choice.stepID}) else { throw PersonalAgentError.invalidCommand }
-                    let name=try PersonalMessage.decode(step.text).recipient
+                    let name:String
+                    switch step.tool {
+                    case .message:name=try PersonalMessage.decode(step.text).recipient
+                    case .contactAction:name=try PersonalObjectCommand.decode(step.text).name
+                    case .mailAction:name=try PersonalMailCommand.decode(step.text).recipient
+                    default:throw PersonalAgentError.invalidCommand
+                    }
                     option=PersonalRecipientOption(name:name,address:text.trimmingCharacters(in:.whitespacesAndNewlines))
                 } else { option=nil }
                 guard let option else {
@@ -743,6 +884,7 @@ import VoiceInput
                 agentRecipientChoice=nil;agentQuestion=nil
                 understandAgentCommand(text,proposed:plan);return
             }
+            if agentQuestion==nil && contextCommand(text) {return}
             if let current=agentPlan {
                 switch try PersonalAgentDialogue.reviewReply(text,plan:current,now:now) {
                 case .reject: cancelAgentConversation()
@@ -789,13 +931,16 @@ import VoiceInput
                 guard self.agentPlanningID == id,!Task.isCancelled,!self.closed else { return }
                 let plan=try await self.personalMessageResolution(proposed)
                 guard self.agentPlanningID == id,!Task.isCancelled,!self.closed else { return }
-                let engine=try self.getPersonalEngine();try engine.enqueue(plan)
+                let engine=try self.getPersonalEngine()
+                if let source=self.agentContinuationSource {try engine.enqueueContinuation(plan,from:source);self.agentContinuationSource=nil}
+                else {try engine.enqueue(plan)}
                 self.agentPlanningID=nil;self.phase = .idle;self.agentPlan=plan;self.agentQuestion=nil;self.agentReplyText=""
                 self.agentInterpretation=plan.steps.map { $0.userSummary(apps:apps) }.joined(separator:" → ")
                 if PersonalAuthorization.routine(plan) { self.runAgentPlan(plan,routine:true) }
                 else {
                     if plan.steps.contains(where:{$0.tool == .trashFolder}) {self.agentStatus("Review the exact folder and location before moving it and its contents to Trash. Nothing moved yet.",hud:"Confirm Trash action")}
-                    else {self.agentStatus("Review the exact recipient and text. You can change either before sending; nothing sent yet.",hud:"Confirm message")}
+                    else if plan.steps.contains(where:{$0.tool == .message}) {self.agentStatus("Review the exact recipient and text. You can change either before sending; nothing sent yet.",hud:"Confirm message")}
+                    else {self.agentStatus("Review the exact action, item and changes below. Private data access or changes run only after your approval.",hud:"Review action")}
                     self.requestAgentReview()
                 }
             } catch {
@@ -806,6 +951,8 @@ import VoiceInput
                     self.askAgent(PersonalQuestion(prompt:choice.prompt,options:choice.options.enumerated().map { .init(label:"\($0.offset+1). " + $0.element.label,answer:String($0.offset+1)) },expiresAt:self.wallTime().addingTimeInterval(120)))
                     return
                 }
+                self.agentContinuationSource=nil
+                if (error as? PersonalAgentError) == .permissionDenied {self.phase = .error;self.agentStatus("macOS did not grant the requested app or folder access. No requested action executed. Review the native permission in System Settings.",hud:"Permission needed");return}
                 self.phase = .error
                 self.agentHUD = switch error as? PersonalPlanningFailure { case .resourceBlocked,.modelUnavailable: "Local AI unavailable";case .timedOut: "AI timed out";case .busy: "Local AI busy";case .recipientAmbiguous: "Choose recipient";case .contactsDenied: "Contacts access needed";default: "Clarify request" }
                 self.agentNotice = switch error as? PersonalPlanningFailure {
@@ -841,9 +988,30 @@ import VoiceInput
         if plan.steps.contains(where:{$0.tool == .message}),!agentReplyText.isEmpty { agentStatus("Apply or clear the message edit before sending.",hud:"Apply edit first");return }
         runAgentPlan(plan,routine:false)
     }
+    var personalCloseObservation:@MainActor (PersonalReceipt) async ->PersonalReceipt? = {await NativeAppClosing.followup($0)}
+    private var closeObservers:[UUID:Task<Void,Never>]=[:]
+    private var agentOutcomeID:UUID?
+    func waitForCloseObservation(_ id:UUID) async {await closeObservers[id]?.value}
+    private func observePendingCloses(_ plan:PersonalPlan,engine:PersonalAgentEngine) {
+        guard closeObservers[plan.id]==nil,let record=engine.records.first(where:{$0.id==plan.id}),let entry=record.receipts.first(where:{[PersonalAppCloseObservation.Outcome.pending,.refused].contains($0.value.appClose?.outcome ?? .unavailable)}),plan.steps.indices.contains(entry.key) else {return}
+        let step=plan.steps[entry.key],observe=personalCloseObservation
+        closeObservers[plan.id]=Task { [weak self] in
+            let receipt=await observe(entry.value)
+            guard let self else {return};defer{self.closeObservers[plan.id]=nil}
+            guard !self.closed,!Task.isCancelled,let receipt else {return}
+            do {try engine.reconcileAppClose(plan.id,expectedStep:step,receipt:receipt)} catch {return}
+            self.agentRecords=engine.records
+            guard self.agentOutcomeID==plan.id,["Quit pending","Quit refused"].contains(self.agentHUD),!self.busy,!self.inPlaceRunning,self.agentPlan==nil,self.agentQuestion==nil else {return}
+            let complete=engine.records.first(where:{$0.id==plan.id})?.state == .completed
+            self.phase=receipt.verified ? (complete ? .success:.idle):.error
+            self.agentHUD=receipt.verified ? (complete ? "App closed":"Close confirmed"):(receipt.appClose?.outcome == .reopened ? "App reopened":"Check app")
+            if receipt.verified {self.agentDialogue.completed(plan,apps:self.personalApps(),now:self.wallTime())}
+            self.agentNotice=receipt.evidence+(receipt.verified && !complete ? " Remaining steps require fresh review; nothing resumed.":"");self.agentShortcutStatus=self.agentNotice;self.message=self.agentNotice;self.showHUDFeedback()
+        }
+    }
     private func runAgentPlan(_ plan:PersonalPlan,routine:Bool) {
         guard let engine=personalEngine else { return }
-        agentPlan = nil; agentExecutingID = plan.id; phase = .inserting; agentHUD = "Processing command"
+        agentPlan = nil; agentExecutingID = plan.id;agentOutcomeID=plan.id; phase = .inserting; agentHUD = plan.steps.allSatisfy({$0.tool == .closeApp}) ? "Closing app":"Processing command"
         agentNotice = routine ? "Running your requested actions…" : "Running the exact actions you confirmed…"
         work = Task { [weak self] in
             guard let self else { return }
@@ -856,14 +1024,25 @@ import VoiceInput
             self.phase = state == .completed ? .success : .error; self.work = nil
             self.agentExecutingID = nil
             let dispatched=engine.records.first(where:{$0.id == plan.id})?.receipts.values.contains(where:{ !$0.verified }) == true
-            self.agentHUD = state == .completed ? (plan.steps.contains(where:{[PersonalTool.searchGoogle,.searchYouTube].contains($0.tool)}) ? "Search opened" : "Done") : dispatched ? (plan.steps.contains(where:{$0.tool == .message}) ? "Message submitted" : "Search opened") : "Agent needs review"
+            self.agentHUD = state == .completed ? (plan.steps.contains(where:{[PersonalTool.searchGoogle,.searchYouTube].contains($0.tool)}) ? "Search opened" : "Done") : dispatched ? (plan.steps.contains(where:{$0.tool == .message}) ? "Message submitted" : plan.steps.contains(where:{$0.tool == .mailAction}) ? "Email submitted":"App handoff") : "Agent needs review"
+            if dispatched && plan.steps.contains(where:{$0.tool == .website}) {self.agentHUD="Website opened"}
             if dispatched { self.agentNotice="Request handed to the app; external outcome is unverified. Inspect it before retrying. No automatic replay." }
             if state == .completed,let index=plan.steps.firstIndex(where:{$0.tool == .findFolder}),let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts[index] {
                 self.agentNotice=receipt.evidence;self.agentHUD="Folder results"
             }
-            if state == .completed,let index=plan.steps.firstIndex(where:{$0.tool == .systemAudio || $0.tool == .browserControl}),let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts[index] {
-                self.agentNotice=receipt.evidence;self.agentHUD = plan.steps[index].tool == .systemAudio ? "Audio status":"Browser updated"
+            if state == .completed,let index=plan.steps.firstIndex(where:{$0.tool == .systemAudio || $0.tool == .browserControl || $0.tool == .macControl || $0.tool == .layoutApp || $0.tool == .ownedTimers || $0.tool == .recordAction || $0.tool == .notesAction || $0.tool == .mediaAction || $0.tool == .contactAction || $0.tool == .fileAction || $0.tool == .screenCapture || $0.tool == .browserExtra || $0.tool == .mailAction || $0.tool == .routineSave || $0.tool == .menuAction || $0.tool == .messageSchedule}),let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts[index] {
+                self.agentNotice=receipt.evidence;self.agentHUD = "Command result"
             }
+            if plan.steps.allSatisfy({$0.tool == .closeApp}),state == .completed {self.agentHUD="App closed"}
+            if let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts.values.first(where:{!$0.verified && $0.appClose != nil}),let close=receipt.appClose {
+                self.agentNotice=receipt.evidence
+                if !receipt.verified {
+                    self.agentHUD=switch close.outcome {case .pending:"Quit pending";case .refused:"Quit refused";case .reopened:"App reopened";case .unavailable:"Can't check app";case .unconfirmed:"Check app";case .closed:"Check app"}
+                    if [.pending,.refused].contains(close.outcome) {self.phase = .idle;self.observePendingCloses(plan,engine:engine)}
+                }
+            }
+            if plan.steps.contains(where:{$0.tool == .messageSchedule}) {self.loadScheduledDrafts()}
+            if state == .paused {self.phase = .idle;self.agentHUD="Routine paused";self.agentNotice="Paused after verified steps. Continue requires a fresh review; uncertain effects are never replayed."}
             self.agentShortcutStatus=self.agentNotice
             self.message = self.agentNotice; self.showHUDFeedback()
         }
@@ -875,7 +1054,7 @@ import VoiceInput
     }
     func deleteAgentTask(_ id: UUID) {
         guard !busy else { return }
-        do { try personalEngine?.delete(id); agentRecords = personalEngine?.records ?? [] }
+        do { try personalEngine?.delete(id);closeObservers.removeValue(forKey:id)?.cancel(); agentRecords = personalEngine?.records ?? [] }
         catch { agentNotice = "Task could not be deleted." }
         if agentPlan?.id == id { agentPlan = nil; agentHUD = "Agent cancelled"; showHUDFeedback() }
     }
@@ -1266,9 +1445,9 @@ import VoiceInput
     func requestAgentReview() { agentReviewRequest = UUID() }
     func pillClicked(clickCount: Int = 1) {
         guard clickCount == 1, !closed else { return }
-        if agentPlan != nil || agentQuestion != nil || ["Folder results","Audio status","Browser updated"].contains(agentHUD) { requestAgentReview(); return }
         if inPlaceRunning { cancelInPlaceRewrite(); return }
         if phase == .recording { stop(); return }
+        if agentPlan != nil || agentQuestion != nil || (!commandSession && agentHUD != nil) { requestAgentReview(); return }
         guard !busy else { return }
         begin(manual:false)
     }
@@ -1683,6 +1862,7 @@ import VoiceInput
         return true
     }
     func close() {
+        for task in closeObservers.values {task.cancel()};closeObservers.removeAll()
         agentDialogue.clear();agentQuestion=nil;agentRecipientChoice=nil;agentReplyText="";agentHeard="";agentInterpretation=""
         unmergedSpeechRecoveryEntry = nil
         stopWaitingForSpeechResources()

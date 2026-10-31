@@ -6,7 +6,8 @@ import Domain
 /// Native APIs only, closed templates. No subprocess, shell, JS or accessibility control.
 @MainActor public final class NativePersonalTools: PersonalToolRunning {
     private let events = EKEventStore()
-    public init() {}
+    private let routineURL:URL?
+    public init(routineURL:URL?=nil) {self.routineURL=routineURL}
     private func literal(_ text: String) -> String {
         "\"" + text.replacingOccurrences(of:"\\",with:"\\\\").replacingOccurrences(of:"\"",with:"\\\"")
             .replacingOccurrences(of:"\r",with:"\\r").replacingOccurrences(of:"\n",with:"\\n") + "\""
@@ -36,16 +37,30 @@ import Domain
         guard allowed else { throw PersonalAgentError.permissionDenied }
     }
     public func perform(_ step: PersonalStep) async throws -> PersonalReceipt {
-        guard !step.text.isEmpty, step.text.utf8.count <= 2048,
+        guard !step.text.isEmpty, step.text.utf8.count <= step.maximumPayloadBytes,
               !step.text.unicodeScalars.contains(where: { $0.value < 32 && $0 != "\n" && $0 != "\r" && $0 != "\t" }) else { throw PersonalAgentError.invalidCommand }
         try Task.checkCancellation()
         switch step.tool {
+        case .website: return try await NativeWebsiteOpening.perform(step)
         case .openInstalledApp: return try await NativePersonalApps.open(step.text)
         case .closeApp: return try await NativePersonalApps.close(step.text)
         case .createFolder,.openFolder,.closeFolder,.findFolder,.trashFolder: return try await NativePersonalFolders.perform(step)
         case .searchBrowser: return try await NativePersonalFolders.searchBrowser(step.text)
+        case .messageSchedule: return try await NativeScheduledMessages.perform(step)
+        case .menuAction: return try await NativeMenuActions.perform(step)
+        case .mailAction: return try NativeMailActions.perform(step)
+        case .routineSave: return try PersonalRoutineStore(url:routineURL ?? PersonalRoutineStore.defaultURL).save(PersonalRoutineSave.decode(step.text))
+        case .browserExtra: return try NativeBrowserExtra.perform(step)
+        case .screenCapture: return try await NativeScreenCapture.perform(step)
+        case .fileAction: return try await NativeFileActions.perform(step)
+        case .notesAction: return try NativeNotesActions.perform(step)
+        case .mediaAction: return try await NativeMediaActions.perform(step)
+        case .contactAction: return try await NativeContactActions.perform(step)
+        case .recordAction: return try await NativeRecordTools.perform(step)
+        case .ownedTimers: return try await NativeOwnedTimers.perform(step)
+        case .macControl: return try await NativeMacControl.perform(step)
         case .systemAudio,.browserControl: return try NativePersonalControls.perform(step)
-        case .minimizeApp,.restoreApp,.fullScreenApp,.exitFullScreenApp,.maximizeApp: return try await NativePersonalWindows.perform(step)
+        case .minimizeApp,.restoreApp,.fullScreenApp,.exitFullScreenApp,.maximizeApp,.layoutApp: return try await NativePersonalWindows.perform(step)
         case .searchGoogle, .searchYouTube: return try await NativePersonalApps.search(step.text,youtube:step.tool == .searchYouTube)
         case .message:
             let message=try PersonalMessage.decode(step.text)
@@ -115,8 +130,8 @@ import Domain
             try Task.checkCancellation()
             let content = UNMutableNotificationContent(); content.title = "Wesley Flow timer"; content.body = step.text; content.sound = .default
             let trigger = UNCalendarNotificationTrigger(dateMatching:Calendar.current.dateComponents([.year,.month,.day,.hour,.minute,.second,.timeZone],from:date),repeats:false)
-            try await center.add(UNNotificationRequest(identifier:step.id.uuidString,content:content,trigger:trigger))
-            guard await center.pendingNotificationRequests().contains(where: { $0.identifier == step.id.uuidString }) else { throw PersonalAgentError.verificationFailed }
+            try await center.add(UNNotificationRequest(identifier:"wesleyflow.timer."+step.id.uuidString,content:content,trigger:trigger))
+            guard await center.pendingNotificationRequests().contains(where: { $0.identifier == "wesleyflow.timer."+step.id.uuidString }) else { throw PersonalAgentError.verificationFailed }
             return PersonalReceipt(identifier:step.id.uuidString,evidence:"Notification pending request verified; delivery depends on sleep/Focus/system settings")
         case .safari:
             guard let url = URL(string:step.text), url.scheme == "https", url.host != nil, url.user == nil, url.password == nil else { throw PersonalAgentError.invalidCommand }

@@ -59,7 +59,7 @@ public enum PersonalConversation {
         if let exact=try match(mention) { return exact }
         // Strip only spoken wrappers, after trying the complete installed name (e.g. The Unarchiver).
         var name=mention.trimmingCharacters(in:.whitespacesAndNewlines)
-        if let range=name.range(of:#"^(?:the (?:app|application)|(?:app|application))\s+"#,options:[.regularExpression,.caseInsensitive]) { name.removeSubrange(range) }
+        if let range=name.range(of:#"^(?:the (?:app|application)|(?:app|application)|the)\s+"#,options:[.regularExpression,.caseInsensitive]) { name.removeSubrange(range) }
         if let range=name.range(of:#"(?:\s+(?:app|application)|\.app)$"#,options:[.regularExpression,.caseInsensitive]) { name.removeSubrange(range) }
         if let wrapped=try match(name) { return wrapped }
         if let range=name.range(of:#"^(?:up\s+)?(?:the\s+)?"#,options:[.regularExpression,.caseInsensitive]),!range.isEmpty {
@@ -207,6 +207,18 @@ public enum PersonalConversation {
     public static func quick(_ request:PersonalIntentRequest) throws -> PersonalPlan {
         try validate(request)
         let raw=PersonalAgentDialogue.stripLeadingCourtesy(request.text)
+        if let website=try PersonalWebsiteRequest.plan(raw,apps:request.apps,now:request.now) {return website}
+        if let schedule=try PersonalMessageSchedule.parse(raw,now:request.now) {return schedule}
+        if let menu=try PersonalMenuAction.parse(raw,now:request.now) {return menu}
+        if let mail=try PersonalMailCommand.parse(raw,now:request.now) {return mail}
+        if let browser=try PersonalBrowserExtra.parse(raw,now:request.now) {return browser}
+        if let screenshot=try PersonalScreenCapture.parse(raw,now:request.now) {return screenshot}
+        if let file=try PersonalFileAction.parse(raw,now:request.now) {return file}
+        if let object=try PersonalObjectCommand.parse(raw,now:request.now) {return object}
+        if let record=try PersonalRecordCommand.plan(raw,now:request.now) { return record }
+        if let timer=try PersonalTimerControl.parse(raw,now:request.now) { return timer }
+        if let mac=try PersonalMacControl.parse(raw,now:request.now) { return mac }
+        if let layout=try PersonalWindowLayout.parse(raw,apps:request.apps,now:request.now) { return layout }
         if let controls=try PersonalControlIntents.parse(raw,now:request.now) { return controls }
         if let file=try PersonalFileIntents.parse(raw,now:request.now) { return file }
         if let window=try windowCommand(raw,apps:request.apps,now:request.now) { return window }
@@ -242,7 +254,22 @@ public enum PersonalConversation {
     }
 }
 public enum PersonalAuthorization {
-    public static func routine(_ plan:PersonalPlan)->Bool { !plan.steps.contains { $0.tool == .message || $0.tool == .trashFolder } }
+    public static func routine(_ plan:PersonalPlan)->Bool {
+        guard !plan.requiresReview else {return false}
+        return plan.steps.allSatisfy { step in
+            switch step.tool {
+            case .message,.trashFolder,.routineSave,.messageSchedule,.screenCapture:return false
+            case .recordAction:guard let c=try? PersonalRecordCommand.decode(step.text) else {return false};return !c.isMutation
+            case .notesAction:guard let c=try? PersonalObjectCommand.decode(step.text) else {return false};return [.noteFolders,.noteFind,.noteOpen,.noteCreateFolder].contains(c.action)
+            case .fileAction:guard let c=try? PersonalFileAction.decode(step.text) else {return false};return [.reveal,.info].contains(c.action)
+            case .browserExtra:guard let c=try? PersonalBrowserExtra.decode(step.text) else {return false};return c.action != .close
+            case .menuAction:guard let c=try? PersonalMenuAction.decode(step.text) else {return false};return c.action != .lock
+            case .macControl:guard let c=try? PersonalMacControl.decode(step.text) else {return false};return c.action != .lowPower
+            case .mailAction:guard let c=try? PersonalMailCommand.decode(step.text) else {return false};return c.action == .draft
+            default:return true
+            }
+        }
+    }
 }
 public extension PersonalStep {
     var displayText:String {
@@ -250,6 +277,17 @@ public extension PersonalStep {
             let verb:String = switch tool {case .createFolder:"Create folder";case .openFolder:"Open folder";case .closeFolder:"Close Finder window for";case .findFolder:"Find folders matching";case .trashFolder:"Move folder to Trash:";default:"Folder"}
             return verb+" "+folder.label
         }
+        if tool == .messageSchedule,let c=try? PersonalMessageSchedule.decode(text) {return c.summary}
+        if tool == .website,let c=try? PersonalWebsiteRequest.decode(text) {return c.label}
+        if tool == .menuAction,let c=try? PersonalMenuAction.decode(text) {return c.summary}
+        if tool == .mailAction,let c=try? PersonalMailCommand.decode(text) {return c.summary}
+        if tool == .routineSave,let c=try? PersonalRoutineSave.decode(text) {return "Save routine “"+c.definition.name+"”: "+c.definition.steps.map(\.displayText).joined(separator:" → ")+". Saving executes no steps."}
+        if tool == .browserExtra,let c=try? PersonalBrowserExtra.decode(text) {return c.summary}
+        if tool == .screenCapture,let c=try? PersonalScreenCapture.decode(text) {return "Capture "+(c.region ? "a user-selected area":"the reviewed display")+" into Documents/Wesley Flow Screenshots; no upload"}
+        if tool == .fileAction,let c=try? PersonalFileAction.decode(text) {return c.summary}
+        if [.notesAction,.mediaAction,.contactAction].contains(tool),let c=try? PersonalObjectCommand.decode(text) {return c.summary}
+        if tool == .recordAction,let request=try? PersonalRecordCommand.decode(text) {return request.summary}
+        if tool == .layoutApp,let layout=try? PersonalWindowLayout.decode(text) { return "Arrange "+layout.appID+": "+layout.layout.rawValue }
         if tool == .systemAudio,let request=try? PersonalAudioCommand.decode(text) { return request.label }
         if tool == .browserControl,let request=try? PersonalBrowserControl.decode(text) { return request.label }
         if tool == .searchBrowser,let request=try? PersonalBrowserQuery.decode(text) { return "Search in "+request.browser.rawValue.capitalized+": “"+request.query+"”" }

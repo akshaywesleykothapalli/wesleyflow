@@ -2,6 +2,7 @@ import copy
 from pathlib import Path
 import sys
 import unittest
+import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import repository_checks as checks
 import run_checks as runner
@@ -116,3 +117,23 @@ class IntegratedRegressionGateTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FailureDiagnosticsTests(unittest.TestCase):
+    def test_source_locations_are_useful_without_leaking_diagnostics(self):
+        with tempfile.TemporaryDirectory() as folder:
+            log=Path(folder)/'build.log'
+            private='PRIVATE_FIXTURE_CONTENT'
+            log.write_text('/private/user/project/App.swift:42:7: error: type has no member '+private+'\n'+private+'\n')
+            result=runner.failure_diagnostics(log)
+            self.assertEqual(result['sourceLocations'],[{'file':'App.swift','line':42}])
+            self.assertEqual(result['categories'],['swift-missing-symbol'])
+            self.assertNotIn(private,str(result))
+            self.assertNotIn('/private/user',str(result))
+
+    def test_build_commands_pin_the_verified_apple_silicon_lane(self):
+        for action in ['test','debug','release','concurrency']:
+            command=runner.xcode_command(action,Path('/tmp/synthetic'))
+            self.assertIn('ARCHS=arm64',command)
+            self.assertIn('ONLY_ACTIVE_ARCH=YES',command)
+            self.assertIn('DEBUG_INFORMATION_FORMAT=dwarf',command)

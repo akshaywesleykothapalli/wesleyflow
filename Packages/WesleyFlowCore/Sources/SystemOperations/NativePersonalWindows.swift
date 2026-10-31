@@ -33,11 +33,33 @@ import Domain
         }
         throw PersonalAgentError.verificationFailed
     }
+    static func layoutFrame(_ layout:PersonalWindowLayout.Layout?,visible:CGRect,currentSize:CGSize)->CGRect {
+        var f=visible
+        switch layout {
+        case .left:f.size.width/=2
+        case .right:f.size.width/=2;f.origin.x+=f.width
+        case .top:f.size.height/=2;f.origin.y+=f.height
+        case .bottom:f.size.height/=2
+        case .topLeft:f.size.width/=2;f.size.height/=2;f.origin.y+=f.height
+        case .topRight:f.size.width/=2;f.size.height/=2;f.origin.x+=f.width;f.origin.y+=f.height
+        case .bottomLeft:f.size.width/=2;f.size.height/=2
+        case .bottomRight:f.size.width/=2;f.size.height/=2;f.origin.x+=f.width
+        case .center:
+            f.size=currentSize;f.origin=CGPoint(x:visible.midX-f.width/2,y:visible.midY-f.height/2)
+        case .nextDisplay:
+            f.size=CGSize(width:min(visible.width,max(1,currentSize.width)),height:min(visible.height,max(1,currentSize.height)))
+            f.origin=CGPoint(x:visible.midX-f.width/2,y:visible.midY-f.height/2)
+        case nil:break
+        }
+        return f
+    }
     public static func perform(_ step:PersonalStep) async throws -> PersonalReceipt {
         try Task.checkCancellation()
         guard AXIsProcessTrusted() else { throw PersonalAgentError.permissionDenied }
-        _=try NativePersonalApps.target(step.text)
-        let apps=NSRunningApplication.runningApplications(withBundleIdentifier:step.text).filter { !$0.isTerminated }
+        let layout=step.tool == .layoutApp ? try PersonalWindowLayout.decode(step.text):nil
+        let appID=layout?.appID ?? step.text
+        _=try NativePersonalApps.target(appID)
+        let apps=NSRunningApplication.runningApplications(withBundleIdentifier:appID).filter { !$0.isTerminated }
         guard apps.count==1,let app=apps.first else { throw PersonalAgentError.unsupported }
         let root=AXUIElementCreateApplication(app.processIdentifier);AXUIElementSetMessagingTimeout(root,0.2)
         let windows=read(root,kAXWindowsAttribute) as? [AXUIElement] ?? []
@@ -57,7 +79,7 @@ import Domain
             if (read(window,"AXFullScreen") as? Bool) != value { try setBool(window,"AXFullScreen",value) }
             app.activate(options:[])
             try await poll(app,window) { (read(window,"AXFullScreen") as? Bool)==value }
-        case .maximizeApp:
+        case .maximizeApp,.layoutApp:
             if (read(window,"AXFullScreen") as? Bool)==true {
                 try setBool(window,"AXFullScreen",false)
                 try await poll(app,window) { (read(window,"AXFullScreen") as? Bool)==false }
@@ -67,9 +89,16 @@ import Domain
             var origin=CGPoint.zero,size=CGSize.zero
             if let p=read(window,kAXPositionAttribute),CFGetTypeID(p)==AXValueGetTypeID() { _=AXValueGetValue(unsafeDowncast(p,to:AXValue.self),.cgPoint,&origin) }
             if let p=read(window,kAXSizeAttribute),CFGetTypeID(p)==AXValueGetTypeID() { _=AXValueGetValue(unsafeDowncast(p,to:AXValue.self),.cgSize,&size) }
+            if layout != nil {guard size.width>0,size.height>0 else {throw PersonalAgentError.unsupported}}
             let top=first.frame.maxY,center=NSPoint(x:origin.x+size.width/2,y:top-origin.y-size.height/2)
             guard let screen=NSScreen.screens.first(where:{$0.frame.contains(center)}) ?? NSScreen.main else { throw PersonalAgentError.unsupported }
-            let frame=screen.visibleFrame
+            let destination:NSScreen
+            if layout?.layout == .nextDisplay {
+                let screens=NSScreen.screens
+                guard screens.count>1,let index=screens.firstIndex(of:screen) else {throw PersonalAgentError.unsupported}
+                destination=screens[(index+1)%screens.count]
+            } else {destination=screen}
+            let frame=Self.layoutFrame(layout?.layout,visible:destination.visibleFrame,currentSize:size)
             origin=CGPoint(x:frame.minX,y:top-frame.maxY);size=CGSize(width:frame.width,height:frame.height)
             guard let position=AXValueCreate(.cgPoint,&origin),let extent=AXValueCreate(.cgSize,&size),AXUIElementSetAttributeValue(window,kAXPositionAttribute as CFString,position) == .success,AXUIElementSetAttributeValue(window,kAXSizeAttribute as CFString,extent) == .success else { throw PersonalAgentError.verificationFailed }
             app.activate(options:[])

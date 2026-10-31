@@ -1,8 +1,10 @@
-# Proposed command roadmap — 100 additions
+# Original command roadmap — 100 additions
 
-Planning document · 31 October 2026 · baseline build 44.0.1
+Original planning document · 31 October 2026 · baseline build 44.0.1
 
-All 100 entries below are **proposed, not implemented or promised compatible**. They are a backlog for review and incremental delivery. Example speech describes desired behavior, not syntax accepted by the current build. Platform and app APIs must be checked before selecting an implementation; unsupported capabilities stay unavailable rather than falling back to guessed keystrokes, generated scripts or cloud services.
+Implementation update: see [45A implementation](MILESTONE45A-100-COMMANDS.md) and the [100-command guide](COMMAND-GUIDE-100.md). The original requirements below are retained for traceability; the guide records actual scope, assisted actions and native limitations.
+
+Original planning statement (superseded by the implementation guide above): all 100 entries below were **proposed, not implemented or promised compatible**. They are a backlog for review and incremental delivery. Example speech describes desired behavior, not syntax accepted by the current build. Platform and app APIs must be checked before selecting an implementation; unsupported capabilities stay unavailable rather than falling back to guessed keystrokes, generated scripts or cloud services.
 
 Current build already supports separate Fn dictation and Agent commands, generic installed-app opening/closing and selected window states, scoped folder operations, named-browser searches, audio volume/mute, Safari/Brave tab creation/switching and basic Music/Spotify controls. See [44A implementation](MILESTONE44A-MAC-APP-CONTROLS.md) and [43A folder commands](MILESTONE43A-FOLDERS-BROWSERS-COMMANDS.md). These existing features are not counted toward the 100 proposals.
 

@@ -1,3 +1,5 @@
+import Darwin
+import UserNotifications
 import AppKit
 import ApplicationServices
 import Combine
@@ -4114,5 +4116,546 @@ private actor FortyOneBlockingResolver {
         await #expect(throws:PersonalAgentError.verificationFailed) {try await NativePersonalControls.observeChangedTrack("original",read:{reads+=1;return "original"},pause:{})}
         #expect(reads==12)
         await #expect(throws:PersonalAgentError.verificationFailed) {try await NativePersonalControls.observeChangedTrack("original",read:{""},pause:{})}
+    }
+}
+
+@Suite("45A roadmap native layout and Mac controls",.serialized) @MainActor struct PersonalAgent45LayoutTests {
+    @Test(arguments:["left half","right half","top half","bottom half","top-left quarter","top-right quarter","bottom-left quarter","bottom-right quarter","next display"])
+    func nativeLayoutGrammar(_ kind:String) throws {
+        let plan=try #require(try PersonalWindowLayout.parse("Move Safari to the "+kind,apps:PersonalAgent40Tests.apps,now:Date()))
+        #expect(plan.steps.count==1);#expect(plan.steps[0].tool == .layoutApp)
+        #expect(try PersonalWindowLayout.decode(plan.steps[0].text).appID=="com.apple.Safari")
+    }
+    @Test func centerAndRepeatedRequestBindOneInstalledApp() throws {
+        let c=try #require(try PersonalWindowLayout.parse("Centre the Safari window",apps:PersonalAgent40Tests.apps,now:Date()))
+        #expect(try PersonalWindowLayout.decode(c.steps[0].text).layout == .center)
+        let p=try #require(try PersonalWindowLayout.parse("Move Safari to the left half Move Safari to the left half",apps:PersonalAgent40Tests.apps,now:Date()));#expect(p.steps.count==1)
+    }
+    @Test func layoutGeometryUsesVisibleFrameAndPreservesCenterSize() {
+        let visible=CGRect(x:-1200,y:100,width:1200,height:800)
+        #expect(NativePersonalWindows.layoutFrame(.left,visible:visible,currentSize:.zero)==CGRect(x:-1200,y:100,width:600,height:800))
+        #expect(NativePersonalWindows.layoutFrame(.topRight,visible:visible,currentSize:.zero)==CGRect(x:-600,y:500,width:600,height:400))
+        #expect(NativePersonalWindows.layoutFrame(.center,visible:visible,currentSize:CGSize(width:1400,height:900)).size==CGSize(width:1400,height:900))
+    }
+    @Test func deviceSelectionRejectsAmbiguityAndHonorsExactMatch() throws {
+        let devices:[(id:UInt32,name:String,builtIn:Bool)]=[(1,"Studio Headphones",false),(2,"Travel Headphones",false),(3,"MacBook Microphone",true)]
+        #expect(throws:PersonalAgentError.unsupported) {try NativeMacControl.uniqueDevice("headphones",devices:devices)}
+        #expect(try NativeMacControl.uniqueDevice("Studio Headphones",devices:devices)==1)
+        #expect(try NativeMacControl.uniqueDevice("built-in",devices:devices)==3)
+    }
+    @Test(arguments:["Increase the brightness","Set brightness to fifty percent","Dim the screen","What is my battery level","Switch sound output to my headphones","Use the built-in microphone"])
+    func macControlGrammar(_ text:String) throws {
+        let p=try #require(try PersonalMacControl.parse(text,now:Date()));#expect(p.steps[0].tool == .macControl)
+        #expect(throws:PersonalAgentError.invalidCommand) {try PersonalMacControl(action:.brightnessSet,value:"101")}
+    }
+}
+
+@Suite("45A expanded roadmap contracts",.serialized) @MainActor struct PersonalAgent45ExpandedTests {
+    @Test(arguments:["show reminders due today","show overdue reminders","create a reminder list called Work","mark Buy milk as complete","move Call Sam to tomorrow at ten am","rename reminder Buy milk to Buy oat milk","move Buy milk to my Shopping list","flag Call Sam as important","delete the reminder Buy milk","find reminders mentioning passport","what is on my calendar tomorrow","find a free hour tomorrow afternoon","find my dentist appointment","open my next meeting","rename Lunch with Sam event to Lunch with team","move my dentist appointment to Friday at three pm","extend my focus block by thirty minutes","cancel my personal focus block","remind me fifteen minutes before my appointment","show my next event location"])
+    func recordsAreTypedAndRequireReview(_ text:String) throws {
+        let now=Date();var dialogue=PersonalAgentDialogue()
+        guard case .plan(let p)=try dialogue.intake(text,apps:PersonalAgent40Tests.apps,now:now) else {Issue.record("Expected complete record plan");return}
+        #expect(p.steps.count==1);#expect(p.steps[0].tool == .recordAction);#expect(PersonalAuthorization.routine(p) == !(try PersonalRecordCommand.decode(p.steps[0].text).isMutation))
+        _=try PersonalRecordCommand.decode(p.steps[0].text)
+    }
+    @Test func ambiguousTimeAndRecordTypeAskBeforeAnyEffect() throws {
+        var d=PersonalAgentDialogue();let now=Date()
+        guard case .ask=try d.intake("Move Call Sam to tomorrow at ten",apps:[],now:now) else {Issue.record("Expected AM/PM question");return}
+        guard case .plan(let p)=try d.intake("tomorrow at ten am",apps:[],now:now) else {Issue.record("Expected completed date");return}
+        #expect(try PersonalRecordCommand.decode(p.steps[0].text).date != nil)
+        guard case .ask=try d.intake("Rename Lunch with Sam to Lunch with team",apps:[],now:now) else {Issue.record("Expected entity question");return}
+        guard case .plan(let renamed)=try d.intake("calendar event",apps:[],now:now) else {Issue.record("Expected calendar plan");return}
+        #expect(try PersonalRecordCommand.decode(renamed.steps[0].text).action == .calendarRename)
+    }
+    @Test(arguments:["Show my Notes folders","Create a Notes folder called Ideas","Find notes titled Project Plan","Open the note titled Project Plan","Append Buy batteries to my Shopping note","Rename my note Project Plan to Launch Plan","Move my Project Plan note to Work","Duplicate my Project Plan note","Export my Project Plan note as PDF","Play the song named Imagine in Music","Play my Focus playlist in Music","Turn shuffle on in Spotify","Turn shuffle off in Music","Repeat this track in Music","Turn repeat off in Music","Skip forward thirty seconds in Music","What song is playing in Spotify","Find Sam in Contacts","Show the phone numbers for Sam","Open my chat with Sam in Messages","Open my chat with Sam in WhatsApp"])
+    func objectCommandsDoNotBecomeAppLaunches(_ text:String) throws {
+        let p=try #require(try PersonalObjectCommand.parse(text,now:Date()))
+        #expect([PersonalTool.notesAction,.mediaAction,.contactAction].contains(p.steps[0].tool));#expect(p.steps.count==1)
+    }
+    @Test(arguments:["Rename folder Drafts to Archive in Documents","Move folder Projects from Desktop to Documents","Duplicate folder Projects in Documents","Rename file draft.txt to final.txt in Documents","Copy file agenda.pdf from Desktop to Documents","Show information for folder Projects in Documents","Compress folder Projects in Documents"])
+    func fileCommandsRequireBoundReview(_ text:String) throws {
+        let p=try #require(try PersonalFileAction.parse(text,now:Date()));#expect(p.steps[0].tool == .fileAction);#expect(PersonalAuthorization.routine(p) == ((try PersonalFileAction.decode(p.steps[0].text).action) == .info))
+        let c=try PersonalFileAction.decode(p.steps[0].text);#expect(c.sourceIdentity==nil)
+    }
+    @Test func missingSourceLocationIsNeverGuessed() throws {
+        var d=PersonalAgentDialogue();let now=Date()
+        guard case .ask=try d.intake("Move file agenda.pdf to Downloads",apps:[],now:now) else {Issue.record("Expected location");return}
+        guard case .plan(let p)=try d.intake("Desktop",apps:[],now:now) else {Issue.record("Expected scoped plan");return}
+        #expect(try PersonalFileAction.decode(p.steps[0].text).location == .desktop)
+        #expect(throws:(any Error).self) {try PersonalFileAction(action:.move,folder:false,name:"../secret",location:.documents)}
+    }
+    @Test(arguments:["Close the current tab in Brave","Duplicate this tab in Safari","Find the tab named Documentation in Brave","Find my example.com tab in Safari"])
+    func browserExtrasStayClosed(_ text:String) throws {
+        let p=try #require(try PersonalBrowserExtra.parse(text,now:Date()));#expect(PersonalAuthorization.routine(p) == ((try PersonalBrowserExtra.decode(p.steps[0].text).action) != .close));#expect(p.steps[0].tool == .browserExtra)
+    }
+    @Test func fileCopyMoveAndConflictAreRealTemporaryFixtureEffects() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false);defer{try? FileManager.default.removeItem(at:root)}
+        try Data("original".utf8).write(to:root.appendingPathComponent("source.txt"))
+        let copy=try PersonalFileAction(action:.copy,folder:false,name:"source.txt",location:.documents,destinationName:"copy.txt")
+        _=try await NativeFileActions.fixtureOperation(copy,sourceRoot:root,destinationRoot:root)
+        #expect(try Data(contentsOf:root.appendingPathComponent("copy.txt"))==Data("original".utf8))
+        await #expect(throws:(any Error).self) {try await NativeFileActions.fixtureOperation(copy,sourceRoot:root,destinationRoot:root)}
+        let rename=try PersonalFileAction(action:.rename,folder:false,name:"copy.txt",location:.documents,destinationName:"renamed.txt")
+        _=try await NativeFileActions.fixtureOperation(rename,sourceRoot:root,destinationRoot:root);#expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("copy.txt").path))
+        try FileManager.default.createSymbolicLink(at:root.appendingPathComponent("link.txt"),withDestinationURL:root.appendingPathComponent("source.txt"))
+        let link=try PersonalFileAction(action:.copy,folder:false,name:"link.txt",location:.documents,destinationName:"bad.txt")
+        await #expect(throws:(any Error).self) {try await NativeFileActions.fixtureOperation(link,sourceRoot:root,destinationRoot:root)}
+    }
+    @Test func boundedFolderCopyAndCompressionPreserveOriginal() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);try FileManager.default.createDirectory(at:root.appendingPathComponent("Source"),withIntermediateDirectories:true);defer{try? FileManager.default.removeItem(at:root)}
+        try Data("hidden data".utf8).write(to:root.appendingPathComponent("Source/.hidden"))
+        _=try await NativeFileActions.fixtureOperation(.init(action:.copy,folder:true,name:"Source",location:.documents,destinationName:"Copy"),sourceRoot:root,destinationRoot:root)
+        #expect(try Data(contentsOf:root.appendingPathComponent("Copy/.hidden"))==Data("hidden data".utf8))
+        _=try await NativeFileActions.fixtureOperation(.init(action:.compress,folder:true,name:"Source",location:.documents,destinationName:"Source.aar"),sourceRoot:root,destinationRoot:root)
+        #expect(try Data(contentsOf:root.appendingPathComponent("Source.aar")).count>0)
+        #expect(FileManager.default.fileExists(atPath:root.appendingPathComponent("Source/.hidden").path))
+    }
+    @Test func outputWriterNeverOverwritesOrFollowsSymlinks() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer{try? FileManager.default.removeItem(at:root)}
+        let bytes=Data("sentinel".utf8);_ = try NativeFileActions.writeExclusive(bytes,name:"new.txt",rootURL:root)
+        #expect(throws:(any Error).self) {try NativeFileActions.writeExclusive(Data(),name:"new.txt",rootURL:root)}
+        #expect(try Data(contentsOf:root.appendingPathComponent("new.txt"))==bytes)
+    }
+    @Test func notePDFRendersMultiplePagesWithoutNativeNotesAccess() throws {
+        let pdf=try #require(NativeNotesActions.pdf(String(repeating:"A paragraph of synthetic text.\n",count:2000)))
+        let provider=try #require(CGDataProvider(data:pdf as CFData));let doc=try #require(CGPDFDocument(provider));#expect(doc.numberOfPages>1)
+    }
+    @Test func ownedTimersStayIsolatedAndNamed() throws {
+        let now=Date();let plan=try #require(try PersonalTimerControl.parse("Set a tea timer for four minutes",now:now));#expect(plan.steps[0].text=="tea");#expect(plan.steps[0].date==now.addingTimeInterval(240))
+        let content=UNMutableNotificationContent();content.title="Unrelated";content.body="tea"
+        let unrelated=UNNotificationRequest(identifier:"unrelated",content:content,trigger:nil)
+        #expect(!NativeOwnedTimers.isOwned(unrelated));#expect(throws:PersonalAgentError.unsupported) {try NativeOwnedTimers.matchingName("tea",requests:[unrelated])}
+    }
+    @Test func reviewedScreenshotPlansDoNotCaptureDuringParsing() throws {
+        let p=try #require(try PersonalScreenCapture.parse("Take a screenshot of an area",now:Date()));#expect(!PersonalAuthorization.routine(p));#expect(try PersonalScreenCapture.decode(p.steps[0].text).region)
+    }
+    @Test func nativeMediaAndBrowserTemplatesCompileWithoutExecuting() throws {
+        for action in [PersonalObjectCommand.Action.mediaTrack,.mediaPlaylist,.mediaShuffleOff,.mediaRepeatOne,.mediaRepeatOff,.mediaSeek] {
+            let c=try PersonalObjectCommand(action:action,name:action == .mediaTrack ? "Imagine":action == .mediaPlaylist ? "Focus":"music",value:action == .mediaSeek ? "30":"")
+            var error:NSDictionary?;let script=try #require(NSAppleScript(source:NativeMediaActions.source(c)));let ok=script.compileAndReturnError(&error);#expect(ok,"\(String(describing:error))")
+        }
+        var c=try PersonalBrowserExtra(action:.close,browser:.brave);c.windowID=1;c.tabID="1";c.url="https://example.com";c.title="Example"
+        let commands=[c,try PersonalBrowserExtra(action:.findTitle,browser:.brave,query:"Documentation"),try PersonalBrowserExtra(action:.findDomain,browser:.safari,query:"example.com")]
+        for c in commands {var error:NSDictionary?;let source=NativeBrowserExtra.source(c.browser,try NativeBrowserExtra.body(c));let script=try #require(NSAppleScript(source:source));let ok=script.compileAndReturnError(&error);#expect(ok,"\(String(describing:error))")}
+    }
+}
+
+@MainActor private final class RoadmapPausingRunner:PersonalToolRunning {
+    var engine:PersonalAgentEngine?
+    var calls:[UUID]=[]
+    var pauseFirst=true
+    func perform(_ step:PersonalStep) throws ->PersonalReceipt {
+        calls.append(step.id)
+        if pauseFirst,calls.count==1,let engine {try engine.pause(engine.records.last!.id)}
+        return .init(identifier:step.id.uuidString,evidence:"synthetic verified result")
+    }
+}
+@Suite("45A exact review, durable workflows and actual template rendering",.serialized) @MainActor struct PersonalAgent45SafetyTests {
+    private func temporaryRoot() throws ->URL {let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);return root}
+    @Test func legacyPlanAndJournalDecodeKeepsNewReviewRulesConservative() throws {
+        let plan=try PersonalPlan(steps:[.init(tool:.openInstalledApp,text:"com.apple.Safari")])
+        var data=try #require(JSONSerialization.jsonObject(with:JSONEncoder().encode(plan)) as? [String:Any]);data.removeValue(forKey:"requiresReview")
+        let old=try JSONDecoder().decode(PersonalPlan.self,from:JSONSerialization.data(withJSONObject:data));#expect(!old.requiresReview);#expect(old.steps==plan.steps)
+        let forced=try PersonalPlan(steps:plan.steps,requiresReview:true);#expect(!PersonalAuthorization.routine(forced))
+    }
+    @Test func routineEditIsCompareAndSwapAndRunsNeedFreshReview() async throws {
+        let root=try temporaryRoot();defer{try? FileManager.default.removeItem(at:root)}
+        let store=PersonalRoutineStore(url:root.appendingPathComponent("routines.json")),now=Date()
+        let first=try PersonalRoutineDefinition(name:"Morning setup",steps:[.init(tool:.openInstalledApp,text:"com.apple.Safari"),.init(tool:.timer,text:"tea",date:now.addingTimeInterval(240))],createdAt:now)
+        _=try store.save(.init(definition:first));let loaded=try store.named("Morning setup");#expect(loaded==first)
+        let plan=try loaded.freshPlan(now:now.addingTimeInterval(60));#expect(plan.requiresReview);#expect(plan.steps[0].id != first.steps[0].id);#expect(plan.steps[1].date==now.addingTimeInterval(300))
+        let resolved=try await NativeAgentResolution.resolve(try .init(steps:[.init(tool:.openInstalledApp,text:"synthetic.app")],requiresReview:true));#expect(resolved.requiresReview)
+        let replacement=try PersonalRoutineDefinition(name:"Morning setup",steps:[.init(tool:.openInstalledApp,text:"com.brave.Browser")])
+        #expect(throws:PersonalAgentError.approvalRequired) {try store.save(.init(definition:replacement))}
+        _=try store.save(.init(definition:replacement,replacing:first.id));#expect(try store.named("Morning setup")==replacement)
+        #expect(throws:(any Error).self) {try PersonalRoutineDefinition(name:"Nested",steps:[.init(tool:.routineSave,text:"{}")])}
+    }
+    @Test func pauseAndContinueNeverReplayVerifiedOrCreateTwoContinuations() async throws {
+        let root=try temporaryRoot(),runner=RoadmapPausingRunner();defer{try? FileManager.default.removeItem(at:root)}
+        let engine=try PersonalAgentEngine(url:root.appendingPathComponent("queue.json"),runner:runner);runner.engine=engine;defer{try? engine.close()}
+        let original=try PersonalPlan(steps:[.init(tool:.openInstalledApp,text:"one"),.init(tool:.openInstalledApp,text:"two")]);try engine.enqueue(original);try await engine.approveAndRun(original)
+        #expect(engine.records[0].state == .paused);#expect(runner.calls==[original.steps[0].id])
+        let next=try engine.continuationPlan(original.id,now:Date());#expect(next.requiresReview);#expect(next.steps.count==1);#expect(next.steps[0].text=="two")
+        try engine.enqueueContinuation(next,from:original.id)
+        #expect(throws:PersonalAgentError.approvalRequired) {try engine.enqueueContinuation(next,from:original.id)}
+        #expect(throws:PersonalAgentError.approvalRequired) {try engine.continuationPlan(original.id,now:Date())}
+        try await engine.approveAndRun(next);#expect(runner.calls.count==2);#expect(engine.records.last?.state == .completed)
+    }
+    @Test func uncertainEffectsRequireHumanEvidenceAndAreNeverReplayed() async throws {
+        let root=try temporaryRoot(),runner=FortyRunner();runner.unverified=true;defer{try? FileManager.default.removeItem(at:root)}
+        let engine=try PersonalAgentEngine(url:root.appendingPathComponent("queue.json"),runner:runner);defer{try? engine.close()}
+        let original=try PersonalPlan(steps:[.init(tool:.openInstalledApp,text:"one"),.init(tool:.openInstalledApp,text:"two")]);try engine.enqueue(original);try await engine.approveAndRun(original)
+        #expect(runner.calls.count==1);#expect(throws:PersonalAgentError.approvalRequired) {try engine.continuationPlan(original.id,now:Date())}
+        #expect(throws:PersonalAgentError.approvalRequired) {try engine.confirmObservedOutcome(original.id,expectedStep:original.steps[1])}
+        try engine.confirmObservedOutcome(original.id,expectedStep:original.steps[0]);#expect(runner.calls.count==1);#expect(engine.records[0].receipts[0]?.evidence.contains("Human observation")==true)
+        let next=try engine.continuationPlan(original.id,now:Date());#expect(next.steps.count==1);#expect(next.steps[0].text=="two")
+    }
+    @Test func dueDraftClaimIsDurableAndNeverDispatchesAnything() throws {
+        let root=try temporaryRoot();defer{try? FileManager.default.removeItem(at:root)}
+        let url=root.appendingPathComponent("scheduled.json"),store=PersonalScheduledMessageStore(url:url),now=Date(),id=UUID()
+        let message=PersonalMessage(recipient:"Sam",body:"Synthetic draft",address:"+15555550123"),record=try PersonalScheduledMessage(id:id,message:message,date:now.addingTimeInterval(60))
+        try store.add(record)
+        #expect(throws:PersonalAgentError.approvalRequired) {try store.claim(id,now:now)}
+        _=try store.claim(id,now:now.addingTimeInterval(61))
+        #expect(try PersonalScheduledMessageStore(url:url).records()[0].state == .claimed)
+        #expect(throws:PersonalAgentError.approvalRequired) {try store.claim(id,now:now.addingTimeInterval(62))}
+        #expect(throws:PersonalAgentError.approvalRequired) {try store.cancel(id)}
+        let second=try PersonalScheduledMessage(id:UUID(),message:message,date:now.addingTimeInterval(120));try store.add(second);try store.cancel(second.id);#expect(try store.records().last?.state == .cancelled)
+    }
+    @Test func restoreBindsExactTrashIdentityAndRefusesConflicts() throws {
+        let root=try temporaryRoot(),trash=root.appendingPathComponent("Trash"),destination=root.appendingPathComponent("Documents");defer{try? FileManager.default.removeItem(at:root)}
+        try FileManager.default.createDirectory(at:trash.appendingPathComponent("old-name"),withIntermediateDirectories:true);try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)
+        let request=try PersonalFileAction(action:.restore,folder:true,name:"old-name",location:.documents,destinationName:"Restored",destinationLocation:.documents)
+        let bound=try NativeFileActions.bindRestore(request,trashRoot:trash,destinationRoot:destination,requireExpected:false)
+        _=try NativeFileActions.restore(bound,trashRoot:trash,destinationRoot:destination);#expect(FileManager.default.fileExists(atPath:destination.appendingPathComponent("Restored").path))
+        #expect(throws:(any Error).self) {try NativeFileActions.restore(bound,trashRoot:trash,destinationRoot:destination)}
+        try FileManager.default.createDirectory(at:trash.appendingPathComponent("old-name"),withIntermediateDirectories:false)
+        #expect(throws:(any Error).self) {try NativeFileActions.bindRestore(request,trashRoot:trash,destinationRoot:destination,requireExpected:false)}
+    }
+    @Test func addressChoicesPreserveRoutineReviewAndCannotChangeToolFamily() throws {
+        let contact=try PersonalObjectCommand(action:.contactMessages,name:"Sam"),step=PersonalStep(tool:.contactAction,text:try contact.encoded()),plan=try PersonalPlan(steps:[step],requiresReview:true)
+        let choice=PersonalRecipientChoiceRequired(plan:plan,stepID:step.id,options:[],prompt:"Choose")
+        let selected=try choice.choosing(.init(name:"Sam Smith",address:"+15555550123",sourceID:"synthetic-contact"),now:Date());#expect(selected.requiresReview);#expect(!PersonalAuthorization.routine(selected))
+        #expect(try PersonalObjectCommand.decode(selected.steps[0].text).targetID=="synthetic-contact")
+    }
+    @Test func mailMetadataAndAttachmentIdentityAreCheckedBeforeDataRead() throws {
+        let before=try PersonalMailSnapshot(id:1,sender:"owner@example.invalid",subject:"Subject",body:"Body",to:["sam@example.invalid"],cc:[],bcc:[],attachments:[])
+        let changed=try PersonalMailSnapshot(id:1,sender:before.sender,subject:before.subject,body:before.body,to:["other@example.invalid"],cc:[],bcc:[],attachments:[])
+        #expect(!NativeMailActions.sameEnvelope(before,changed))
+        let root=try temporaryRoot(),file=root.appendingPathComponent("attachment.txt");defer{try? FileManager.default.removeItem(at:root)}
+        try Data("first".utf8).write(to:file);let bound=try NativeMailActions.file(file)
+        try FileManager.default.moveItem(at:file,to:root.appendingPathComponent("original.txt"));try Data("replacement".utf8).write(to:file)
+        #expect(throws:PersonalAgentError.verificationFailed) {try NativeMailActions.file(file,expectedIdentity:bound.identity)}
+    }
+    @Test func actualNotesScriptsCompileWithoutReadingOrChangingNotes() throws {
+        let root=try temporaryRoot();defer{try? FileManager.default.removeItem(at:root)}
+        for action in [PersonalObjectCommand.Action.noteFolders,.noteCreateFolder,.noteFind,.noteOpen,.noteAppend,.noteRename,.noteMove,.noteDuplicate,.notePDF,.noteTrash] {
+            var c=try PersonalObjectCommand(action:action,name:"Synthetic",value:"Synthetic value");c.containerID="synthetic-account";c.targetID="synthetic-note";c.version="synthetic-date"
+            _=try NativeNotesActions.perform(.init(tool:.notesAction,text:try c.encoded()),execute:{body in
+                var failure:NSDictionary?;let script=try #require(NSAppleScript(source:NativeNotesActions.source(body)));let ok=script.compileAndReturnError(&failure);#expect(ok,"\(String(describing:failure))");guard ok else {throw PersonalAgentError.invalidCommand};return body.contains("return plaintext of n") ? "Synthetic note text":"synthetic-result"
+            },writePDF:{data,name in try NativeFileActions.writeExclusive(data,name:name,rootURL:root)})
+        }
+    }
+    @Test func actualMailScriptsCompileWithoutSendingOrAccessingMail() throws {
+        let before=try PersonalMailSnapshot(id:1,sender:"owner@example.invalid",subject:"Subject",body:"Body",to:["sam@example.invalid"],cc:[],bcc:[],attachments:[])
+        for action in [PersonalMailCommand.Action.draft,.reply,.attach,.send] {
+            var c=try PersonalMailCommand(action:action,recipient:"sam@example.invalid",subject:"Subject",body:"Body",fileName:action == .attach ? "synthetic.txt":nil,fileLocation:.documents)
+            c.sourceMessageID=10;c.snapshot=before;c.fileIdentity="synthetic-identity";c.fileDigest=String(repeating:"a",count:64)
+            let result=try NativeMailActions.perform(.init(tool:.mailAction,text:try c.encoded()),execute:{body in
+                var failure:NSDictionary?;let script=try #require(NSAppleScript(source:NativeMailActions.source(body)));let ok=script.compileAndReturnError(&failure);#expect(ok,"\(String(describing:failure))");guard ok else {throw PersonalAgentError.invalidCommand};return body.contains("send d") ? "send-accepted":"1"
+            },readSnapshot:{_,_,adding in
+                if let adding {return try .init(id:1,sender:before.sender,subject:before.subject,body:before.body,to:before.to,cc:[],bcc:[],attachments:[adding.url.path],attachmentDigests:[adding.digest],attachmentIdentities:[adding.identity])};return before
+            },inspectFile:{_,_ in ("synthetic-identity",String(repeating:"a",count:64))})
+            #expect(result.verified == (action != .send))
+        }
+    }
+    @Test func changedMailDraftNeverReachesSendTemplate() throws {
+        let before=try PersonalMailSnapshot(id:1,sender:"owner@example.invalid",subject:"Subject",body:"Body",to:["sam@example.invalid"],cc:[],bcc:[],attachments:[])
+        let changed=try PersonalMailSnapshot(id:1,sender:before.sender,subject:before.subject,body:"Changed",to:before.to,cc:[],bcc:[],attachments:[])
+        var c=try PersonalMailCommand(action:.send);c.snapshot=before;var calls=0
+        #expect(throws:PersonalAgentError.verificationFailed) {try NativeMailActions.perform(.init(tool:.mailAction,text:try c.encoded()),execute:{_ in calls+=1;return "send-accepted"},readSnapshot:{_,_,_ in changed},inspectFile:{_,_ in ("","")})}
+        #expect(calls==0)
+    }
+    @Test(arguments:["tomorrow at 3PM","tomorrow at 3:30PM","tomorrow at three pm","tomorrow at 10 a.m."])
+    func commonSpokenTimesStayExplicit(_ text:String) {#expect(PersonalRecordCommand.date(text,now:Date()) != nil)}
+    @Test func selectedContactAsksInsteadOfGuessingAndMetadataScopesAreExplicit() throws {
+        var d=PersonalAgentDialogue();let now=Date()
+        guard case .ask=try d.intake("Show the phone numbers for my selected contact",apps:[],now:now) else {Issue.record("Expected exact-name question");return}
+        guard case .plan(let p)=try d.intake("Sam Smith",apps:[],now:now) else {Issue.record("Expected named lookup");return}
+        #expect(try PersonalObjectCommand.decode(p.steps[0].text).name=="Sam Smith")
+        let scoped=try #require(try PersonalRecordCommand.plan("Show reminders due today in Shopping list",now:now));#expect(try PersonalRecordCommand.decode(scoped.steps[0].text).scopeName=="Shopping")
+    }
+    @Test func controlDataNeverBecomesScriptAndMenusNeedSemanticMatch() throws {
+        #expect(throws:(any Error).self) {try PersonalObjectCommand(action:.noteAppend,name:"Synthetic",value:"bad\u{0}data")}
+        #expect(throws:(any Error).self) {try PersonalMenuAction(action:.lock,appID:"com.brave.Browser")}
+        #expect(NativeMenuActions.bookmarkURL("https://example.invalid/travel") != nil)
+        #expect(NativeMenuActions.bookmarkURL("javascript:alert(1)")==nil)
+        #expect(NativeMenuActions.bookmarkURL("https://user:password@example.invalid")==nil)
+        #expect(NativeMenuActions.matchesCommand(.lock,character:"q",modifiers:2,title:"Lock Screen",path:["Apple"]))
+        #expect(!NativeMenuActions.matchesCommand(.lock,character:"q",modifiers:2,title:"Quit",path:["File"]))
+        #expect(NativeMenuActions.matchesCommand(.zoomIn,character:"+",modifiers:0,title:"Zoom In",path:["View"]))
+        #expect(!NativeMenuActions.matchesCommand(.zoomIn,character:"+",modifiers:0,title:"Delete All Data",path:["View"]))
+    }
+}
+
+@Suite("45A frozen 100-command roadmap admission",.serialized) @MainActor struct PersonalAgent45CatalogTests {
+    static let apps=PersonalAgent40Tests.apps+[PersonalApp(id:"com.apple.Notes",name:"Notes"),PersonalApp(id:"com.apple.reminders",name:"Reminders"),PersonalApp(id:"com.apple.iCal",name:"Calendar"),PersonalApp(id:"com.microsoft.VSCode",name:"Visual Studio Code",aliases:["VS Code"])]
+    @Test func catalogIsExactlyTheFrozen100UniqueIDs() {#expect(PersonalRoadmapCatalog.commands.map(\.id)==Array(1...100));#expect(Set(PersonalRoadmapCatalog.commands.map(\.example)).count==100)}
+    @Test(arguments:PersonalRoadmapCatalog.commands.filter{!$0.contextual}.map(\.example))
+    func everyNoncontextualRoadmapExampleHasATypedPathOrExplicitQuestion(_ text:String) throws {
+        var dialogue=PersonalAgentDialogue();let outcome=try dialogue.intake(text,apps:Self.apps,now:Date())
+        switch outcome {case .plan(let p):#expect(!p.steps.isEmpty);case .ask(let q):#expect(!q.prompt.isEmpty);default:Issue.record("No typed command/question for frozen example: \(text)")}
+    }
+}
+
+@Suite("45A context-only commands never guess targets",.serialized) @MainActor struct PersonalAgent45ContextTests {
+    @Test(arguments:["Restore the folder I just trashed","Schedule a reviewed message for tomorrow","Save these reviewed steps as Morning setup","Edit my Morning setup routine","Run my Morning setup routine","Open my development apps together","Arrange my work windows","Pause this routine after the current step","Continue this interrupted routine"])
+    func absentContextNeverExecutesOrTouchesClipboard(_ request:String) async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner(),board=GClipboard(),target=GCapture()
+        let c=SystemWideDictationCoordinator(input:GInput(),targets:target,insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent45CatalogTests.apps},personalMessageResolution:{$0})
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner
+        defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand(request);await c.waitForAgentPlanning()
+        #expect(runner.calls.isEmpty);#expect(target.count==0);#expect(board.installed==0);#expect(board.text=="original")
+        if request.hasPrefix("Open my development") || request=="Arrange my work windows" {#expect(c.agentEditingRoutine != nil)}
+    }
+    @Test func qualifiedMusicTrackRetainsArtistAlbumAndCompiles() throws {
+        let p=try #require(try PersonalObjectCommand.parse("Play the song named Imagine by John Lennon from album Imagine in Music",now:Date())),c=try PersonalObjectCommand.decode(p.steps[0].text)
+        #expect(c.name=="Imagine");#expect(c.value=="John Lennon");#expect(c.scopeName=="Imagine")
+        var error:NSDictionary?;#expect(NSAppleScript(source:NativeMediaActions.source(c))?.compileAndReturnError(&error)==true);#expect(error==nil)
+    }
+}
+
+extension PersonalAgent45ContextTests {
+    @Test func savedRoutineRunAndEditUseRealContextWithoutAutoexecution() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner(),board=GClipboard()
+        let store=PersonalRoutineStore(url:root.appendingPathComponent("routines.json")),definition=try PersonalRoutineDefinition(name:"Morning setup",steps:[.init(tool:.openInstalledApp,text:"com.apple.Safari")])
+        _=try store.save(.init(definition:definition))
+        let c=SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent45CatalogTests.apps},personalMessageResolution:{$0})
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner
+        defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("Run my Morning setup routine");await c.waitForAgentPlanning()
+        let plan=try #require(c.agentPlan);#expect(plan.requiresReview);#expect(plan.steps[0].text=="com.apple.Safari");#expect(runner.calls.isEmpty)
+        c.cancelAgentConversation();c.reviewAgentCommand("Edit my Morning setup routine");await c.waitForAgentPlanning()
+        #expect(c.agentEditingRoutine=="Morning setup");#expect(c.agentRoutineExistingSteps.count==1)
+        c.agentRoutineEditText="Open Brave";c.saveAgentRoutineEdits();await c.waitForAgentPlanning()
+        let saved=try #require(c.agentPlan);#expect(saved.steps[0].tool == .routineSave);#expect(runner.calls.isEmpty)
+        #expect(try store.named("Morning setup")==definition);#expect(board.installed==0)
+    }
+    @Test func schedulingBindsExactPendingMessageAndRequestsSpecificTime() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),runner=FortyRunner()
+        let c=SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent45CatalogTests.apps},personalMessageResolution:NativePersonalMessages.resolve)
+        c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner
+        defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("Text +15555550123 saying Open Safari");await c.waitForAgentPlanning();#expect(c.agentPlan?.steps[0].tool == .message)
+        c.reviewAgentCommand("Schedule a reviewed message for tomorrow");await c.waitForAgentPlanning()
+        #expect(c.agentQuestion != nil);#expect(runner.calls.isEmpty)
+        c.submitAgentReply("tomorrow at 10 am");await c.waitForAgentPlanning()
+        let step=try #require(c.agentPlan?.steps[0]);#expect(step.tool == .messageSchedule);#expect(runner.calls.isEmpty)
+    }
+}
+
+
+@Suite("45A-R1 website intent and duplicate snapshot guards",.serialized) @MainActor struct PersonalWebsiteR1Tests {
+    @Test(arguments:["Search for YouTube.com","youtube.com Search for youtube.com","Search for YouTube.com Search for youtube.com","Open youtube.com open YouTube.com","Visit https://youtube.com","youtube.com"])
+    func reportedFormsProduceOneDirectWebsite(_ text:String) throws {
+        let plan=try PersonalConversation.quick(.init(text:text,locale:"en-IN",apps:PersonalAgent40Tests.apps));#expect(plan.steps.count==1);#expect(plan.steps[0].tool == .website)
+        #expect(try PersonalWebsiteRequest.decode(plan.steps[0].text).address=="https://youtube.com/")
+        var dialogue=PersonalAgentDialogue();guard case .plan(let direct)=try dialogue.intake(text,apps:PersonalAgent40Tests.apps,now:Date()) else {Issue.record("Website must have a direct deterministic path");return};#expect(direct.steps.count==1);#expect(direct.steps[0].tool == .website)
+    }
+    @Test(arguments:["Search Google for youtube.com","Search Google youtube.com","Search on Google for youtube.com"])
+    func explicitEngineRemainsSearch(_ text:String) throws {
+        let plan=try PersonalConversation.quick(.init(text:text,locale:"en-IN",apps:PersonalAgent40Tests.apps));#expect(plan.steps[0].tool == .searchGoogle);#expect(plan.steps[0].text=="youtube.com")
+    }
+    @Test func searchesAndLiteralRepliesRetainRepeatedWords() throws {
+        let punctuation=try PersonalConversation.quick(.init(text:"Search Google for why? why?",locale:"en-IN",apps:[]));#expect(punctuation.steps[0].text=="why? why?")
+        let plan=try PersonalConversation.quick(.init(text:"Search YouTube for very very good music",locale:"en-IN",apps:[]));#expect(plan.steps[0].tool == .searchYouTube);#expect(plan.steps[0].text=="very very good music")
+        #expect(try PersonalWebsiteRequest.plan("search for ha ha",apps:[],now:Date())==nil)
+        var d=PersonalAgentDialogue();_ = try d.intake("create a note",apps:[],now:Date());guard case .plan(let note)=try d.intake("youtube.com Search for youtube.com",apps:[],now:Date()) else {Issue.record("Expected literal note");return};#expect(note.steps[0].tool == .note);#expect(note.steps[0].text=="youtube.com Search for youtube.com")
+    }
+    @Test func targetBrowserAndAppIdentityArePreserved() throws {
+        let encoded=try PersonalWebsiteRequest(address:"https://example.com/caf%C3%A9?q=one%20two");#expect(try PersonalWebsiteRequest.decode(encoded.encoded())==encoded)
+        let p=try #require(try PersonalWebsiteRequest.plan("Search for youtube.com in Safari",apps:[],now:Date()));#expect(try PersonalWebsiteRequest.decode(p.steps[0].text).browser == .safari)
+        #expect(try PersonalWebsiteRequest.plan("Open com.apple.Safari",apps:PersonalAgent40Tests.apps,now:Date())==nil)
+        #expect(throws:PersonalPlanningFailure.unsupported) {try PersonalWebsiteRequest.plan("youtube.com Search for example.com",apps:[],now:Date())}
+    }
+    @Test(arguments:["javascript:alert(1)","https://user:password@example.com","file:///tmp/data","http://example.com","example.com:8080","example.com%2f.evil.test","example.com\\evil","https://example.com\nopen"])
+    func unsafeAddressesCannotReachNativeOpening(_ text:String) {#expect(PersonalWebsiteRequest.url(text)==nil)}
+    @Test func agentSnapshotsExecuteOnceWithoutInsertion() async throws {
+        let input=GInput(),agent=GShortcut(),board=GClipboard(),target=GCapture(),runner=FortyRunner()
+        runner.unverified=true
+        let c=SystemWideDictationCoordinator(input:input,targets:target,insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{$0})
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.enableAgentShortcut();agent.receive?(.pressed);await c.waitUntilRecording();input.receive?(.transcript("youtube.com"));input.receive?(.transcript("youtube.com Search for youtube.com"));agent.receive?(.released);input.receive?(.finished);input.receive?(.finished);await c.waitForAgentPlanning()
+        #expect(runner.calls.count==1);#expect(runner.calls.first?.tool == .website);#expect(!c.busy);#expect(c.agentHUD=="Website opened");#expect(c.agentRecords.first?.state == .needsReview);#expect(target.count==0);#expect(board.installed==0);#expect(board.text=="original")
+    }
+}
+
+
+@Suite("45A-R2 local website names and natural command introductions",.serialized) @MainActor struct PersonalNaturalR2Tests {
+    @Test(arguments:PersonalWebsiteNames.sites.map(\.name))
+    func everyKnownNameHasAnOfflineTypedWebsite(_ name:String) throws {
+        let plan=try PersonalConversation.quick(.init(text:"Hey, could you please open "+name,locale:"en-IN",apps:[]));#expect(plan.steps.count==1);#expect(plan.steps[0].tool == .website)
+        #expect(try PersonalWebsiteRequest.decode(plan.steps[0].text).address==PersonalWebsiteNames.address(name))
+        var d=PersonalAgentDialogue();guard case .plan(let p)=try d.intake("Go open "+name,apps:[],now:Date()) else {Issue.record("Named website must resolve locally");return};#expect(p.steps[0].tool == .website)
+    }
+    @Test(arguments:["Hey, open WhatsApp","hey Wesley, please open WhatsApp","Could you just open WhatsApp","Go open WhatsApp","Please go and open WhatsApp","Bring up WhatsApp","Pull up WhatsApp","Okay, can you open WhatsApp"])
+    func naturalOpeningsRetainInstalledAppTarget(_ text:String) throws {
+        var d=PersonalAgentDialogue();guard case .plan(let p)=try d.intake(text,apps:PersonalAgent40Tests.apps,now:Date()) else {Issue.record("Expected installed app");return};#expect(p.steps.count==1);#expect(p.steps[0].tool == .openInstalledApp);#expect(p.steps[0].text=="net.whatsapp.WhatsApp")
+        let q=try PersonalConversation.quick(.init(text:text,locale:"en-IN",apps:PersonalAgent40Tests.apps));#expect((q.steps[0].tool == .openInstalledApp && q.steps[0].text=="net.whatsapp.WhatsApp") || (q.steps[0].tool == .openApp && q.steps[0].text==AppOpeningCommand.whatsapp.rawValue))
+    }
+    @Test(arguments:PersonalWebsiteRequest.Browser.allCases)
+    func browserSelectionIsTypedAndRoundTrips(_ browser:PersonalWebsiteRequest.Browser) throws {
+        let p=try #require(try PersonalWebsiteRequest.plan("Open the Gmail website in "+browser.rawValue,apps:[],now:Date()));let c=try PersonalWebsiteRequest.decode(p.steps[0].text);#expect(c.browser==browser);#expect(c.address=="https://mail.google.com/");#expect(!browser.bundleID.isEmpty)
+    }
+    @Test func nativeAppPriorityAndExplicitWebsiteDisambiguation() throws {
+        let apps=[PersonalApp(id:"local.gmail",name:"Gmail")]
+        let native=try PersonalConversation.quick(.init(text:"Open Gmail",locale:"en-IN",apps:apps));#expect(native.steps[0].tool == .openInstalledApp)
+        let web=try #require(try PersonalWebsiteRequest.plan("Open Gmail website",apps:apps,now:Date()));#expect(web.steps[0].tool == .website)
+        let old=try PersonalWebsiteRequest.decode(#"{"address":"https://youtube.com/","browser":"safari"}"#);#expect(old.browser == .safari)
+    }
+    @Test func explicitSearchAndCombinedSearchPreserveLiteralQuery() throws {
+        let a=try PersonalConversation.quick(.init(text:"Hey, search Google for Gmail",locale:"en-IN",apps:[]));#expect(a.steps[0].tool == .searchGoogle);#expect(a.steps[0].text=="Gmail")
+        let b=try PersonalConversation.quick(.init(text:"Go open YouTube and search for very very good piano?",locale:"en-IN",apps:[]));#expect(b.steps.count==1);#expect(b.steps[0].tool == .searchYouTube);#expect(b.steps[0].text=="very very good piano?")
+    }
+    @Test func unknownWebsiteNeedsExactAddressWithoutGuessing() throws {
+        var d=PersonalAgentDialogue();guard case .ask = try d.intake("Open my unknown bank website in Firefox",apps:[],now:Date()) else {Issue.record("Do not invent domains");return}
+        guard case .plan(let p)=try d.intake("https://example.invalid/",apps:[],now:Date()) else {Issue.record("Exact address reply");return};#expect(try PersonalWebsiteRequest.decode(p.steps[0].text).browser == .firefox)
+        #expect(try PersonalWebsiteRequest.plan("Open madeupsite",apps:[],now:Date())==nil)
+        var replacement=PersonalAgentDialogue();_ = try replacement.intake("Open unknown website",apps:[],now:Date());guard case .plan(let newRequest)=try replacement.intake("Hey, open Gmail",apps:[],now:Date()) else {Issue.record("A complete navigation request replaces an old navigation question");return};#expect(newRequest.steps[0].tool == .website)
+    }
+    @Test func literalNoteAndMessageRepliesDoNotBecomeOpenCommands() throws {
+        let full=try PersonalConversation.quick(.init(text:"Create a note Google website",locale:"en-IN",apps:[]));#expect(full.steps[0].tool == .note);#expect(full.steps[0].text=="Google website")
+        var d=PersonalAgentDialogue();_ = try d.intake("create a note",apps:[],now:Date());guard case .plan(let note)=try d.intake("Hey, open Google",apps:[],now:Date()) else {Issue.record("Expected literal note");return};#expect(note.steps[0].tool == .note);#expect(note.steps[0].text=="Hey, open Google")
+        var m=PersonalAgentDialogue();_ = try m.intake("text +15555550123",apps:[],now:Date());guard case .plan(let message)=try m.intake("Hey, open WhatsApp",apps:[],now:Date()) else {Issue.record("Expected literal message");return};#expect(try PersonalMessage.decode(message.steps[0].text).body=="Hey, open WhatsApp")
+    }
+    @Test func websiteNamesAsOpenRepliesAndSpokenDomains() throws {
+        var d=PersonalAgentDialogue();_ = try d.intake("open",apps:[],now:Date());guard case .plan(let p)=try d.intake("Gmail",apps:[],now:Date()) else {Issue.record("Navigation reply");return};#expect(p.steps[0].tool == .website)
+        var unknown=PersonalAgentDialogue();_ = try unknown.intake("open",apps:[],now:Date());guard case .ask = try unknown.intake("unknown website",apps:[],now:Date()) else {Issue.record("Unknown navigation reply asks for address");return}
+        let spoken=try #require(try PersonalWebsiteRequest.plan("Take me to youtube dot com",apps:[],now:Date()));#expect(try PersonalWebsiteRequest.decode(spoken.steps[0].text).address=="https://youtube.com/")
+        let repeated=try #require(try PersonalWebsiteRequest.plan("Open Gmail Open Gmail",apps:[],now:Date()));#expect(repeated.steps.count==1)
+    }
+    @Test func allCatalogOriginsAreValidatedAndNamesAreUnique() throws {
+        #expect(Set(PersonalWebsiteNames.sites.map(\.name)).count==PersonalWebsiteNames.sites.count)
+        for site in PersonalWebsiteNames.sites {#expect(PersonalWebsiteRequest.url(site.address) != nil);#expect(!site.address.contains("?"));for alias in site.aliases {#expect(PersonalWebsiteNames.address(alias)==site.address)}}
+    }
+}
+
+extension PersonalNaturalR2Tests {
+    @Test func naturalRequestsWorkWithUnavailableModelAndZeroInferenceBudget() async throws {
+        let generator=FortyGenerator(ready:false),planner=ApplePersonalPlanner(memory:FortyMemory(0),clock:GClock(),generator:generator)
+        for text in ["Hey, open WhatsApp","Go open Google","Open Gmail","Take me to YouTube in Safari","Open Google and search for Swift tutorials"] {
+            let plan=try await planner.plan(.init(text:text,locale:"en-IN",apps:PersonalAgent40Tests.apps));#expect(plan.steps.count==1)
+        }
+        #expect(await generator.calls==0)
+    }
+}
+
+
+@MainActor private final class CloseR3Environment:AppCloseEnvironment {
+    let process=PersonalCloseProcess(pid:987654,seconds:100,microseconds:1)
+    var available=true,accept=true,alive=true,replacement=false
+    var calls:[PersonalCloseProcess]=[]
+    var sleeps=0,exitAfter:Int?
+    func instances(_ id:String)->[PersonalCloseProcess]? {
+        if !available {return nil}
+        if replacement {return [.init(pid:process.pid,seconds:200)]}
+        return alive ? [process]:[]
+    }
+    func state(_ p:PersonalCloseProcess)->CloseProcessState {alive && !replacement ? .running:.exited}
+    func request(_ p:PersonalCloseProcess,bundleID:String)->Bool {calls.append(p);return accept}
+    func sleep(milliseconds:Int) async throws {try Task.checkCancellation();sleeps+=1;if let exitAfter,sleeps>=exitAfter {alive=false};await Task.yield()}
+}
+@MainActor private final class CloseR3Runner:PersonalToolRunning {
+    var receipt:PersonalReceipt
+    var calls:[PersonalStep]=[]
+    var fail=false
+    var firstReceipt:PersonalReceipt?
+    init(_ receipt:PersonalReceipt) {self.receipt=receipt}
+    func perform(_ step:PersonalStep) throws ->PersonalReceipt {calls.append(step);if fail {throw PersonalAgentError.verificationFailed};return calls.count==1 ? (firstReceipt ?? receipt):receipt}
+}
+private actor CloseR3Gate {
+    var waiting:CheckedContinuation<PersonalReceipt?,Never>?
+    var entered=false
+    var entry:CheckedContinuation<Void,Never>?
+    func observe(_ receipt:PersonalReceipt) async ->PersonalReceipt? {entered=true;entry?.resume();entry=nil;return await withCheckedContinuation{waiting=$0}}
+    func waitForEntry() async {if entered {return};await withCheckedContinuation{entry=$0}}
+    func finish(_ receipt:PersonalReceipt?) {waiting?.resume(returning:receipt);waiting=nil}
+}
+@Suite("45A-R3 normal quit verification and Agent result clicks",.serialized) @MainActor struct PersonalCloseR3Tests {
+    static func token(_ outcome:PersonalAppCloseObservation.Outcome = .pending)throws ->PersonalAppCloseObservation {try .init(bundleID:"net.whatsapp.WhatsApp",processes:[.init(pid:987654,seconds:100,microseconds:1)],outcome:outcome)}
+    static func root()->URL {FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)}
+    @Test func processProofHandlesExitZombieReuseAndDeniedMetadata() {
+        let p=PersonalCloseProcess(pid:9,seconds:100),new=PersonalCloseProcess(pid:9,seconds:200)
+        #expect(NativeAppClosing.classify(p,observed:p,zombie:false,failure:0) == .running)
+        #expect(NativeAppClosing.classify(p,observed:p,zombie:true,failure:0) == .exited)
+        #expect(NativeAppClosing.classify(p,observed:new,zombie:false,failure:0) == .exited)
+        #expect(NativeAppClosing.classify(p,observed:nil,zombie:false,failure:ESRCH) == .exited)
+        #expect(NativeAppClosing.classify(p,observed:nil,zombie:false,failure:EPERM) == .unknown)
+        #expect(NativeAppClosing.classify(p,observed:nil,zombie:false,failure:0) == .unknown)
+    }
+    @Test func fastQuitVerifiesWithoutExtraRequests() async throws {
+        let env=CloseR3Environment();env.exitAfter=1
+        let receipt=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:env)
+        #expect(receipt.verified);#expect(receipt.appClose?.outcome == .closed);#expect(env.calls.count==1);#expect(env.sleeps==1)
+    }
+    @Test func slowQuitReleasesForegroundThenReadOnlyObserverConfirms() async throws {
+        let env=CloseR3Environment();env.exitAfter=12
+        let pending=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:env)
+        #expect(!pending.verified);#expect(pending.appClose?.outcome == .pending);#expect(env.sleeps==8);#expect(env.calls.count==1)
+        let completed=try #require(await NativeAppClosing.followup(pending,environment:env));#expect(completed.verified);#expect(completed.appClose?.token==pending.appClose?.token);#expect(env.calls.count==1)
+    }
+    @Test func savePromptOrCanceledQuitStaysUnverifiedAndObservationStops() async throws {
+        let env=CloseR3Environment(),pending=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:env)
+        let final=try #require(await NativeAppClosing.followup(pending,environment:env));#expect(!final.verified);#expect(final.appClose?.outcome == .unconfirmed);#expect(env.calls.count==1);#expect(env.sleeps==158)
+    }
+    @Test func refusedUnavailableAndAlreadyClosedNeverPretendAQuitSucceeded() async throws {
+        let denied=CloseR3Environment();denied.accept=false
+        let refusal=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:denied);#expect(!refusal.verified);#expect(refusal.appClose?.outcome == .refused);#expect(denied.calls.count==1)
+        let unknown=CloseR3Environment();unknown.available=false
+        let missing=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:unknown);#expect(!missing.verified);#expect(missing.appClose?.outcome == .unavailable);#expect(unknown.calls.isEmpty)
+        let gone=CloseR3Environment();gone.alive=false
+        let closed=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:gone);#expect(closed.verified);#expect(gone.calls.isEmpty)
+    }
+    @Test func relaunchedInstanceIsNeverQuitByObservation() async throws {
+        let env=CloseR3Environment(),pending=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:env);env.replacement=true
+        let result=try #require(await NativeAppClosing.followup(pending,environment:env));#expect(!result.verified);#expect(result.appClose?.outcome == .reopened);#expect(env.calls.count==1)
+    }
+    @Test func canceledObserverNeverRequestsAnotherQuit() async throws {
+        let env=CloseR3Environment(),pending=try await NativeAppClosing.perform("net.whatsapp.WhatsApp",environment:env)
+        let task=Task {await NativeAppClosing.followup(pending,environment:env)};task.cancel();#expect(await task.value==nil);#expect(env.calls.count==1)
+    }
+    @Test func scopedLateProofCompletesOriginalOnlyAndNeverRunsRemainingSteps() async throws {
+        let root=Self.root(),token=try Self.token(),runner=CloseR3Runner(token.receipt),engine=try PersonalAgentEngine(url:root.appendingPathComponent("queue.json"),runner:runner);defer{try? engine.close();try? FileManager.default.removeItem(at:root)}
+        let first=PersonalStep(tool:.closeApp,text:token.bundleID),plan=try PersonalPlan(steps:[first,.init(tool:.openInstalledApp,text:"second")]);try engine.enqueue(plan);try await engine.runRequestedRoutine(plan);#expect(runner.calls.count==1)
+        let wrong=try PersonalAppCloseObservation(bundleID:token.bundleID,processes:token.processes,outcome:.closed)
+        #expect(throws:PersonalAgentError.verificationFailed) {try engine.reconcileAppClose(plan.id,expectedStep:first,receipt:wrong.receipt)}
+        try engine.reconcileAppClose(plan.id,expectedStep:first,receipt:token.changing(.closed).receipt);#expect(engine.records[0].steps == [.verified,.pending]);#expect(engine.records[0].state == .needsReview);#expect(runner.calls.count==1)
+        let continuation=try engine.continuationPlan(plan.id,now:Date());#expect(continuation.steps.count==1);#expect(continuation.requiresReview)
+        #expect(throws:PersonalAgentError.approvalRequired) {try engine.reconcileAppClose(plan.id,expectedStep:first,receipt:token.changing(.closed).receipt)}
+    }
+    @Test(arguments:[PersonalAppCloseObservation.Outcome.pending,.refused])
+    func pendingThenVerifiedCloseUpdatesPillWithoutExecutingTwice(_ outcome:PersonalAppCloseObservation.Outcome) async throws {
+        let root=Self.root(),token=try Self.token(outcome),runner=CloseR3Runner(token.receipt),gate=CloseR3Gate(),input=GInput(),board=GClipboard()
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{$0});c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;c.personalCloseObservation={await gate.observe($0)}
+        defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("Now I want you to close the WhatsApp");await c.waitForAgentPlanning();await gate.waitForEntry()
+        #expect(c.agentHUD==(outcome == .pending ? "Quit pending":"Quit refused"));#expect(!c.busy);let id=try #require(c.agentRecords.last?.id),before=c.agentReviewRequest
+        c.pillClicked();#expect(c.agentReviewRequest != before);#expect(input.starts==0)
+        await gate.finish(try token.changing(.closed).receipt);await c.waitForCloseObservation(id)
+        #expect(c.agentHUD=="App closed");#expect(c.agentRecords.last?.state == .completed);#expect(runner.calls.count==1);#expect(board.text=="original")
+    }
+    @Test func lateProofDoesNotReplaceNewFnRecordingOrInsertAgentText() async throws {
+        let root=Self.root(),token=try Self.token(),runner=CloseR3Runner(token.receipt),gate=CloseR3Gate(),input=GInput(),fn=GShortcut(),board=GClipboard()
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:fn,preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{$0});c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;c.personalCloseObservation={await gate.observe($0)}
+        defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("Close WhatsApp");await c.waitForAgentPlanning();await gate.waitForEntry();let id=try #require(c.agentRecords.last?.id)
+        c.enableShortcut();fn.receive?(.pressed);await c.waitUntilRecording()
+        await gate.finish(try token.changing(.closed).receipt);await c.waitForCloseObservation(id)
+        #expect(c.phase == .recording);#expect(c.agentHUD==nil);#expect(runner.calls.count==1);#expect(board.installed==0);#expect(board.text=="original");c.pillClicked();#expect(input.stops==1);c.cancel()
+    }
+    @Test func genericAgentFailurePillNeverStartsDictation() async throws {
+        let root=Self.root(),runner=CloseR3Runner(.init(identifier:"fixture",evidence:"fixture")),input=GInput();runner.fail=true
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{$0});c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("Close WhatsApp");await c.waitForAgentPlanning();#expect(c.agentHUD=="Agent needs review");let before=c.agentReviewRequest;c.pillClicked();#expect(c.agentReviewRequest != before);#expect(input.starts==0);#expect(runner.calls.count==1)
+    }
+    @Test func oldReceiptsAndExactNamedAppArticlesRemainCompatible() throws {
+        let old=try JSONDecoder().decode(PersonalReceipt.self,from:Data(#"{"identifier":"old","evidence":"native result"}"#.utf8));#expect(old.verified);#expect(old.appClose==nil)
+        let full=try Self.token().receipt;#expect(try JSONDecoder().decode(PersonalReceipt.self,from:JSONEncoder().encode(full))==full)
+        let exact=PersonalApp(id:"exact",name:"The WhatsApp"),plain=PersonalApp(id:"plain",name:"WhatsApp")
+        #expect(try PersonalConversation.resolveApp("the WhatsApp",apps:[exact,plain]).id=="exact");#expect(try PersonalConversation.resolveApp("the WhatsApp",apps:[plain]).id=="plain")
+    }
+}
+
+extension PersonalCloseR3Tests {
+    @Test func earlierSuccessfulQuitCannotHideALaterPendingQuit() async throws {
+        let root=Self.root(),token=try Self.token(),runner=CloseR3Runner(token.receipt),gate=CloseR3Gate(),input=GInput()
+        runner.firstReceipt=try PersonalAppCloseObservation(bundleID:"com.apple.Safari",processes:[.init(pid:987653,seconds:99)],outcome:.closed).receipt
+        let store=PersonalRoutineStore(url:root.appendingPathComponent("routines.json"));_ = try store.save(.init(definition:.init(name:"Close apps",steps:[.init(tool:.closeApp,text:"com.apple.Safari"),.init(tool:.closeApp,text:token.bundleID)])))
+        let c=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:DictationPreferenceStore(defaults:UserDefaults(suiteName:UUID().uuidString)!),personalPlanner:FortyPlanner(),personalApps:{PersonalAgent40Tests.apps},personalMessageResolution:{$0});c.personalAgentQueueURL=root.appendingPathComponent("queue.json");c.personalToolRunner=runner;c.personalCloseObservation={await gate.observe($0)};defer{c.close();try? FileManager.default.removeItem(at:root)}
+        c.reviewAgentCommand("Run my Close apps routine");await c.waitForAgentPlanning();c.approveAgentPlan();await c.waitForAgentPlanning();await gate.waitForEntry()
+        let record=try #require(c.agentRecords.last);#expect(agentTaskStatusLabel(record)=="Quit pending");#expect(c.agentHUD=="Quit pending");#expect(runner.calls.count==2)
+        await gate.finish(try token.changing(.closed).receipt);await c.waitForCloseObservation(record.id)
+        #expect(c.agentRecords.last?.state == .completed);#expect(c.agentHUD=="App closed");#expect(runner.calls.count==2);#expect(input.starts==0)
     }
 }

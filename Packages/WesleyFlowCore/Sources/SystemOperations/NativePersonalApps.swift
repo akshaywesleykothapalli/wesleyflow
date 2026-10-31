@@ -57,17 +57,7 @@ import Domain
     }
     public static func close(_ id:String) async throws -> PersonalReceipt {
         _=try target(id)
-        let apps=NSRunningApplication.runningApplications(withBundleIdentifier:id)
-        if apps.isEmpty { return .init(identifier:id,evidence:"Application was already closed") }
-        for app in apps { _ = app.terminate() }
-        // Normal termination only: native save/download prompts stay under the user's control.
-        for _ in 0..<100 {
-            try Task.checkCancellation()
-            let originalsGone=apps.allSatisfy { $0.isTerminated || (Darwin.kill($0.processIdentifier,0) == -1 && errno == ESRCH) }
-            if originalsGone && NSRunningApplication.runningApplications(withBundleIdentifier:id).allSatisfy({ $0.isTerminated || (Darwin.kill($0.processIdentifier,0) == -1 && errno == ESRCH) }) { return .init(identifier:id,evidence:"Normal app termination observed; no force termination") }
-            try await Task.sleep(for:.milliseconds(100))
-        }
-        throw PersonalAgentError.verificationFailed
+        return try await NativeAppClosing.perform(id)
     }
     public static func searchURL(_ text:String,youtube:Bool) throws -> URL {
         guard !text.isEmpty,text.utf8.count<=2048 else { throw PersonalAgentError.invalidCommand }
