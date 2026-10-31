@@ -23,6 +23,7 @@ MANUAL_TESTS = [
 MIN_APP_CASES = 1374
 MIN_MODEL_LAB_TESTS = 152
 REQUIRED_APP_TESTS = {
+    'BravePortableContractTests/reviewedIdentityAndUntrustedTitleStayLiteralInProductionTemplate()',
     'PersonalCloseR3Tests/earlierSuccessfulQuitCannotHideALaterPendingQuit()',
     'PersonalCloseR3Tests/slowQuitReleasesForegroundThenReadOnlyObserverConfirms()',
     'PersonalCloseR3Tests/scopedLateProofCompletesOriginalOnlyAndNeverRunsRemainingSteps()',

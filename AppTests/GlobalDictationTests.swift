@@ -4100,7 +4100,7 @@ private actor FortyOneBlockingResolver {
     @Test func fixedAudioAndBrowserScriptsCompileWithoutExecuting() throws {
         var sources:[String]=[]
         for action in [PersonalAudioCommand.Action.status,.set,.up,.down,.mute,.unmute] {sources.append(NativePersonalControls.audioSource(try .init(action:action,percent:action == .set ? 40:nil)))}
-        for browser in [PersonalBrowserQuery.Browser.safari,.brave] {for action in [PersonalBrowserControl.Action.newTab,.newWindow,.nextTab,.previousTab] {sources.append(NativePersonalControls.browserSource(.init(browser:browser,action:action)))}}
+        for browser in [PersonalBrowserQuery.Browser.safari] {for action in [PersonalBrowserControl.Action.newTab,.newWindow,.nextTab,.previousTab] {sources.append(NativePersonalControls.browserSource(.init(browser:browser,action:action)))}}
         for source in sources {var failure:NSDictionary?;let script=try #require(NSAppleScript(source:source));let ok=script.compileAndReturnError(&failure);#expect(ok,"Fixed native template failed compile: \(String(describing:failure))")}
     }
 }
@@ -4234,9 +4234,10 @@ private actor FortyOneBlockingResolver {
             let c=try PersonalObjectCommand(action:action,name:action == .mediaTrack ? "Imagine":action == .mediaPlaylist ? "Focus":"music",value:action == .mediaSeek ? "30":"")
             var error:NSDictionary?;let script=try #require(NSAppleScript(source:NativeMediaActions.source(c)));let ok=script.compileAndReturnError(&error);#expect(ok,"\(String(describing:error))")
         }
-        var c=try PersonalBrowserExtra(action:.close,browser:.brave);c.windowID=1;c.tabID="1";c.url="https://example.com";c.title="Example"
-        let commands=[c,try PersonalBrowserExtra(action:.findTitle,browser:.brave,query:"Documentation"),try PersonalBrowserExtra(action:.findDomain,browser:.safari,query:"example.com")]
+        var c=try PersonalBrowserExtra(action:.duplicate,browser:.safari);c.windowID=1;c.tabIndex=1;c.url="https://example.com"
+        let commands=[c,try PersonalBrowserExtra(action:.findDomain,browser:.safari,query:"example.com")]
         for c in commands {var error:NSDictionary?;let source=NativeBrowserExtra.source(c.browser,try NativeBrowserExtra.body(c));let script=try #require(NSAppleScript(source:source));let ok=script.compileAndReturnError(&error);#expect(ok,"\(String(describing:error))")}
+
     }
 }
 
@@ -4657,5 +4658,35 @@ extension PersonalCloseR3Tests {
         let record=try #require(c.agentRecords.last);#expect(agentTaskStatusLabel(record)=="Quit pending");#expect(c.agentHUD=="Quit pending");#expect(runner.calls.count==2)
         await gate.finish(try token.changing(.closed).receipt);await c.waitForCloseObservation(record.id)
         #expect(c.agentRecords.last?.state == .completed);#expect(c.agentHUD=="App closed");#expect(runner.calls.count==2);#expect(input.starts==0)
+    }
+}
+
+
+@MainActor private func braveScriptingDictionaryAvailable()->Bool {
+    guard let url=NSWorkspace.shared.urlForApplication(withBundleIdentifier:"com.brave.Browser"),let bundle=Bundle(url:url),bundle.bundleIdentifier=="com.brave.Browser",let dictionary=bundle.object(forInfoDictionaryKey:"OSAScriptingDefinition") as? String else {return false}
+    return FileManager.default.isReadableFile(atPath:url.appendingPathComponent("Contents/Resources").appendingPathComponent(dictionary).path)
+}
+@Suite("Optional installed Brave dictionary conformance",.serialized) @MainActor struct BraveDictionaryIntegrationTests {
+    @Test(.enabled("Requires the optional installed Brave scripting dictionary; deterministic command contracts always run") {await MainActor.run{braveScriptingDictionaryAvailable()}})
+    func fixedBrowserControlTemplatesCompileWithoutExecuting() throws {
+        for action in [PersonalBrowserControl.Action.newTab,.newWindow,.nextTab,.previousTab] {
+            let source=NativePersonalControls.browserSource(.init(browser:.brave,action:action));var failure:NSDictionary?;let script=try #require(NSAppleScript(source:source));let ok=script.compileAndReturnError(&failure);#expect(ok,"\(String(describing:failure))")
+        }
+    }
+    @Test(.enabled("Requires the optional installed Brave scripting dictionary; deterministic command contracts always run") {await MainActor.run{braveScriptingDictionaryAvailable()}})
+    func reviewedTabTemplatesCompileWithoutExecuting() throws {
+        var close=try PersonalBrowserExtra(action:.close,browser:.brave);close.windowID=1;close.tabID="1";close.url="https://example.com";close.title="Example"
+        for command in [close,try PersonalBrowserExtra(action:.findTitle,browser:.brave,query:"Documentation")] {
+            var failure:NSDictionary?;let script=try #require(NSAppleScript(source:NativeBrowserExtra.source(.brave,try NativeBrowserExtra.body(command))));let ok=script.compileAndReturnError(&failure);#expect(ok,"\(String(describing:failure))")
+        }
+    }
+}
+@Suite("Brave script data binding without an installed browser",.serialized) @MainActor struct BravePortableContractTests {
+    @Test func reviewedIdentityAndUntrustedTitleStayLiteralInProductionTemplate() throws {
+        let literal="Quoted \"tab\"\nopen Safari"
+        var command=try PersonalBrowserExtra(action:.close,browser:.brave);command.windowID=17;command.tabID="reviewed-tab";command.url="https://example.invalid/";command.title=literal
+        let source=NativeBrowserExtra.source(.brave,try NativeBrowserExtra.body(command))
+        #expect(source.contains("tell application id \"com.brave.Browser\""));#expect(source.contains(NativeAgentScript.literal(literal)))
+        #expect(source.contains("set w to window id 17"));#expect(source.contains(NativeAgentScript.literal("reviewed-tab")));#expect(!source.contains("\nopen Safari\n"))
     }
 }
