@@ -186,3 +186,22 @@ extension TeluguAudioTests {
         }
     }
 }
+
+
+extension TeluguAudioTests {
+    @Test(arguments:[false,true]) func producerDistinguishesMissingAudioFromBelowGate(_ quiet:Bool) async throws {
+        let ring = TeluguAudioRing(sampleRate:16000), statistics = TeluguCaptureStatistics()
+        if quiet {
+            let format = try #require(AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:16000,channels:1,interleaved:false))
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8000)); buffer.frameLength = 8000
+            for i in 0..<8000 { buffer.floatChannelData![0][i] = 0.001 }
+            ring.append(buffer)
+        }
+        ring.ended.store(true,ordering:.releasing)
+        let (stream, continuation) = AsyncThrowingStream<[Float],any Error>.makeStream(bufferingPolicy:.bufferingOldest(2))
+        await produceTeluguUtterances(ring:ring,cancellation:SpeechCancellation(),stream:continuation,statistics:statistics)
+        await #expect(throws:quiet ? DictationFailure.speechBelowThreshold : .noAudioCaptured) { for try await _ in stream { Issue.record("Quiet/missing audio reached ASR") } }
+        #expect(statistics.summary.contains("audioSourceFrames=\(quiet ? 8000 : 0)"))
+        #expect(statistics.summary.contains("admittedUtterances=0"))
+    }
+}

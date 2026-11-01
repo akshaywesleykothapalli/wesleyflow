@@ -131,7 +131,13 @@ import VoiceInput
             if coordinator.busy || coordinator.phase == .error || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil {
                 VStack(alignment:.leading,spacing:8) {
                     if coordinator.busy { HStack { Text(coordinator.message).font(.callout); Spacer(); Button("Cancel dictation") { coordinator.cancel() } } }
-                    if coordinator.phase == .error && !coordinator.clipboardPending { Text(coordinator.message).font(.callout).foregroundStyle(.orange) }
+                    if coordinator.phase == .error && !coordinator.clipboardPending {
+                        Text(coordinator.message).font(.callout).foregroundStyle(.orange)
+                        HStack {
+                            Button("Language & microphone settings") { page = .general }
+                            Button("Copy speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
+                        }
+                    }
                     if coordinator.clipboardPending {
                         Text("A paste remains unverified. Its clipboard backup is retained.").font(.callout).foregroundStyle(.orange)
                         Button("Review clipboard restoration…") { recoveryID = coordinator.clipboardRecoveryID; confirmRestore = recoveryID != nil }.disabled(coordinator.busy)
@@ -514,9 +520,50 @@ import VoiceInput
             Text("History is local plaintext protected by your account and may appear in backups. No raw audio or target-field contents are saved. Retention controls are in General.").font(.caption).foregroundStyle(.secondary)
         }
     }
+    private var languageSettings: some View {
+        FlowSettingsGroup("Dictation") {
+            FlowSettingsRow("Language",description:"Choose the language you want to dictate.") {
+                Picker("Dictation language",selection:$coordinator.preferences.languageMode) {
+                    Text("English").tag(DictationLanguageMode.english)
+                    Text("Telugu (Romanised)").tag(DictationLanguageMode.teluguRomanised)
+                }.pickerStyle(.menu).disabled(coordinator.busy).accessibilityIdentifier("wesley.dictationLanguage")
+            }
+            if coordinator.preferences.languageMode == .teluguRomanised {
+                FlowSettingsRow("Recognise",description:"Use Telugu only for Telugu speech, or Auto for Telugu and English.") {
+                    Picker("Recognition language",selection:$coordinator.preferences.teluguRecognitionLanguage) {
+                        ForEach(TeluguRecognitionLanguage.allCases,id:\.self) { Text($0.label).tag($0) }
+                    }.pickerStyle(.menu).disabled(coordinator.busy)
+                }
+            }
+                FlowSettingsRow("Hold to talk",description:"Native modifier choices; chords cancel rather than steal typing.") { Picker("Hold-to-talk key",selection:Binding(get:{ coordinator.preferences.activationKey },set:{ coordinator.changeActivationKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy) }
+                FlowSettingsRow("Hold-to-talk dictation") { Button(coordinator.shortcutEnabled ? "Disable" : "Enable") { if coordinator.shortcutEnabled { coordinator.disableShortcut() } else { coordinator.enableShortcut() } }.accessibilityLabel(coordinator.shortcutEnabled ? "Disable hold-to-talk dictation" : "Enable hold-to-talk dictation") }
+        }
+    }
     private var generalPage: some View {
         FlowPage {
-            FlowSettingsGroup("General") {
+            languageSettings
+            FlowSettingsGroup("Appearance & startup") {
+                FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
+                if loginItem.status == .requiresApproval { FlowSettingsRow("Login approval") { Button("Open Login Items") { loginItem.openSettings() } } }
+                FlowSettingsRow("Appearance") { Picker("Appearance",selection:$coordinator.preferences.appearance) { ForEach(DictationAppearance.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu) }
+                FlowSettingsRow("Show dictation pill") { Toggle("Show dictation pill",isOn:$coordinator.preferences.showPill) }
+                FlowSettingsRow("Show clickable pill while idle") { Toggle("Show clickable pill while idle",isOn:$coordinator.preferences.idlePillEnabled) }
+            }
+            FlowSettingsGroup("Permissions") {
+                FlowSettingsRow("Microphone",description:coordinator.microphoneStatus) { Button("Open Settings") { openPrivacy("Privacy_Microphone") } }
+                FlowSettingsRow("Accessibility",description:coordinator.accessibilityAllowed ? "Allowed" : "Needed for inserting text") { Button("Open Settings") { openPrivacy("Privacy_Accessibility") } }
+                if coordinator.preferences.languageMode == .english {
+                    FlowSettingsRow("Speech recognition",description:coordinator.speechStatus) { Button("Open Settings") { openPrivacy("Privacy_SpeechRecognition") } }
+                }
+            }
+            FlowSettingsGroup("History") {
+                FlowSettingsRow("Save dictation history on this Mac") { Toggle("Save dictation history on this Mac",isOn:$coordinator.preferences.keepHistory) }
+                FlowSettingsRow("Saved dictations",description:"Raw/cleaned text, app name, duration and outcome. Up to 2,000 entries /100 MiB; disabling does not delete saved entries.") { Button("Clear all history…",role:.destructive) { confirmClear = true }.disabled(coordinator.busy || coordinator.entries.isEmpty) }
+            }
+            DisclosureGroup("Advanced settings") {
+                VStack(alignment:.leading,spacing:18) {
+                    advancedSpeechSettings
+                    FlowSettingsGroup("Command & AI shortcuts") {
                 FlowSettingsRow("Agent hold-to-talk",description:coordinator.agentShortcutStatus) {
                     Toggle("Enable Agent shortcut",isOn:Binding(get:{ coordinator.preferences.agentHotkeyEnabled },set:{ if $0 { coordinator.enableAgentShortcut() } else { coordinator.disableAgentShortcut() } })).disabled(coordinator.busy)
                 }
@@ -524,24 +571,28 @@ import VoiceInput
                 FlowSettingsRow("Agent key",description:"Separate from dictation. Chords cancel. Check other apps for custom modifier bindings.") {
                     Picker("Agent key",selection:Binding(get:{ coordinator.preferences.agentKey },set:{ coordinator.changeAgentKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
                 }
-                FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
-                if loginItem.status == .requiresApproval { FlowSettingsRow("Login approval") { Button("Open Login Items") { loginItem.openSettings() } } }
-                FlowSettingsRow("Appearance") { Picker("Appearance",selection:$coordinator.preferences.appearance) { ForEach(DictationAppearance.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu) }
-                FlowSettingsRow("Show dictation pill") { Toggle("Show dictation pill",isOn:$coordinator.preferences.showPill) }
-                FlowSettingsRow("Show clickable pill while idle") { Toggle("Show clickable pill while idle",isOn:$coordinator.preferences.idlePillEnabled) }
-            }
-            FlowSettingsGroup("Speech engine") {
-                FlowSettingsRow("Dictation mode",description:"English keeps the current Apple engine and Mac language. Telugu runs multilingual Whisper Small locally. Agent capture keeps its current engine.") {
-                    Picker("Dictation mode",selection:$coordinator.preferences.languageMode) { ForEach(DictationLanguageMode.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
-                }
-                if coordinator.preferences.languageMode == .teluguRomanised {
-                    FlowSettingsRow("Recognition language",description:"Automatic uses multilingual recognition for English and a Telugu specialist for Telugu. Telugu only skips detection; English-only speech can be less accurate.") {
-                        Picker("Recognition language",selection:$coordinator.preferences.teluguRecognitionLanguage) { ForEach(TeluguRecognitionLanguage.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
+                FlowSettingsRow("Preview shortcuts",description:"Option+1 requests in-place Smart Polish; Option+2 requests in-place Prompt Engineering. Both show only the pill, including errors and disabled in-place mode. No editor opens. May override application shortcuts.") { Toggle("Enable preview shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
+                FlowSettingsRow("Registration",description:coordinator.previewShortcutStatus) { Button("Retry") { coordinator.configurePreviewShortcuts() }.disabled(!coordinator.preferences.previewShortcutsEnabled) }
+                #if DEBUG
+                Text(coordinator.verificationDiagnosticSummary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).accessibilityLabel("Text verification diagnostics; metadata only")
+                #endif
                     }
-                    FlowSettingsRow("Offline Telugu model",description:"Telugu specialist: 264.5 MB. Automatic mode also needs multilingual Small (487.6 MB). Both are verified before use; see the setup guide.") { Text(FileManager.default.fileExists(atPath:WhisperTeluguSmallModel.installedURL.path) ? "Specialist present · verified on load" : "Specialist not installed").foregroundStyle(.secondary) }
+                    Text("Fn can conflict with macOS emoji/Dictation. Set Keyboard → Press Globe key to → Do Nothing if needed.").font(.caption).foregroundStyle(.secondary)
+                }.padding(.top,12)
+            }
+            if let error = coordinator.settingsError { Text(error).foregroundStyle(.orange) }
+        }.onAppear { loginItem.refresh(); coordinator.refreshPermissions() }
+    }
+    private var advancedSpeechSettings: some View {
+        FlowSettingsGroup("Speech details") {
+            if coordinator.preferences.languageMode == .teluguRomanised {
+                FlowSettingsRow("Offline Telugu model",description:"Auto also needs multilingual Small. Files are verified before use.") {
+                    Text(FileManager.default.fileExists(atPath:WhisperTeluguSmallModel.installedURL.path) ? "Installed" : "Not installed").foregroundStyle(.secondary)
                 }
+            }
                 FlowSettingsRow("Recognition engine",description:coordinator.preferences.languageMode == .teluguRomanised ? "Local Small models; Telugu speech uses the Telugu specialist." : "Installed modern engines are preferred. Legacy compatibility can stop at about one minute; continuous long dictation requires modern resources.") { Text(coordinator.busy ? (coordinator.engine?.engine ?? "Preparing capture") : (coordinator.preferences.languageMode == .teluguRomanised ? "Local Telugu Small pipeline" : (coordinator.speechConfiguration?.recommendedEngineLabel ?? "Inspect availability"))).foregroundStyle(.secondary) }
                 if let actual = coordinator.engine { FlowSettingsRow("Last capture engine",description:"Actual engine: \(actual.engine). Actual recognition language: \(actual.localeIdentifier).") { Text(actual.localeIdentifier).foregroundStyle(.secondary) } }
+            if coordinator.preferences.languageMode == .english {
                 FlowSettingsRow("Language") { Text(Locale.current.localizedString(forIdentifier:coordinator.localeIdentifier) ?? coordinator.localeIdentifier).foregroundStyle(.secondary) }
                 FlowSettingsRow("Installed speech assets",description:"Inspection never downloads. Install explicitly requests Apple language resources; macOS may continue or retry that request in the background.") { Button("Inspect availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking) }
                 if let speech = coordinator.speechConfiguration {
@@ -560,6 +611,7 @@ import VoiceInput
                         }
                     }
                 }
+            }
                 FlowSettingsRow("Speech diagnostics",description:coordinator.speechFailureDiagnostics?.failureDescription ?? "Metadata only: provider, locale, capture timing, native error codes and delivery counters. No text or audio.") {
                     Button("Copy speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
                 }
@@ -570,31 +622,7 @@ import VoiceInput
                         Button("Stop waiting") { coordinator.stopWaitingForSpeechResources() }
                     }
                 }
-                FlowSettingsRow("Ollama models",description:"Metadata only; inference stays gated.") { Button("Inspect metadata") { Task { await coordinator.inspectModels() } }.disabled(coordinator.busy) }
-                ForEach(coordinator.modelInventory,id:\.name) { model in FlowSettingsRow(model.name) { Text("Installed · inference gated").foregroundStyle(.secondary) } }
-            }
-            Text(coordinator.modelStatus).font(.caption).foregroundStyle(.secondary)
-            FlowSettingsGroup("Permissions") {
-                FlowSettingsRow("Microphone",description:coordinator.microphoneStatus) { Button("Open Settings") { openPrivacy("Privacy_Microphone") } }
-                FlowSettingsRow("Accessibility",description:coordinator.accessibilityAllowed ? "Allowed" : "Needed") { Button("Open Settings") { openPrivacy("Privacy_Accessibility") } }
-                FlowSettingsRow("Speech recognition",description:coordinator.speechStatus) { Button("Open Settings") { openPrivacy("Privacy_SpeechRecognition") } }
-            }
-            FlowSettingsGroup("Shortcuts") {
-                FlowSettingsRow("Hold to talk",description:"Native modifier choices; chords cancel rather than steal typing.") { Picker("Hold-to-talk key",selection:Binding(get:{ coordinator.preferences.activationKey },set:{ coordinator.changeActivationKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy) }
-                FlowSettingsRow("Hold-to-talk dictation") { Button(coordinator.shortcutEnabled ? "Disable" : "Enable") { if coordinator.shortcutEnabled { coordinator.disableShortcut() } else { coordinator.enableShortcut() } }.accessibilityLabel(coordinator.shortcutEnabled ? "Disable hold-to-talk dictation" : "Enable hold-to-talk dictation") }
-                FlowSettingsRow("Preview shortcuts",description:"Option+1 requests in-place Smart Polish; Option+2 requests in-place Prompt Engineering. Both show only the pill, including errors and disabled in-place mode. No editor opens. May override application shortcuts.") { Toggle("Enable preview shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
-                FlowSettingsRow("Registration",description:coordinator.previewShortcutStatus) { Button("Retry") { coordinator.configurePreviewShortcuts() }.disabled(!coordinator.preferences.previewShortcutsEnabled) }
-                #if DEBUG
-                Text(coordinator.verificationDiagnosticSummary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).accessibilityLabel("Text verification diagnostics; metadata only")
-                #endif
-            }
-            Text("Fn can conflict with macOS emoji/Dictation. Right modifiers can conflict with app shortcuts. No system shortcut is changed. Set Keyboard → Press Globe key to → Do Nothing if needed.").font(.caption).foregroundStyle(.secondary)
-            FlowSettingsGroup("History") {
-                FlowSettingsRow("Save dictation history on this Mac") { Toggle("Save dictation history on this Mac",isOn:$coordinator.preferences.keepHistory) }
-                FlowSettingsRow("Saved dictations",description:"Raw/cleaned text, app name, duration and outcome. Up to 2,000 entries /100 MiB; disabling does not delete saved entries.") { Button("Clear all history…",role:.destructive) { confirmClear = true }.disabled(coordinator.busy || coordinator.entries.isEmpty) }
-            }
-            if let error = coordinator.settingsError { Text(error).foregroundStyle(.orange) }
-        }.onAppear { loginItem.refresh(); coordinator.refreshPermissions() }
+        }
     }
     private func openPrivacy(_ pane: String) { if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?"+pane) { NSWorkspace.shared.open(url) } }
 }

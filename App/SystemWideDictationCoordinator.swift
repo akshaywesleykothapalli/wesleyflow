@@ -54,6 +54,7 @@ import VoiceInput
     @Published private(set) var insertionDispatchResult:PipelineResult = .notStarted
     private var destinationBundleIdentifier:String?
     private var speechFailureCode = "NONE"
+    private var terminalSpeechFailure:DictationFailure?
     @Published private(set) var unmergedSpeechRecoveryEntry: DictationHistoryEntry?
     @Published private(set) var speechFailureDiagnostics: DictationSpeechDiagnostics?
     @Published private(set) var speechRunDiagnostics: [String] = []
@@ -64,6 +65,7 @@ import VoiceInput
         return "45A-R3 / speech38L3R3 build=\(build) pid=\(ProcessInfo.processInfo.processIdentifier) executable=\(executable) hotkeyHeldObservedNow=\(shortcutHeld) · "
             + "agentStartupMs=" + (agentStartupMilliseconds.map(String.init) ?? "unmeasured") + " · "
             + (current?.summary ?? "speechTelemetry=unavailable")
+            + "\nCapture: " + ((input as? any DictationCaptureReporting)?.captureDiagnosticSummary ?? "unavailable")
             + "\nDestination binding: " + destinationBindingSummary
             + "\nCurrent inspected resources: " + (speechConfiguration.map { value in
                 "requestedLocale=\(value.locale) speechAvailable=\(value.speech.deviceAvailable) speechState=\(value.speech.state.rawValue) speechInventory=\(value.speech.inventoryStatus) dictationState=\(value.dictation.state.rawValue) dictationInventory=\(value.dictation.inventoryStatus)"
@@ -73,6 +75,7 @@ import VoiceInput
             + "\nRecent terminal metadata (no text/audio):\n" + speechRunDiagnostics.joined(separator:"\n")
     }
     private func recordSpeechRun(_ kind: String, failure: DictationFailure? = nil, stage: DictationSpeechStage? = nil) {
+        if let failure { terminalSpeechFailure = failure }
         let captured = (input as? any DictationCaptureReporting)?.speechDiagnostics
         var value = captured ?? DictationSpeechDiagnostics()
         if captured == nil { value.preservedBytes = raw.utf8.count }
@@ -1466,7 +1469,7 @@ import VoiceInput
         cancelInPlaceRewrite()
         audioCaptureResult = .pending; transcriptionResult = .pending; targetCaptureResult = .notStarted
         targetValidationResult = .notStarted; pasteboardLeaseResult = .notStarted; insertionDispatchResult = .notStarted
-        destinationBundleIdentifier = nil; speechFailureCode = "NONE"; speechFailureDiagnostics = nil; unmergedSpeechRecoveryEntry = nil
+        destinationBundleIdentifier = nil; speechFailureCode = "NONE"; terminalSpeechFailure = nil; speechFailureDiagnostics = nil; unmergedSpeechRecoveryEntry = nil
         diagnosticOperation = UUID().uuidString; captureElapsedMilliseconds = nil; insertionElapsedMilliseconds = nil
         activeCaptureDiagnostics = []; insertionTraceSummary = "No insertion readback for this operation"
         insertionLookupSummary = "No shortcut receipt lookup"; verificationDetail = "No rewrite verification for this operation"
@@ -1649,7 +1652,14 @@ import VoiceInput
         }
         guard !cleaned.isEmpty else {
             input.cancel(); session = nil; destination = nil; phase = forced?.outcome == .cancelled ? .idle : .error
-            message = forced?.outcome == .cancelled ? "Cancelled. Nothing inserted." : (speechFailureDiagnostics?.failureDescription ?? "No speech was recognized. Try again or check microphone permission.")
+            if forced?.outcome == .cancelled { message = "Cancelled. Nothing inserted." }
+            else if forced?.reason == .deadline { message = DictationModel.description(.timedOut) }
+            else if forced?.reason == .speechFailed, let failure = terminalSpeechFailure {
+                message = activeLanguageMode == .teluguRomanised ? DictationModel.description(failure) : (speechFailureDiagnostics?.failureDescription ?? DictationModel.description(failure))
+            } else if forced?.reason != .speechFailed {
+                message = speechFailureDiagnostics?.failureDescription ?? "No words were recognised. Hold the dictation key until the waveform appears, speak, then release. Check General → Language and the Mac’s selected sound input."
+            }
+            // A provider failure already supplied its specific error; do not overwrite it with an empty-result warning.
             return
         }
         phase = .inserting; message = "Checking the original target and insertion result…"

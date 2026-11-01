@@ -128,8 +128,32 @@ private final class TeluguPCMConverter {
     }
 }
 
+/// Worker-only measurements; the real-time tap never takes this lock or stores audio here.
+final class TeluguCaptureStatistics: Sendable {
+    private struct Counts: Sendable { var sourceFrames = 0, modelFrames = 0, utterances = 0; var energy = 0.0, peak = 0.0 }
+    private let counts = Mutex(Counts())
+    func record(sourceFrames:Int, converted:[Float], utterances:Int) {
+        let energy = converted.reduce(0.0) { $0 + Double($1)*Double($1) }
+        let peak = converted.reduce(0.0) { max($0,abs(Double($1))) }
+        counts.withLock { value in
+            value.sourceFrames += sourceFrames; value.modelFrames += converted.count; value.utterances += utterances
+            value.energy += energy; value.peak = max(value.peak,peak)
+        }
+    }
+    var emptyCaptureFailure: DictationFailure? {
+        counts.withLock { $0.sourceFrames == 0 ? .noAudioCaptured : ($0.utterances == 0 ? .speechBelowThreshold : nil) }
+    }
+    var summary: String {
+        counts.withLock { value in
+            let rms = value.modelFrames == 0 ? 0 : sqrt(value.energy/Double(value.modelFrames))
+            return "audioSourceFrames=\(value.sourceFrames) audio16kFrames=\(value.modelFrames) admittedUtterances=\(value.utterances) audioRMS=\(rms) audioPeak=\(value.peak)"
+        }
+    }
+}
+
 nonisolated func produceTeluguUtterances(ring: TeluguAudioRing, cancellation: SpeechCancellation,
                                         stream: AsyncThrowingStream<[Float],any Error>.Continuation,
+                                        statistics: TeluguCaptureStatistics = TeluguCaptureStatistics(),
                                         onFailure: @Sendable (DictationFailure) -> Void = { _ in }) async {
     do {
         let converter = try TeluguPCMConverter(rate:ring.sampleRate)
@@ -140,7 +164,9 @@ nonisolated func produceTeluguUtterances(ring: TeluguAudioRing, cancellation: Sp
             if final && ring.isWriting { try await Task.sleep(for:.milliseconds(1)); continue }
             let samples = ring.drain()
             let converted = try converter.convert(samples,final:final)
-            for utterance in segmenter.append(converted,final:final) {
+            let utterances = segmenter.append(converted,final:final)
+            statistics.record(sourceFrames:samples.count,converted:converted,utterances:utterances.count)
+            for utterance in utterances {
                 switch stream.yield(utterance) {
                 case .enqueued: break
                 case .dropped: throw DictationFailure.overflow
@@ -148,7 +174,10 @@ nonisolated func produceTeluguUtterances(ring: TeluguAudioRing, cancellation: Sp
                 @unknown default: throw DictationFailure.overflow
                 }
             }
-            if final { stream.finish(); return }
+            if final {
+                if let failure = statistics.emptyCaptureFailure { throw failure }
+                stream.finish(); return
+            }
             try await Task.sleep(for:.milliseconds(20))
         }
         throw CancellationError()

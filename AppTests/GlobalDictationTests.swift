@@ -4806,3 +4806,19 @@ extension TeluguCoordinatorTests {
         c.close()
     }
 }
+
+
+extension TeluguCoordinatorTests {
+    @Test(arguments:[DictationFailure.unsupportedRecognitionScript,.repetitiveRecognition,.recognitionFailed,.audioUnavailable,.noAudioCaptured,.speechBelowThreshold,.noSpeechRecognized])
+    func emptyFailedCapturePreservesSpecificErrorAndNeverInserts(_ failure:DictationFailure) async {
+        let input = GInput(), capture = GCapture(), shortcut = GShortcut()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:shortcut,preferenceStore:preferences())
+        c.preferences.keepHistory = false; c.preferences.languageMode = .teluguRomanised
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        shortcut.receive?(.released); input.receive?(.failed(failure)); input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        #expect(c.phase == .error); #expect(c.message == DictationModel.description(failure))
+        #expect(capture.target?.replacements == 0); #expect(c.transcriptionResult == .failed)
+        c.close()
+    }
+}

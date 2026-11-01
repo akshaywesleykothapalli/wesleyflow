@@ -19,8 +19,9 @@ import Domain
     private var requestedLanguage:TeluguRecognitionLanguage = .automatic
     public var speechDiagnostics:DictationSpeechDiagnostics? { nil }
     public var captureDiagnosticSummary:String {
-        "localWhisper=true asrRevision=te-quality-r2 capturePhase=\(capturePhase) policy=\(requestedLanguage.rawValue) inputRate=\(sourceRate) inputChannels=\(sourceChannels) modelRate=16000 " + lastRecognition
+        "localWhisper=true asrRevision=te-quality-r2 capturePhase=\(capturePhase) policy=\(requestedLanguage.rawValue) inputRate=\(sourceRate) inputChannels=\(sourceChannels) modelRate=16000 " + lastRecognition + " " + captureStatistics.summary
     }
+    private var captureStatistics = TeluguCaptureStatistics()
     private var configurationObserver: (any NSObjectProtocol)?
     public var language:TeluguRecognitionLanguage = .automatic
     public init(recognizer:any LocalPCMRecognizing = TeluguWhisperPipeline(), exclusiveCapture:@escaping @MainActor () throws -> Void = {}, microphoneAccess:(@MainActor () async -> Bool)? = nil) {
@@ -39,6 +40,8 @@ import Domain
         try exclusiveCapture()
         let id = UUID(), cancellation = SpeechCancellation(), language = language
         self.session = id; self.cancellation = cancellation; self.receive = receive; stopping = false
+        captureStatistics = TeluguCaptureStatistics()
+        let statistics = captureStatistics
         capturePhase = "preparing"; lastRecognition = "decode=notStarted"; sourceRate = 0; sourceChannels = 0; requestedLanguage = language
         do {
             // Hash/load off the main actor, before permission prompts or microphone capture.
@@ -57,7 +60,7 @@ import Domain
             engine.inputNode.installTap(onBus:0,bufferSize:1024,format:format,
                 block:TeluguNativeCallbacks.tap(ring:ring,meter:meter))
             producer = Task.detached { [weak self] in
-                await produceTeluguUtterances(ring:ring,cancellation:cancellation,stream:continuation,onFailure:{ [weak self] error in
+                await produceTeluguUtterances(ring:ring,cancellation:cancellation,stream:continuation,statistics:statistics,onFailure:{ [weak self] error in
                     Task { @MainActor [weak self] in self?.fail(error,id:id) }
                 })
             }
@@ -78,6 +81,7 @@ import Domain
                     }
                     guard let self, self.session == id, !cancellation.isCancelled, !Task.isCancelled else { return }
                     guard self.stopping else { throw DictationFailure.providerEnded }
+                    guard !transcript.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { throw DictationFailure.noSpeechRecognized }
                     let callback = self.receive; self.capturePhase = "complete"; self.clearCapture(cancel:true); self.session = nil; self.receive = nil
                     callback?(.finished)
                 } catch {

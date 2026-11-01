@@ -3,6 +3,7 @@ public enum DictationFailure: Error, Sendable, Equatable {
     case microphoneDenied, speechDenied, unavailable, assetsMissing, audioUnavailable
     case busy, recognitionFailed, overflow, timedOut, providerEnded, anotherInstance
     case unsupportedRecognitionScript, repetitiveRecognition
+    case noAudioCaptured, speechBelowThreshold, noSpeechRecognized
 }
 public struct DictationInfo: Sendable, Equatable {
     public let engine: String
@@ -110,6 +111,9 @@ public struct DictationSpeechDiagnostics: Codable, Sendable, Equatable {
         if failure == "assetsMissing" || failure == "unavailable" { return "Speech assets missing" }
         if failure == "busy" { return "Speech busy" }
         if failure == "audioUnavailable" { return "Microphone unavailable" }
+        if failure == "noAudioCaptured" { return "No microphone audio" }
+        if failure == "speechBelowThreshold" { return "Audio below speech threshold" }
+        if failure == "noSpeechRecognized" { return "Local model returned no words" }
         if failure == "unsupportedRecognitionScript" { return "Wrong recognition script" }
         if failure == "repetitiveRecognition" { return "Recognition repeated" }
         if stage == .modernPreparation { return "Speech preparation failed" }
