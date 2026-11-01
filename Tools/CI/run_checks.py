@@ -23,6 +23,14 @@ MANUAL_TESTS = [
 MIN_APP_CASES = 1374
 MIN_MODEL_LAB_TESTS = 152
 REQUIRED_APP_TESTS = {
+    'FlowAgentControlTests/shortcutDuringCaptureExplainsBusyWithoutInterruptingAudio()',
+    'FlowAgentControlTests/pendingNoteReplyKeepsLanguageWordsLiteral()',
+    'OfflineRewriteProviderTests/readinessNeverGeneratesAndExplainsIndependentBlockers()',
+    'OfflineRewriteProviderTests/readinessObservationFailureNeverGenerates()',
+    'FlowAgentControlTests/spokenLanguageCommandChangesOnlyNextDictationWithoutInsertion()',
+    'FlowAgentControlTests/ordinaryDictationAndBusyRequestsNeverChangeLanguage()',
+    'FlowAgentControlTests/navigationAndHistoryPreferenceNeverDeleteSavedEntries()',
+    'InPlaceRewriteTests/exactBlockerPersistsAfterPillWithoutPreviewOrGeneration(_:)',
     'TeluguCoordinatorTests/emptyFailedCapturePreservesSpecificErrorAndNeverInserts(_:)',
     'TeluguCoordinatorTests/rejectedRecognitionNeverReachesTheInsertionService(_:)',
     'TeluguCoordinatorTests/teluguStartupShowsPreparationUntilAudioIsReadyAndEnglishStaysQuiet()',

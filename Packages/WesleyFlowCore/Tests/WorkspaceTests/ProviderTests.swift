@@ -830,3 +830,44 @@ private actor PromptPlanFixture: NativeRewriteGenerating {
         #expect(delivery.accept(.released(.polish),originFocus:42,currentFocus:42,age:0,blocked:false) == nil)
     }
 }
+
+extension OfflineRewriteProviderTests {
+    @Test func readinessNeverGeneratesAndExplainsIndependentBlockers() async {
+        let driver = RewriteTestGenerator(), memory = RewriteTestMemory()
+        let provider = AppleTranscriptRewriter(memory:memory,clock:RewriteTestClock(),generator:driver)
+        #expect(await provider.inspectReadiness(localeIdentifier:"en-IN").status == .ready)
+        #expect(await provider.inspectReadiness(localeIdentifier:"te-IN").status == .unsupportedLanguage)
+        await memory.block()
+        let blocked = await provider.inspectReadiness(localeIdentifier:"en-IN")
+        #expect(blocked.status == .resourcesBlocked); #expect(blocked.explanation.contains("3.00 GiB")); #expect(blocked.explanation.contains("4 GiB"))
+        await driver.configure(available:false)
+        #expect(await provider.inspectReadiness(localeIdentifier:"en-IN").status == .modelUnavailable)
+        #expect(await driver.calls == 0)
+    }
+    @Test func readinessObservationFailureNeverGenerates() async {
+        let driver = RewriteTestGenerator()
+        let provider = AppleTranscriptRewriter(memory:UnavailableMemoryCounters(),clock:RewriteTestClock(),generator:driver)
+        #expect(await provider.inspectReadiness(localeIdentifier:"en-IN").status == .observationFailed)
+        #expect(await driver.calls == 0)
+    }
+}
+
+@Suite("Opt-in guarded native AI shortcut diagnostic",.serialized) struct NativeAIShortcutDiagnosticTests {
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_DIAGNOSTIC"] == "1"))
+    func inspectThenConditionallyGenerateSyntheticTextOnly() async throws {
+        let provider = AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:SystemTaskClock())
+        let readiness = await provider.inspectReadiness(localeIdentifier:"en-IN")
+        print("AI_PROBE readiness=\(readiness.status.rawValue) explanation=\(readiness.explanation)")
+        guard readiness.status == .ready else { print("AI_PROBE generation=notAttempted"); return }
+        let request = OfflineRewriteRequest(id:UUID().uuidString,text:"um please check the save button and tell me what you find",localeIdentifier:"en-IN")
+        let result = await provider.rewrite(request)
+        print("AI_PROBE polish=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
+        guard result.status == .rewritten || result.status == .unchanged else { #expect(result.text == request.text); return }
+        try ProtectedRewriteText(request).validateRestored(result.text)
+        let prompt = OfflineRewriteRequest(id:UUID().uuidString,text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
+        let structured = await provider.rewrite(prompt)
+        print("AI_PROBE prompt=\(structured.status.rawValue) reason=\(structured.reason) elapsedMs=\(structured.elapsedMilliseconds)")
+        if structured.status == .rewritten || structured.status == .unchanged { try PromptEngineeringContract(prompt).validateRendered(structured.text) }
+        else { #expect(structured.text == prompt.text) }
+    }
+}

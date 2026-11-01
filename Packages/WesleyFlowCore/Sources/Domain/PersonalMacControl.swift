@@ -19,7 +19,7 @@ public struct PersonalMacControl:Codable,Sendable,Equatable {
         if ["increase the brightness","increase brightness","brightness up"].contains(text) {action = .brightnessUp}
         if ["dim the screen","decrease brightness","brightness down","lower the brightness"].contains(text) {action = .brightnessDown}
         if text=="turn on low power mode" {action = .lowPower}
-        if ["what is my battery level","what's my battery level","battery status","check battery"].contains(text) {action = .battery}
+        if ["what is my battery level","what's my battery level","battery status","check battery","show battery status","how much battery is left"].contains(text) {action = .battery}
         if text.hasPrefix("set brightness to ") {
             let number=String(text.dropFirst(18)).replacingOccurrences(of:" percent",with:"").replacingOccurrences(of:"%",with:"")
             let words=["zero":0,"ten":10,"twenty":20,"thirty":30,"forty":40,"fifty":50,"sixty":60,"seventy":70,"eighty":80,"ninety":90,"one hundred":100]

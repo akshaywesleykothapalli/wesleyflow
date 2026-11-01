@@ -10,7 +10,11 @@ import VoiceInput
     enum Phase: String, CaseIterable { case idle, preparing, recording, finalizing, inserting, success, error }
     @Published private(set) var phase: Phase = .idle
     enum InPlaceHUD: Equatable { case idle, polishing, structuring, success, error }
-    @Published private(set) var inPlaceHUD: InPlaceHUD = .idle
+    @Published private(set) var lastAIShortcutFailure:String?
+    @Published private(set) var inPlaceHUD: InPlaceHUD = .idle { didSet {
+        if inPlaceHUD == .error { lastAIShortcutFailure = message }
+        else if inPlaceHUD == .success { lastAIShortcutFailure = nil }
+    } }
     @Published private(set) var hudFeedbackVisible = false
     @Published private(set) var audioBars = [Double](repeating:0,count:7)
     private var meterTask: Task<Void,Never>?
@@ -631,6 +635,46 @@ import VoiceInput
         if oldValue.previewShortcutsEnabled != preferences.previewShortcutsEnabled || oldValue.offlineAIRewriting != preferences.offlineAIRewriting || oldValue.promptEngineeringEnabled != preferences.promptEngineeringEnabled || oldValue.activationKey != preferences.activationKey || oldValue.holdFnEnabled != preferences.holdFnEnabled { configurePreviewShortcuts() }
     } }
     @Published private(set) var languagePreparationStatus = ""
+    @Published private(set) var flowPageRequest:DictationPage?
+    @Published private(set) var flowPageRequestID = UUID()
+    @Published private(set) var rewriteReadinessNotice = "Not checked. This does not inspect editor contents or start generation."
+    @Published private(set) var checkingRewriteReadiness = false
+    var inPlaceReadinessDescription:String {
+        if !preferences.previewShortcutsEnabled { return "Option+1/2 are disabled. Enable AI shortcuts below." }
+        if !preferences.inPlaceAIRewrite { return "In-place rewrite is disabled. Enable it before dictating a new sentence." }
+        if !preferences.offlineAIRewriting && !preferences.promptEngineeringEnabled { return "Smart Polish and Prompt Engineering are disabled." }
+        if insertion.hasPendingClipboard { return "Resolve pending clipboard recovery before replacement." }
+        if rewriteAnchor == nil { return rewriteEligibility }
+        return "A recent insertion is eligible. The original editor, text, caret and expiry are rechecked on every shortcut."
+    }
+    func inspectRewriteReadiness() async {
+        guard !closed, !busy, !inPlaceRunning, !isPreviewingRewrite, !checkingRewriteReadiness else { return }
+        guard let inspector = offlineRewriter as? any OfflineRewriteReadinessInspecting else { rewriteReadinessNotice = "This provider does not expose readiness inspection."; return }
+        checkingRewriteReadiness = true
+        let result = await inspector.inspectReadiness(localeIdentifier:localeIdentifier)
+        guard !closed, !Task.isCancelled else { checkingRewriteReadiness = false; return }
+        rewriteReadinessNotice = result.status.rawValue + ": " + result.explanation
+        checkingRewriteReadiness = false
+    }
+    @discardableResult private func handleFlowVoiceControl(_ text:String) -> Bool {
+        guard !busy, !closed, agentQuestion == nil, agentPlan == nil, agentRecipientChoice == nil,
+              let command = FlowVoiceControl.parse(text) else { return false }
+        switch command {
+        case .language(let mode,let policy):
+            var next = preferences; next.languageMode = mode
+            if let policy { next.teluguRecognitionLanguage = policy }
+            preferences = next
+            if mode == .teluguRomanised { Task { [weak self] in await self?.prepareSelectedLanguage() } }
+        case .navigate(let destination):
+            flowPageRequest = switch destination { case .settings:.general;case .dictation:.dictation;case .history:.history;case .dictionary:.dictionary;case .formatting:.smartFormatting;case .commands:.commands }
+            flowPageRequestID = UUID()
+        case .saveHistory(let enabled): preferences.keepHistory = enabled
+        case .spacing(let enabled): preferences.spacingCleanup = enabled
+        }
+        agentHeard = text; agentInterpretation = command.confirmation; agentCommandText = ""; lastAgentFailure = nil
+        phase = .success; agentStatus(command.confirmation,hud:"Settings updated")
+        return true
+    }
     @Published var search = ""
     @Published private(set) var modelInventory: [ModelDescriptor] = []
     @Published private(set) var modelStatus = "Coding inference is disabled. Ollama model metadata has not been inspected."
@@ -669,6 +713,7 @@ import VoiceInput
         let control=PersonalAgentDialogue.canonical(text ?? agentCommandText).lowercased()
         if ["pause this routine after the current step","pause this routine after current step"].contains(control),let id=agentExecutingID {pauseAgentTask(id);return}
         guard !busy, !closed else { return }
+        if handleFlowVoiceControl(text ?? agentCommandText) { return }
         if personalPlanner != nil { interactWithAgent(text ?? agentCommandText); return }
         agentPlan = nil
         do {
@@ -854,6 +899,7 @@ import VoiceInput
         guard !busy,!closed else { return }
         guard !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { agentStatus("Please give a request or reply.",hud:"Reply needed");return }
         guard text.utf8.count<=4096 else { agentStatus("That request is too long. Please shorten it; nothing ran.",hud:"Request too long");return }
+        if handleFlowVoiceControl(text) { return }
         agentHeard=text;agentInterpretation="";agentCommandText="";lastAgentFailure=nil
         let now=wallTime(),apps=personalApps()
         if PersonalAgentDialogue.isCancel(text) { cancelAgentConversation();return }
@@ -1205,11 +1251,19 @@ import VoiceInput
     }
     /// Global AI gestures have no path to the explicit preview presenter.
     func invokeAIShortcut(_ kind: OfflinePreviewKind, originProcessIdentifier: Int32? = nil) {
+        lastAIShortcutFailure = nil
         traceRoute(kind,.received)
         // Fence a pending explicit capture/result and hide an already-open manual
         // editor. A late capture must not open it after this gesture.
         cancelTextCapture(); cancelRewritePreview(); previewPresented = false
-        guard !closed, !busy else { traceRoute(kind,.ignoredBusy); return }
+        guard !closed else { traceRoute(kind,.ignoredBusy); return }
+        guard !busy, !inPlaceRunning else {
+            let explanation = busy
+                ? "Shortcut ignored while dictation was still active. Wait for the inserted text, then press Option+1 or Option+2 again."
+                : "Local AI is already rewriting this dictation. Wait for it to finish; no second request was started."
+            lastAIShortcutFailure = explanation; previewShortcutStatus = explanation
+            traceRoute(kind,.ignoredBusy); return
+        }
         guard preferenceStore.load().inPlaceAIRewrite == preferences.inPlaceAIRewrite else {
             cancelInPlaceRewrite()
             rejectInPlace(kind,.settingsDisagree,"In-place settings changed in another app instance. Reopen this build safely. Nothing replaced."); return
@@ -1486,6 +1540,7 @@ import VoiceInput
         audioCaptureResult = .pending; transcriptionResult = .pending; targetCaptureResult = .notStarted
         targetValidationResult = .notStarted; pasteboardLeaseResult = .notStarted; insertionDispatchResult = .notStarted
         destinationBundleIdentifier = nil; speechFailureCode = "NONE"; terminalSpeechFailure = nil; speechFailureDiagnostics = nil; unmergedSpeechRecoveryEntry = nil
+        lastAIShortcutFailure = nil
         diagnosticOperation = UUID().uuidString; captureElapsedMilliseconds = nil; insertionElapsedMilliseconds = nil
         activeCaptureDiagnostics = []; insertionTraceSummary = "No insertion readback for this operation"
         insertionLookupSummary = "No shortcut receipt lookup"; verificationDetail = "No rewrite verification for this operation"
@@ -1658,6 +1713,7 @@ import VoiceInput
                 agentShortcutStatus = agentNotice; message = agentNotice; showHUDFeedback(); return
             }
             phase = .idle; agentCommandText = cleaned
+            if handleFlowVoiceControl(cleaned) { return }
             if personalPlanner != nil { interactWithAgent(cleaned); return }
             reviewAgentCommand(cleaned)
             phase = agentPlan == nil ? .error : .success

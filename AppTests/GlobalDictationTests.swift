@@ -4822,3 +4822,97 @@ extension TeluguCoordinatorTests {
         c.close()
     }
 }
+
+@Suite("Agent dictation controls",.serialized,.timeLimit(.minutes(1))) @MainActor struct FlowAgentControlTests {
+    @Test func spokenLanguageCommandChangesOnlyNextDictationWithoutInsertion() async {
+        let input = GInput(), capture = GCapture(), board = GClipboard(), agent = GShortcut()
+        let store = preferences()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:GShortcut(),agentShortcut:agent,agentCaptureValidation:{},agentConflict:{_ in false},preferenceStore:store)
+        c.preferences.keepHistory = false
+        c.enableAgentShortcut(); agent.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("switch dictation to Telugu only")); agent.receive?(.released); input.receive?(.finished)
+        #expect(c.preferences.languageMode == .teluguRomanised && c.preferences.teluguRecognitionLanguage == .teluguOnly)
+        #expect(store.load().languageMode == .teluguRomanised)
+        #expect(c.phase == .success); #expect(c.agentPlan == nil); #expect(capture.count == 0 && board.installed == 0)
+        c.reviewAgentCommand("switch dictation to English")
+        #expect(c.preferences.languageMode == .english)
+        c.close()
+    }
+    @Test func ordinaryDictationAndBusyRequestsNeverChangeLanguage() async {
+        let input = GInput(), c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        c.preferences.keepHistory = false
+        c.startManual(); await c.waitUntilRecording()
+        c.reviewAgentCommand("switch to Telugu")
+        #expect(c.preferences.languageMode == .english)
+        input.receive?(.transcript("switch to Telugu")); c.stop(); input.receive?(.finished); await c.waitForInsertionCompletion()
+        #expect(c.preferences.languageMode == .english); #expect(c.raw == "switch to Telugu")
+        c.close()
+    }
+    @Test func navigationAndHistoryPreferenceNeverDeleteSavedEntries() async throws {
+        let history = GHistory()
+        try await history.append(.init(id:"saved",timestamp:Date(),raw:"test",cleaned:"test",sourceApplication:nil,durationMilliseconds:1000,insertion:.init(.unsupportedTarget,.manualOnly)))
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),history:history)
+        await c.loadHistory()
+        c.reviewAgentCommand("stop saving dictation history")
+        #expect(!c.preferences.keepHistory); #expect(try await history.load().count == 1)
+        let ticket = c.flowPageRequestID
+        c.reviewAgentCommand("show dictation history")
+        #expect(c.flowPageRequest == .history && c.flowPageRequestID != ticket)
+        c.reviewAgentCommand("open dictation settings"); #expect(c.flowPageRequest == .general)
+        c.reviewAgentCommand("turn off spacing cleanup"); #expect(!c.preferences.spacingCleanup)
+        c.close()
+    }
+}
+
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func exactBlockerPersistsAfterPillWithoutPreviewOrGeneration(_ kind:OfflinePreviewKind) async throws {
+        let driver = InPlaceFixtureRewriter(), hud = GClock()
+        let (c,target,board) = try await prepare(driver,hudClock:hud)
+        let original = target.value
+        c.preferences.inPlaceAIRewrite = false
+        c.invokeAIShortcut(kind,originProcessIdentifier:42)
+        let blocker = try #require(c.lastAIShortcutFailure)
+        #expect(blocker.contains("Enable in-place")); #expect(!c.previewPresented)
+        let deadline = await hud.now() + 1200
+        await hud.waitForSleep(deadline); await hud.advance(deadline); await c.waitForHUDFeedback()
+        #expect(c.inPlaceHUD == .idle && c.lastAIShortcutFailure == blocker)
+        #expect(await driver.calls == 0); #expect(target.value == original && board.installed == 0)
+        c.close()
+    }
+}
+
+
+extension FlowAgentControlTests {
+    @Test func pendingNoteReplyKeepsLanguageWordsLiteral() async {
+        let c = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),personalPlanner:FortyPlanner(),personalApps:{[]})
+        let runner = FortyRunner(); c.personalToolRunner = runner
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Flow-Command-Reply-" + UUID().uuidString)
+        c.personalAgentQueueURL = root.appendingPathComponent("queue.json")
+        defer { try? FileManager.default.removeItem(at:root) }
+        c.reviewAgentCommand("create a note")
+        #expect(c.agentQuestion != nil)
+        c.reviewAgentCommand("switch dictation to Telugu only")
+        await c.waitForAgentPlanning()
+        #expect(c.preferences.languageMode == .english)
+        #expect(runner.calls.count == 1 && runner.calls.first?.tool == .note)
+        #expect(runner.calls.first?.text == "switch dictation to Telugu only")
+        c.close()
+    }
+}
+
+
+extension FlowAgentControlTests {
+    @Test func shortcutDuringCaptureExplainsBusyWithoutInterruptingAudio() async {
+        let input = GInput(), driver = GOfflineRewrite(), resolver = GFocusedText()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,focusedTextResolver:resolver)
+        c.preferences.keepHistory = false; c.preferences.inPlaceAIRewrite = true; c.preferences.offlineAIRewriting = true
+        c.startManual(); await c.waitUntilRecording()
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42)
+        #expect(c.phase == .recording && input.stops == 0)
+        #expect(c.lastAIShortcutFailure?.contains("dictation was still active") == true)
+        #expect(!c.previewPresented && resolver.calls == 0)
+        #expect(await driver.calls == 0)
+        c.cancel(); c.close()
+    }
+}

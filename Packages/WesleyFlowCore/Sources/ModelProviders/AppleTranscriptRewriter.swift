@@ -68,7 +68,7 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
 /// One request owns the slot until its generator settles, even after the caller
 /// receives a deadline/cancellation fallback. A noncooperative framework cannot
 /// cause unbounded replacement sessions or stale output delivery.
-public actor AppleTranscriptRewriter: OfflineTranscriptRewriting {
+public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewriteReadinessInspecting {
     private let generator: any NativeRewriteGenerating
     private let memory: any InferenceMemorySource
     private let clock: any TaskClock
@@ -82,6 +82,23 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting {
     private var began: Int64 = 0
     public init(memory: any InferenceMemorySource, clock: any TaskClock, generator: any NativeRewriteGenerating = AppleRewriteGenerator()) {
         self.memory = memory; self.clock = clock; self.generator = generator
+    }
+    public func inspectReadiness(localeIdentifier:String) async -> OfflineRewriteReadiness {
+        guard active == nil else { return .init(.busy,"A previous local AI request is still running or stopping.") }
+        guard localeIdentifier.lowercased().replacingOccurrences(of:"_",with:"-").split(separator:"-").first == "en" else {
+            return .init(.unsupportedLanguage,"Smart Polish and Prompt Engineering currently support English input only.")
+        }
+        let readiness = await generator.readiness(localeIdentifier:localeIdentifier)
+        guard case .available = readiness else { return .init(.modelUnavailable,"Apple's on-device AI model or this language is unavailable. Check Apple Intelligence in System Settings.") }
+        do {
+            let sample = try await memory.sample()
+            guard Self.safe(sample,baseline:sample) else {
+                let gib = Double(sample.conservativeAvailableBytes)/1073741824
+                return .init(.resourcesBlocked,String(format:"Local AI is blocked: %.2f GiB available; the unchanged reserve requires 4 GiB and normal memory pressure.",gib))
+            }
+            guard active == nil else { return .init(.busy,"A local AI request started during inspection.") }
+            return .init(.ready,"Local AI checks passed. Generation rechecks resources; exact editor replacement must also be supported.")
+        } catch { return .init(.observationFailed,"The app could not inspect available memory. No generation was attempted.") }
     }
     public func rewrite(_ request: OfflineRewriteRequest) async -> OfflineRewriteOutcome {
         guard active == nil else { return .init(.resourceBlocked,text:request.text,reason:"busy-or-settling") }

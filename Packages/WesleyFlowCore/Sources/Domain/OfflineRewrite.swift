@@ -146,3 +146,14 @@ public struct ProtectedRewriteText: Sendable {
             .filter { !["um","uh","erm"].contains($0) }
     }
 }
+
+/// Read-only readiness inspection; it never creates a model session or reserves resources.
+public struct OfflineRewriteReadiness: Equatable, Sendable {
+    public enum Status: String, Sendable { case ready, busy, unsupportedLanguage, modelUnavailable, resourcesBlocked, observationFailed }
+    public let status:Status
+    public let explanation:String
+    public init(_ status:Status,_ explanation:String) { self.status = status; self.explanation = explanation }
+}
+public protocol OfflineRewriteReadinessInspecting: Sendable {
+    func inspectReadiness(localeIdentifier:String) async -> OfflineRewriteReadiness
+}

@@ -112,6 +112,10 @@ import VoiceInput
             commandLibraryExpanded = coordinator.agentHUD == "Agent help"
             if NSClassFromString("XCTestCase") == nil { openWindow(id:"foundation"); NSApplication.shared.activate() }
         }
+        .onChange(of:coordinator.flowPageRequestID) { _,_ in
+            if let destination = coordinator.flowPageRequest { page = destination }
+            if NSClassFromString("XCTestCase") == nil { openWindow(id:"foundation"); NSApplication.shared.activate() }
+        }
         .onChange(of:page) { _,_ in copyFeedback.cancelAll(); copyError = nil }
         .onChange(of:coordinator.entries.map(\.id)) { _,ids in copyFeedback.retain(ids:Set(ids)) }
         .confirmationDialog("Clear all local dictation history?",isPresented:$confirmClear) {
@@ -128,10 +132,14 @@ import VoiceInput
     }
     private var dictationPage: some View {
         VStack(alignment:.leading,spacing:0) {
-            if coordinator.busy || coordinator.phase == .error || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil {
+            if coordinator.busy || coordinator.phase == .error || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil || coordinator.lastAIShortcutFailure != nil {
                 VStack(alignment:.leading,spacing:8) {
                     if coordinator.busy { HStack { Text(coordinator.message).font(.callout); Spacer(); Button("Cancel dictation") { coordinator.cancel() } } }
-                    if coordinator.phase == .error && !coordinator.clipboardPending {
+                    if let failure = coordinator.lastAIShortcutFailure, !coordinator.busy {
+                        Text(failure).font(.callout).foregroundStyle(.orange)
+                        Button("Shortcut status & requirements") { page = .smartFormatting }
+                    }
+                    if coordinator.phase == .error && !coordinator.clipboardPending && coordinator.lastAIShortcutFailure == nil {
                         Text(coordinator.message).font(.callout).foregroundStyle(.orange)
                         HStack {
                             Button("Language & microphone settings") { page = .general }
@@ -195,24 +203,7 @@ import VoiceInput
     }
     private var commandsPage: some View {
         FlowPage {
-            Text("Arm command mode, then speak while holding the hotkey. A supported command opens its app without inserting dictation.").foregroundStyle(.secondary)
-            Text("Available commands").font(.headline)
-            VStack(spacing:0) {
-                ForEach(Array(AppOpeningCommand.allCases.enumerated()),id:\.element) { index,command in
-                    HStack(alignment:.firstTextBaseline,spacing:16) {
-                        Text("open \(command.rawValue)").font(.body).frame(maxWidth:.infinity,alignment:.leading)
-                        Text("Opens \(command == .browser ? "the default browser" : command.rawValue)").foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading)
-                    }.padding(.horizontal,16).padding(.vertical,12).frame(minHeight:44).accessibilityElement(children:.combine)
-                    if index < AppOpeningCommand.allCases.count-1 { Divider() }
-                }
-            }.background(FlowSurface.card,in:RoundedRectangle(cornerRadius:16))
-                .clipShape(RoundedRectangle(cornerRadius:16))
-                .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(FlowSurface.border,lineWidth:1))
-            Text("Speak normally with the separate Agent key. Installed apps can be opened or normally quit. Google/YouTube searches open in your default browser. Music controls the existing player. Messages require a final recipient and text confirmation.").font(FlowTypography.secondary).foregroundStyle(.secondary)
-            Text(coordinator.agentShortcutStatus).font(.caption).foregroundStyle(.secondary)
-            if let failure=coordinator.lastAgentFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
-            Text("Hold the Agent key, speak, then release. Routine requests run directly. Ambiguous requests stop for clarification; messages require confirmation. Dictation always inserts text.").font(.caption).foregroundStyle(.secondary)
-            Divider()
+            Text("Hold \(coordinator.preferences.agentKey.label) for Agent commands; hold \(coordinator.preferences.activationKey.label) for dictation. Speak Agent commands in English. Language commands change your next dictation.").foregroundStyle(.secondary)
             Text("On-device personal agent · 45A-R3").font(.headline)
             TextField("Ask the agent…", text:$coordinator.agentCommandText).disabled(coordinator.agentQuestion != nil)
             HStack {
@@ -221,6 +212,23 @@ import VoiceInput
                 Button("Load saved tasks") { coordinator.loadAgentQueue() }.disabled(coordinator.busy)
             }
             Text(coordinator.agentNotice).font(.caption).foregroundStyle(.secondary)
+            FlowSettingsGroup("Dictation controls") {
+                FlowSettingsRow("Current dictation language") { Text(coordinator.preferences.languageMode == .english ? "English" : (coordinator.preferences.teluguRecognitionLanguage == .teluguOnly ? "Telugu only" : "Telugu + English")).foregroundStyle(.secondary) }
+                ForEach(FlowVoiceControl.examples,id:\.self) { example in
+                    FlowSettingsRow(example) { Button("Use command") { coordinator.agentCommandText = example }.disabled(coordinator.busy || coordinator.agentQuestion != nil) }
+                }
+            }
+            FlowSettingsGroup("Everyday Mac actions") {
+                ForEach(["Open Notes","Set volume to thirty percent","Turn volume up","Mute audio","Show battery status","Move Safari to the left half"],id:\.self) { example in
+                    FlowSettingsRow(example) { Button("Use command") { coordinator.agentCommandText = example }.disabled(coordinator.busy || coordinator.agentQuestion != nil) }
+                }
+            }
+            Text("Choose an example to fill the request below, then Run text request. Installed-app, Accessibility and Automation requirements still apply to Mac actions.").font(.caption).foregroundStyle(.secondary)
+            Text("Speak normally with the separate Agent key. Installed apps can be opened or normally quit. Google/YouTube searches open in your default browser. Music controls the existing player. Messages require a final recipient and text confirmation.").font(FlowTypography.secondary).foregroundStyle(.secondary)
+            Text(coordinator.agentShortcutStatus).font(.caption).foregroundStyle(.secondary)
+            if let failure=coordinator.lastAgentFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
+            Text("Hold the Agent key, speak, then release. Routine requests run directly. Ambiguous requests stop for clarification; messages require confirmation. Dictation always inserts text.").font(.caption).foregroundStyle(.secondary)
+            Divider()
             DisclosureGroup("Command library",isExpanded:$commandLibraryExpanded) {
                 ForEach(PersonalCommandLibrary.examples,id:\.self) { example in Text(example).font(.caption).textSelection(.enabled) }
                 Text("Natural requests: Hey, open WhatsApp · Go open Google · Open Gmail in Safari · Open YouTube and search for piano music").font(.caption).textSelection(.enabled)
@@ -432,6 +440,17 @@ import VoiceInput
     }
     private var formattingPage: some View {
         FlowPage {
+            FlowSettingsGroup("Option+1 · Smart Polish / Option+2 · Prompt Engineering") {
+                FlowSettingsRow("Enable AI shortcuts",description:coordinator.previewShortcutStatus) { Toggle("Enable AI shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
+                FlowSettingsRow("Replacement readiness",description:coordinator.inPlaceReadinessDescription) { Text("In-place only").foregroundStyle(.secondary) }
+                if let failure = coordinator.lastAIShortcutFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(14) }
+                FlowSettingsRow("Local AI readiness",description:coordinator.rewriteReadinessNotice) {
+                    Button(coordinator.checkingRewriteReadiness ? "Checking…" : "Check") { Task { await coordinator.inspectRewriteReadiness() } }.disabled(coordinator.busy || coordinator.inPlaceRunning || coordinator.isPreviewingRewrite || coordinator.checkingRewriteReadiness)
+                }
+                FlowSettingsRow("Shortcut diagnostics",description:"Metadata only. No shortcut falls back to a preview or copies text automatically.") {
+                    Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.verificationDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
+                }
+            }
             FlowSettingsGroup("Smart formatting & spelling") {
                 FlowSettingsRow("Clean up spacing",description:"Whitespace only. Enable the transformations below separately; they apply to the next completed dictation.") { Toggle("Clean up spacing",isOn:$coordinator.preferences.spacingCleanup) }
                 FlowSettingsRow("Fix spelling and common typos",description:"Suggestions may be wrong. Protected terms are excluded.") { Toggle("Fix spelling and common typos",isOn:$coordinator.preferences.formatting.correctSpelling) }
