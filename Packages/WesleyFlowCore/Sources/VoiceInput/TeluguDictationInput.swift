@@ -44,9 +44,8 @@ import Domain
             let ring = TeluguAudioRing(sampleRate:format.sampleRate), meter = AudioLevelMailbox()
             let (stream, continuation) = AsyncThrowingStream<[Float],any Error>.makeStream(bufferingPolicy:.bufferingOldest(2))
             self.ring = ring; self.engine = engine; self.meter = meter
-            engine.inputNode.installTap(onBus:0,bufferSize:1024,format:format) { buffer,time in
-                meter.append(buffer); ring.append(buffer,at:time)
-            }
+            engine.inputNode.installTap(onBus:0,bufferSize:1024,format:format,
+                block:TeluguNativeCallbacks.tap(ring:ring,meter:meter))
             producer = Task.detached { [weak self] in
                 await produceTeluguUtterances(ring:ring,cancellation:cancellation,stream:continuation,onFailure:{ [weak self] error in
                     Task { @MainActor [weak self] in self?.fail(error,id:id) }
@@ -73,12 +72,12 @@ import Domain
                 }
             }
             engine.prepare(); try engine.start()
-            configurationObserver = NotificationCenter.default.addObserver(forName:.AVAudioEngineConfigurationChange,object:engine,queue:nil) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, !self.stopping else { return }
-                    self.fail(.audioUnavailable,id:id)
-                }
+            let onConfiguration = TeluguNativeCallbacks.configurationChanged { [weak self] in
+                guard let self, !self.stopping else { return }
+                self.fail(.audioUnavailable,id:id)
             }
+            configurationObserver = NotificationCenter.default.addObserver(forName:.AVAudioEngineConfigurationChange,
+                object:engine,queue:nil,using:onConfiguration)
             return .init(engine:"whisper.cpp 1.8.2 · multilingual Small · local",localeIdentifier:language.whisperLanguage)
         } catch {
             if session == id { cancel() }

@@ -119,3 +119,28 @@ The corrected invocation reused `Tools/CI/run_checks.py`'s exact test-selection 
 Implementation checkpoints: `05a55f7` (romaniser/audit) and `d0efeb1` (native backend, capture, preferences, tests, installer and CI wiring). No remote push was performed. The source application name, bundle identifier, existing English recognizer and insertion service were preserved.
 
 Local evidence: `/private/tmp/wesley-telugu-baseline2-tests.xcresult`, `/private/tmp/wesley-telugu-final.xcresult`, `/private/tmp/wesley-telugu-ci-selection/tests.xcresult`, `/private/tmp/wesley-telugu-release.log`, `/private/tmp/wesley-telugu-real-final.log`, and ignored repository `Evidence/Telugu/package-tests.log`. Temporary evidence can expire; the counts, limits, pins and reproduction commands are retained here. The prepared Release application is `/private/tmp/wesley-telugu-build/Build/Products/Release/Wesley Flow.app`; the installed running copy was not changed.
+
+
+## Follow-up: Fn startup queue assertion — 2026-11-01
+
+The user reported that Telugu Fn startup showed no pill and the app stopped responding. Their screenshot showed Xcode paused in `_dispatch_assert_queue_fail` with `EXC_BREAKPOINT`, plus the separate `NativeRecordTools` nil-coalescing warning. The screenshot did not include application stack frames.
+
+A confirmed defect was found in Telugu startup: an inline `AVAudioNodeTapBlock` was constructed inside `@MainActor` code. The SDK explicitly marks this legacy callback type non-Sendable and warns that it can execute off the main thread. Swift inferred MainActor isolation for the closure. A microphone-free reproducer compiled with `-enable-actor-data-race-checks` stopped under LLDB at `_dispatch_assert_queue_fail + 120`, `EXC_BREAKPOINT`, with the same subcode address shown in the screenshot. The emitted Swift intermediate representation also identified the closure as MainActor-isolated. This reproduces the failure mechanism without claiming a complete backtrace from the user's paused process.
+
+The installed Telugu tap now comes from an explicitly nonisolated factory returning an `@Sendable` callback. It retains the same ring/meter-only real-time work. The configuration-change notification also uses a nonisolated factory and explicitly hops to MainActor before touching UI/session state. No check was disabled in production. The new regression creates the production callback from MainActor, converts it to the actual Objective-C `AVAudioNodeTapBlock` type, and invokes it on a worker with actor race checks enabled. A second regression verifies notification delivery on MainActor. The deterministic CI helper now enables those runtime checks so this boundary stays covered.
+
+Telugu startup now shows **Preparing Telugu…** while the model/microphone are preparing, then the existing waveform only when capture is ready. English preparation behavior remains unchanged. A coordinator regression verifies both modes, including cancellation with no insertion. The reported compiler warning was repaired by removing an unreachable fallback for nonoptional `EKCalendar.title`; reminder-list matching is otherwise unchanged.
+
+Follow-up verification:
+
+- Fresh native Debug build/tests through the repository CI runner: **826 declarations / 1,892 expanded cases passed, zero failures**, including required English/insertion regressions and the new preparation-pill test.
+- Actor-checked package suites: **10 synthetic audio/callback tests passed**, plus the four Unicode test declarations / 19 cases. The opt-in real-model declaration remains skipped in the deterministic lane.
+- Separately opted-in real Small inference/cancellation test passed with actor checks enabled and networking denied, using the public JFK fixture and the installed verified model. No user audio was recorded.
+- Release build with complete Swift concurrency checking passed. Deep strict local signature verification passed for Debug and Release. The specific `NativeRecordTools` warning was absent from the fresh build logs.
+- CI helper unit tests: 15 passed. Repository publication checks passed with no issue categories. Hosted CI has not been run for this follow-up.
+
+The first attempt to reuse the earlier temporary package build folder failed because its XCFramework Info.plist was missing; a fresh ignored build folder resolved it without cleaning unrelated files. One regression initially used thread inspection directly from an async context, which the current SDK prohibits; moving that read into a synchronous helper fixed the test compile error. These were verification setup/test issues, distinct from the reproduced callback crash.
+
+Evidence is retained under ignored `Evidence/TeluguCallbackFix/Native`, `Evidence/TeluguCallbackFix/CallbackRepro`, and `Evidence/Telugu/package-tests.log`. The new Debug app is `Evidence/TeluguCallbackFix/Native/DerivedData/Build/Products/Debug/Wesley Flow.app`. The installed app and the user's paused debugger process were not replaced, stopped or resumed.
+
+To use the fix in Xcode, **Stop the paused run, then Run again**; Continue would resume the old loaded executable. Fn remains hold-to-talk: keep it held through preparation, wait for the waveform, speak, and release to finish. Live Telugu microphone recognition/insertion still needs a user-operated acceptance test; this follow-up verifies the callback boundary, preparation UI state and offline model path without claiming that physical test has passed.

@@ -4768,3 +4768,25 @@ extension PersonalCloseR3Tests {
         c.close()
     }
 }
+
+
+extension TeluguCoordinatorTests {
+    @Test func teluguStartupShowsPreparationUntilAudioIsReadyAndEnglishStaysQuiet() async {
+        for mode in DictationLanguageMode.allCases {
+            let input = GInput(), capture = GCapture(), shortcut = GShortcut()
+            input.hold = true
+            let c = SystemWideDictationCoordinator(input:input,targets:capture,
+                insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),
+                shortcut:shortcut,preferenceStore:preferences())
+            c.preferences.keepHistory = false; c.preferences.languageMode = mode
+            c.enableShortcut(); shortcut.receive?(.pressed); await input.waitForStart()
+            #expect(c.phase == .preparing)
+            #expect(c.pillContent == (mode == .teluguRomanised ? .label("Preparing Telugu…") : .hidden))
+            #expect(c.pillVisible)
+            input.resolve(); await c.waitForCaptureStartup()
+            #expect(c.phase == .recording); #expect(c.pillContent == .waveform)
+            shortcut.receive?(.cancelled); await c.waitForInsertionCompletion()
+            #expect(capture.target?.replacements == 0); c.close()
+        }
+    }
+}

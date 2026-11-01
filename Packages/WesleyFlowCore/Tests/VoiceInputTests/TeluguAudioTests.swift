@@ -4,6 +4,12 @@ import Foundation
 import Domain
 @testable import VoiceInput
 
+// Immutable test wrapper: invoke the SDK's Objective-C block on a worker just as AVAudioEngine does.
+private final class TeluguNativeTapBlockFixture: @unchecked Sendable {
+    let block: AVAudioNodeTapBlock
+    init(_ block: @escaping AVAudioNodeTapBlock) { self.block = block }
+}
+
 @Suite("Telugu bounded PCM and segmentation") struct TeluguAudioTests {
     @Test func silenceAndShortImpulseProduceNoUtterance() {
         var s = TeluguUtteranceSegmenter()
@@ -145,5 +151,34 @@ extension TeluguAudioTests {
         let (stream, continuation) = AsyncThrowingStream<[Float],any Error>.makeStream(bufferingPolicy:.bufferingOldest(2))
         await produceTeluguUtterances(ring:ring,cancellation:SpeechCancellation(),stream:continuation)
         await #expect(throws:DictationFailure.overflow) { for try await _ in stream {} }
+    }
+}
+
+
+extension TeluguAudioTests {
+    @Test @MainActor func nativeTapConstructedFromMainActorRunsOnAudioWorker() async throws {
+        let ring = TeluguAudioRing(sampleRate:48000), meter = AudioLevelMailbox()
+        // This is the exact callback factory used by installTap, invoked from a worker.
+        // Run with -enable-actor-data-race-checks to catch the previous main-executor trap.
+        let callback = TeluguNativeTapBlockFixture(TeluguNativeCallbacks.tap(ring:ring,meter:meter))
+        try await Task.detached {
+            func onMainThread() -> Bool { Thread.isMainThread }
+            #expect(!onMainThread())
+            let format = try #require(AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:1,interleaved:false))
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:320)); buffer.frameLength = 320
+            for i in 0..<320 { buffer.floatChannelData![0][i] = 0.25 }
+            callback.block(buffer,AVAudioTime(sampleTime:0,atRate:48000))
+        }.value
+        let samples = ring.drain()
+        #expect(samples.count == 320); #expect(samples.allSatisfy { $0 == 0.25 })
+        #expect(meter.snapshot().rms > 0.2)
+    }
+    @Test @MainActor func configurationNotificationFromWorkerHopsToMainActor() async {
+        await withCheckedContinuation { continuation in
+            let callback = TeluguNativeCallbacks.configurationChanged {
+                MainActor.assertIsolated(); continuation.resume()
+            }
+            Task.detached { callback(Notification(name:.AVAudioEngineConfigurationChange)) }
+        }
     }
 }

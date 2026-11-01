@@ -1363,6 +1363,7 @@ import VoiceInput
     var shortcutLabel: String { preferences.activationKey.label }
     var pillVisible: Bool { (preferences.showPill || commandSession || agentExecutingID != nil || agentPlan != nil || agentQuestion != nil || (agentHUD != nil && hudFeedbackVisible)) && ((preferences.idlePillEnabled && !closed) || (startedFromShortcut && busy) || ((agentPlan != nil || agentQuestion != nil) && agentHUD != nil) || hudFeedbackVisible || inPlaceHUD != .idle) }
     var keepsAppRunningAfterWindowClose: Bool { preferences.holdFnEnabled || preferences.agentHotkeyEnabled || preferences.idlePillEnabled || preferences.previewShortcutsEnabled || busy }
+    var isPreparingTelugu: Bool { phase == .preparing && activeLanguageMode == .teluguRomanised }
     var busy: Bool { [.preparing,.recording,.finalizing,.inserting].contains(phase) }
     var filteredHistory: [DictationHistoryEntry] { DictationHistoryQuery.filter(entries,search:search) }
     var groupedHistory: [(date:Date,entries:[DictationHistoryEntry])] { DictationHistoryQuery.groups(filteredHistory,calendar:.current) }

@@ -76,7 +76,7 @@ import Domain
             }
             return receipt(items.isEmpty ? "No matching reminders.":"Reminders (first 50): "+items.prefix(50).map{$0.title ?? "Untitled"}.joined(separator:"; "))
         case .reminderList:
-            let calendars=store.calendars(for:.reminder).filter{($0.title ?? "").caseInsensitiveCompare(c.name) == .orderedSame}
+            let calendars=store.calendars(for:.reminder).filter{$0.title.caseInsensitiveCompare(c.name) == .orderedSame}
             if calendars.count==1 {return receipt("Reminder list already exists; no duplicate created.",calendars[0].calendarIdentifier)}
             guard calendars.isEmpty else {throw PersonalAgentError.unsupported}
             let list=EKCalendar(for:.reminder,eventStore:store);list.title=c.name;list.source=calendar.source

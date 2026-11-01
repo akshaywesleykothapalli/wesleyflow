@@ -157,3 +157,15 @@ nonisolated func produceTeluguUtterances(ring: TeluguAudioRing, cancellation: Sp
         if !cancellation.isCancelled && !(error is CancellationError) { onFailure(error as? DictationFailure ?? .audioUnavailable) }
     }
 }
+
+
+/// AVAudioNodeTapBlock is explicitly non-Sendable in the SDK and may run on an audio thread.
+/// Construct callbacks outside MainActor so Swift never inserts a main-executor assertion.
+enum TeluguNativeCallbacks {
+    nonisolated static func tap(ring: TeluguAudioRing, meter: AudioLevelMailbox) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { buffer, time in meter.append(buffer); ring.append(buffer,at:time) }
+    }
+    nonisolated static func configurationChanged(deliver: @escaping @MainActor @Sendable () -> Void) -> @Sendable (Notification) -> Void {
+        { _ in Task { @MainActor in deliver() } }
+    }
+}

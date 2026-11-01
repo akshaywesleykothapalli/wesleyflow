@@ -81,6 +81,7 @@ enum DictationHUDContent: Equatable {
         // Keep actionable AI status as text; ordinary errors stay in Dictation.
         if let agentHUD { return .label(agentHUD) }
         if hideCompletedDictationPill { return .hidden }
+        if isPreparingTelugu { return .label("Preparing Telugu…") }
         return inPlaceHUD == .error ? .label(compactAIStatus) : phase == .error ? .label(compactDictationStatus) : DictationHUDContent.resolve(phase:phase,ai:inPlaceHUD,verified:latest?.insertion.status == .insertedVerified)
     }
 }

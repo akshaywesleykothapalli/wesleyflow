@@ -22,7 +22,7 @@ def main():
         # Model tests require a separate explicit opt-in; CI must remain deterministic.
         env.pop('WESLEY_TELUGU_TEST_MODEL', None)
         env.pop('WESLEY_TELUGU_TEST_WAV', None)
-        command = ['/usr/bin/xcrun', 'swift', 'test', '--jobs', '2', '--package-path', str(ROOT / 'Packages/WesleyFlowCore'), '--scratch-path', str(scratch), '--filter', 'TeluguRomanizerTests|TeluguAudioTests']
+        command = ['/usr/bin/xcrun', 'swift', 'test', '--jobs', '2', '-Xswiftc', '-enable-actor-data-race-checks', '--package-path', str(ROOT / 'Packages/WesleyFlowCore'), '--scratch-path', str(scratch), '--filter', 'TeluguRomanizerTests|TeluguAudioTests']
         with log.open('w') as output:
             result = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=1200)
         text = log.read_text(errors='replace')
