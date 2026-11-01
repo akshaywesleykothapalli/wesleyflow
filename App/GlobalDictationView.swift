@@ -529,7 +529,7 @@ import VoiceInput
                 }.pickerStyle(.menu).disabled(coordinator.busy).accessibilityIdentifier("wesley.dictationLanguage")
             }
             if coordinator.preferences.languageMode == .teluguRomanised {
-                FlowSettingsRow("Recognise",description:"Use Telugu only for Telugu speech, or Auto for Telugu and English.") {
+                FlowSettingsRow("Recognise",description:"Use Telugu only for Telugu speech, or Auto for Telugu and English. " + coordinator.languagePreparationStatus) {
                     Picker("Recognition language",selection:$coordinator.preferences.teluguRecognitionLanguage) {
                         ForEach(TeluguRecognitionLanguage.allCases,id:\.self) { Text($0.label).tag($0) }
                     }.pickerStyle(.menu).disabled(coordinator.busy)
@@ -537,6 +537,8 @@ import VoiceInput
             }
                 FlowSettingsRow("Hold to talk",description:"Native modifier choices; chords cancel rather than steal typing.") { Picker("Hold-to-talk key",selection:Binding(get:{ coordinator.preferences.activationKey },set:{ coordinator.changeActivationKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy) }
                 FlowSettingsRow("Hold-to-talk dictation") { Button(coordinator.shortcutEnabled ? "Disable" : "Enable") { if coordinator.shortcutEnabled { coordinator.disableShortcut() } else { coordinator.enableShortcut() } }.accessibilityLabel(coordinator.shortcutEnabled ? "Disable hold-to-talk dictation" : "Enable hold-to-talk dictation") }
+        }.task(id:[coordinator.preferences.languageMode.rawValue,coordinator.preferences.teluguRecognitionLanguage.rawValue]) {
+            await coordinator.prepareSelectedLanguage()
         }
     }
     private var generalPage: some View {

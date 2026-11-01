@@ -2,7 +2,13 @@ import Foundation
 import AVFoundation
 import Domain
 
-@MainActor public protocol TeluguLanguageConfiguring: DictationInput { var language:TeluguRecognitionLanguage { get set } }
+@MainActor public protocol TeluguLanguageConfiguring: DictationInput {
+    var language:TeluguRecognitionLanguage { get set }
+    func prepareModel(language:TeluguRecognitionLanguage) async throws
+}
+public extension TeluguLanguageConfiguring {
+    func prepareModel(language:TeluguRecognitionLanguage) async throws {}
+}
 
 @MainActor public final class TeluguDictationInput: TeluguLanguageConfiguring, DictationAudioMetering, DictationCaptureReporting {
     private let recognizer: any LocalPCMRecognizing
@@ -19,9 +25,12 @@ import Domain
     private var requestedLanguage:TeluguRecognitionLanguage = .automatic
     public var speechDiagnostics:DictationSpeechDiagnostics? { nil }
     public var captureDiagnosticSummary:String {
-        "localWhisper=true asrRevision=te-quality-r2 capturePhase=\(capturePhase) policy=\(requestedLanguage.rawValue) inputRate=\(sourceRate) inputChannels=\(sourceChannels) modelRate=16000 " + lastRecognition + " " + captureStatistics.summary
+        "localWhisper=true asrRevision=te-quality-r2 capturePhase=\(capturePhase) policy=\(requestedLanguage.rawValue) inputRate=\(sourceRate) inputChannels=\(sourceChannels) modelRate=16000 " + lastRecognition + " " + captureStatistics.summary + " prepareElapsed=\(preparationElapsed) startupElapsed=\(startupElapsed) releaseToTerminalElapsed=\(releaseElapsed)"
     }
     private var captureStatistics = TeluguCaptureStatistics()
+    private var preparationElapsed = "unmeasured", startupElapsed = "unmeasured", releaseElapsed = "unmeasured"
+    private var releasedAt:ContinuousClock.Instant?
+    private func recordReleaseElapsed() { if let releasedAt { releaseElapsed = String(describing:releasedAt.duration(to:.now)) } }
     private var configurationObserver: (any NSObjectProtocol)?
     public var language:TeluguRecognitionLanguage = .automatic
     public init(recognizer:any LocalPCMRecognizing = TeluguWhisperPipeline(), exclusiveCapture:@escaping @MainActor () throws -> Void = {}, microphoneAccess:(@MainActor () async -> Bool)? = nil) {
@@ -34,6 +43,8 @@ import Domain
             }
         }
     }
+    /// User-selected model preparation only: no microphone, permission or capture session.
+    public func prepareModel(language:TeluguRecognitionLanguage) async throws { try await recognizer.prepare(language:language) }
     public func audioLevel() -> DictationAudioLevel { meter?.snapshot() ?? .init() }
     public func start(localeIdentifier:String,receive:@escaping @MainActor @Sendable (DictationEvent)->Void) async throws -> DictationInfo {
         guard session == nil else { throw DictationFailure.busy }
@@ -42,10 +53,13 @@ import Domain
         self.session = id; self.cancellation = cancellation; self.receive = receive; stopping = false
         captureStatistics = TeluguCaptureStatistics()
         let statistics = captureStatistics
+        let preparingAt = ContinuousClock.now
+        preparationElapsed = "unmeasured"; startupElapsed = "unmeasured"; releaseElapsed = "unmeasured"; releasedAt = nil
         capturePhase = "preparing"; lastRecognition = "decode=notStarted"; sourceRate = 0; sourceChannels = 0; requestedLanguage = language
         do {
             // Hash/load off the main actor, before permission prompts or microphone capture.
             try await recognizer.prepare(language:language)
+            preparationElapsed = String(describing:preparingAt.duration(to:.now))
             guard self.session == id, !Task.isCancelled, !cancellation.isCancelled else { throw CancellationError() }
             let allowed = await microphoneAccess()
             guard self.session == id, !Task.isCancelled, !cancellation.isCancelled else { throw CancellationError() }
@@ -82,11 +96,11 @@ import Domain
                     guard let self, self.session == id, !cancellation.isCancelled, !Task.isCancelled else { return }
                     guard self.stopping else { throw DictationFailure.providerEnded }
                     guard !transcript.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { throw DictationFailure.noSpeechRecognized }
-                    let callback = self.receive; self.capturePhase = "complete"; self.clearCapture(cancel:true); self.session = nil; self.receive = nil
+                    let callback = self.receive; self.recordReleaseElapsed(); self.capturePhase = "complete"; self.clearCapture(cancel:true); self.session = nil; self.receive = nil
                     callback?(.finished)
                 } catch {
                     guard let self, self.session == id, !cancellation.isCancelled else { return }
-                    let callback = self.receive; self.cancel(); self.capturePhase = "failed"
+                    let callback = self.receive; self.recordReleaseElapsed(); self.cancel(); self.capturePhase = "failed"
                     callback?(.failed(error as? DictationFailure ?? .recognitionFailed))
                 }
             }
@@ -97,6 +111,7 @@ import Domain
             }
             configurationObserver = NotificationCenter.default.addObserver(forName:.AVAudioEngineConfigurationChange,
                 object:engine,queue:nil,using:onConfiguration)
+            startupElapsed = String(describing:preparingAt.duration(to:.now))
             capturePhase = "recording"
             return .init(engine:"whisper.cpp 1.8.2 · local Small pipeline",localeIdentifier:language.whisperLanguage)
         } catch {
@@ -105,7 +120,7 @@ import Domain
         }
     }
     public func stop() {
-        guard session != nil, !stopping else { return }; stopping = true; capturePhase = "finalizing"
+        guard session != nil, !stopping else { return }; stopping = true; capturePhase = "finalizing"; releasedAt = .now
         stopEngine()
         ring?.ended.store(true,ordering:.sequentiallyConsistent)
     }
@@ -137,6 +152,7 @@ import Domain
     public var mode:DictationLanguageMode = .english
     public var recognitionLanguage:TeluguRecognitionLanguage = .automatic
     public init(english:any DictationInput,telugu:any TeluguLanguageConfiguring) { self.english = english; self.telugu = telugu }
+    public func prepareTelugu(language:TeluguRecognitionLanguage) async throws { try await telugu.prepareModel(language:language) }
     public func setAgentApplicationNames(_ names:[String]) { (english as? any AgentApplicationNameHinting)?.setAgentApplicationNames(names) }
     public func start(localeIdentifier:String,receive:@escaping @MainActor @Sendable (DictationEvent)->Void) async throws -> DictationInfo {
         telugu.language = recognitionLanguage

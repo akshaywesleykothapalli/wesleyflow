@@ -5,10 +5,36 @@ import Speech
 import os
 import CoreMedia
 
+/// Microphone arrays may expose an unlabelled/discrete channel layout. Core Audio's
+/// implicit multichannel-to-mono mapping can be [-1] (silence). Average explicitly
+/// before conversion; mono input and audio sample positions are unchanged.
+enum SpeechAudioDownmix {
+    static func mono(_ input:AVAudioPCMBuffer,format:AVAudioFormat?) throws -> AVAudioPCMBuffer {
+        guard let format else { return input }
+        guard input.format.commonFormat == .pcmFormatFloat32, let channels = input.floatChannelData,
+              let output = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:input.frameLength),
+              let destination = output.floatChannelData?[0] else { throw DictationFailure.audioUnavailable }
+        let count = Int(input.format.channelCount), stride = input.stride
+        output.frameLength = input.frameLength
+        for frame in 0..<Int(input.frameLength) {
+            var mixed:Float = 0
+            for channel in 0..<count {
+                let value = channels[input.format.isInterleaved ? 0 : channel][frame*stride + (input.format.isInterleaved ? channel : 0)]
+                guard value.isFinite else { throw DictationFailure.audioUnavailable }
+                mixed += value/Float(count)
+            }
+            destination[frame] = mixed
+        }
+        return output
+    }
+}
+
 /// Tap delivery metrics contain counts and sample positions only, never PCM or text.
 final class AudioIngress: Sendable {
     struct State {
         var open = true
+        let inputFormat: AVAudioFormat
+        let monoFormat: AVAudioFormat?
         let converter: AVAudioConverter?
         let format: AVAudioFormat
         let modern: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation?
@@ -27,11 +53,17 @@ final class AudioIngress: Sendable {
               (8000...192000).contains(source.sampleRate), (8000...192000).contains(target.sampleRate),
               (1...8).contains(source.channelCount), (legacy != nil || target.channelCount == 1),
               modern == nil || target.commonFormat == .pcmFormatInt16 else { throw DictationFailure.audioUnavailable }
-        let converter = AVAudioConverter(from:source,to:target)
+        let mono:AVAudioFormat?
+        if source.channelCount > 1 {
+            guard source.commonFormat == .pcmFormatFloat32,
+                  let format = AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:source.sampleRate,channels:1,interleaved:false) else { throw DictationFailure.audioUnavailable }
+            mono = format
+        } else { mono = nil }
+        let converter = AVAudioConverter(from:mono ?? source,to:target)
         guard legacy != nil || converter != nil else { throw DictationFailure.audioUnavailable }
         // Apple conversion pattern: don't add resampler priming/timestamp drift.
         converter?.primeMethod = .none
-        var initial = State(converter:converter,format:target,modern:modern,legacy:legacy)
+        var initial = State(inputFormat:source,monoFormat:mono,converter:converter,format:target,modern:modern,legacy:legacy)
         initial.delivery.inputSampleRate = source.sampleRate
         state = OSAllocatedUnfairLock(uncheckedState:initial)
     }
@@ -63,7 +95,7 @@ final class AudioIngress: Sendable {
     func append(_ input: AVAudioPCMBuffer, at time: AVAudioTime? = nil) {
         state.withLockUnchecked { s in
             guard s.open else { return }
-            guard input.frameLength <= 8192, input.format == (s.converter?.inputFormat ?? s.format) else {
+            guard input.frameLength <= 8192, input.format == s.inputFormat else {
                 fail(.audioUnavailable,code:"inputFormatChanged",state:&s); return
             }
             s.delivery.receivedBuffers += 1; s.delivery.receivedFrames += UInt64(input.frameLength)
@@ -77,8 +109,11 @@ final class AudioIngress: Sendable {
                 let next = time.sampleTime.addingReportingOverflow(Int64(input.frameLength))
                 s.expectedSample = next.overflow ? nil : next.partialValue
             }
+            let mono:AVAudioPCMBuffer
+            do { mono = try SpeechAudioDownmix.mono(input,format:s.monoFormat) }
+            catch { fail(.audioUnavailable,code:"downmixFailed",state:&s); return }
             if let legacy = s.legacy {
-                legacy.append(input); s.delivery.queuedBuffers += 1; s.delivery.queuedFrames += UInt64(input.frameLength); return
+                legacy.append(mono); s.delivery.queuedBuffers += 1; s.delivery.queuedFrames += UInt64(input.frameLength); return
             }
             guard let converter = s.converter, input.frameLength > 0 else { return }
             let frames = ceil(Double(input.frameLength) * s.format.sampleRate / input.format.sampleRate) + 32
@@ -89,7 +124,7 @@ final class AudioIngress: Sendable {
             var supplied = false; var error: NSError?
             let status = converter.convert(to:output,error:&error) { _, status in
                 if supplied { status.pointee = .noDataNow; return nil }
-                supplied = true; status.pointee = .haveData; return input
+                supplied = true; status.pointee = .haveData; return mono
             }
             guard error == nil, status != .error else { fail(.audioUnavailable,code:"conversionFailed",native:NativeSpeechCallbacks.errorMetadata(error),state:&s); return }
             _ = enqueue(output,state:&s)

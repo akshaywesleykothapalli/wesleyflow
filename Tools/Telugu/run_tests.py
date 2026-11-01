@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-SUITES = ['Telugu Unicode and mixed-script output', 'Telugu bounded PCM and segmentation', 'Telugu recognition admission', 'Telugu model routing and decoder windows']
+SUITES = ['Telugu Unicode and mixed-script output', 'Telugu bounded PCM and segmentation', 'Telugu recognition admission', 'Telugu model routing and decoder windows', 'Apple microphone array downmix']
 
 
 def main():
@@ -21,9 +21,9 @@ def main():
         env = os.environ.copy()
         # Model tests require a separate explicit opt-in; CI must remain deterministic.
         for key in list(env):
-            if key.startswith('WESLEY_TELUGU_'):
+            if key.startswith(('WESLEY_TELUGU_', 'WESLEY_APPLE_AUDIO_')):
                 env.pop(key)
-        command = ['/usr/bin/xcrun', 'swift', 'test', '--jobs', '2', '-Xswiftc', '-enable-actor-data-race-checks', '--package-path', str(ROOT / 'Packages/WesleyFlowCore'), '--scratch-path', str(scratch), '--filter', 'TeluguRomanizerTests|TeluguAudioTests|TeluguRecognitionQualityTests|TeluguWhisperRoutingTests']
+        command = ['/usr/bin/xcrun', 'swift', 'test', '--jobs', '2', '-Xswiftc', '-enable-actor-data-race-checks', '--package-path', str(ROOT / 'Packages/WesleyFlowCore'), '--scratch-path', str(scratch), '--filter', 'TeluguRomanizerTests|TeluguAudioTests|TeluguRecognitionQualityTests|TeluguWhisperRoutingTests|AppleAudioIngressTests']
         with log.open('w') as output:
             result = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=1200)
         text = log.read_text(errors='replace')

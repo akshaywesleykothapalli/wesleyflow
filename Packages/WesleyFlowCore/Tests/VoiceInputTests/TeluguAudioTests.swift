@@ -205,3 +205,18 @@ extension TeluguAudioTests {
         #expect(statistics.summary.contains("admittedUtterances=0"))
     }
 }
+
+
+extension TeluguAudioTests {
+    @Test @MainActor func selectedLanguageWarmupNeverRequestsMicrophoneOrStartsCapture() async throws {
+        let recognizer = HeldTeluguPreparation()
+        var permissionRequests = 0
+        let input = TeluguDictationInput(recognizer:recognizer,microphoneAccess:{ permissionRequests += 1; return false })
+        let preparing = Task { try await input.prepareModel(language:.teluguOnly) }
+        await recognizer.waitUntilPreparing()
+        #expect(permissionRequests == 0); #expect(input.audioLevel().sequence == 0)
+        await recognizer.release(); try await preparing.value
+        #expect(permissionRequests == 0); #expect(input.captureDiagnosticSummary.contains("capturePhase=idle"))
+        input.cancel()
+    }
+}

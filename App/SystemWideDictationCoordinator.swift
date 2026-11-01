@@ -630,6 +630,7 @@ import VoiceInput
         if oldValue.agentKey != preferences.agentKey || oldValue.agentHotkeyEnabled != preferences.agentHotkeyEnabled || oldValue.activationKey != preferences.activationKey || oldValue.holdFnEnabled != preferences.holdFnEnabled || oldValue.previewShortcutsEnabled != preferences.previewShortcutsEnabled { configureAgentShortcut() }
         if oldValue.previewShortcutsEnabled != preferences.previewShortcutsEnabled || oldValue.offlineAIRewriting != preferences.offlineAIRewriting || oldValue.promptEngineeringEnabled != preferences.promptEngineeringEnabled || oldValue.activationKey != preferences.activationKey || oldValue.holdFnEnabled != preferences.holdFnEnabled { configurePreviewShortcuts() }
     } }
+    @Published private(set) var languagePreparationStatus = ""
     @Published var search = ""
     @Published private(set) var modelInventory: [ModelDescriptor] = []
     @Published private(set) var modelStatus = "Coding inference is disabled. Ollama model metadata has not been inspected."
@@ -1441,6 +1442,21 @@ import VoiceInput
         guard let modelInspector else { modelStatus = "Model metadata inspection is unavailable. Inference remains disabled."; return }
         do { modelInventory = try await modelInspector(); modelStatus = "Ollama metadata observed; its coding and prompt inference remain disabled and memory-gated. Apple dictation previews are separately opt-in." }
         catch { modelStatus = "Local model metadata is unavailable. No service or model was started." }
+    }
+    /// Runs from the language selector's cancellable view task, never from a hotkey callback.
+    func prepareSelectedLanguage() async {
+        guard !closed, !busy else { return }
+        guard preferences.languageMode == .teluguRomanised, let routing = input as? LanguageDictationInput else { languagePreparationStatus = ""; return }
+        let policy = preferences.teluguRecognitionLanguage
+        languagePreparationStatus = "Preparing offline Telugu…"
+        do {
+            try await routing.prepareTelugu(language:policy)
+            guard !closed, !Task.isCancelled, preferences.languageMode == .teluguRomanised, preferences.teluguRecognitionLanguage == policy else { return }
+            languagePreparationStatus = "Offline Telugu ready."
+        } catch {
+            guard !closed, !Task.isCancelled, preferences.languageMode == .teluguRomanised, preferences.teluguRecognitionLanguage == policy else { return }
+            languagePreparationStatus = "Offline model preparation failed. Start dictation to see the setup error."
+        }
     }
     func inspectSpeech() async {
         guard !closed, !busy, !speechResourceWorking else { return }
