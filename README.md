@@ -6,6 +6,7 @@ A native, local-first voice dictation and personal-agent app for Apple Silicon M
 
 - Global hold-to-talk dictation using a configured Fn/Globe or supported right-modifier key, with a small floating recording pill.
 - Installed Apple on-device Speech/Dictation engines; no configured cloud transcription fallback or automatic speech-asset downloads.
+- [Offline Romanised Telugu baseline](Docs/Telugu/IMPLEMENTATION.md): selectable local multilingual Whisper Small, deterministic romanisation and loanword/user replacements. Physical Telugu recognition and code-switch acceptance remain pending.
 - Dictionary, protected vocabulary, phrase replacements and deterministic formatting options.
 - Local dictation history, copy/delete controls, activity Insights and calendar heatmap.
 - Permission-aware insertion into supported editable fields, with original-target validation, observed-result verification and clipboard recovery safeguards.
@@ -38,7 +39,7 @@ Option+1/Option+2 request in-place Smart Polish/Prompt Engineering and show only
 - Apple Silicon; deployment target macOS 26.0 or later.
 - Recorded verification host: M4 MacBook Air, 16 GiB unified memory, macOS 27.2.
 - Recorded build lane: Xcode 27.0 beta (27A5237l), Swift 6.4, macOS 27 SDK; Swift language mode 6, package tools 6.2. Actual macOS 26 runtime and Command Line Tools Swift 6.2.3 compatibility remain unverified.
-- Microphone and Speech access are requested for user-initiated dictation. Global input/insertion requires the relevant native Accessibility/Input Monitoring access. Secure fields are excluded.
+- Apple dictation requests Microphone and Speech access for user-initiated capture. The Telugu branch requests Microphone access only and uses separately installed local Small weights. Global input/insertion requires the relevant native Accessibility/Input Monitoring access. Secure fields are excluded.
 - History is stored locally when enabled. The app does not save audio recordings. Apple system services and third-party clipboard managers have their own retention behavior.
 
 Use the General/Privacy controls to review permissions and preferences. The app-owned network-blocking option covers its HTTP paths, including loopback; it is not a system firewall and does not control Apple's system services.
@@ -61,7 +62,7 @@ xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platfo
 
 Choose a fresh result-bundle path per test run. For `test-without-building`, run immediately after `test` or `build-for-testing`; an ordinary app build may remove the hosted test bundle. Tests use disposable fixtures; they do not record microphone audio, post native insertion keys, run coding agents or infer real-app delivery success.
 
-The native application has no third-party Swift package dependency. Xcode references the local package under `Packages/WesleyFlowCore`; keep that directory and its fixtures in the checkout. Optional [Model Lab](ModelLab/README.md) Python dependencies are separate and are not required to build the app. Model weights, virtual environments, private screenshots, raw evidence and generated artifacts are deliberately excluded. The synthetic datasets and pinned provenance/licensing are retained; preparation is not proof of training or inference feasibility.
+Xcode references the local package under `Packages/WesleyFlowCore`; keep that directory and its fixtures in the checkout. VoiceInput also uses a checksum-pinned whisper.cpp 1.8.2 XCFramework fetched at build time. Runtime inference uses a separately installed, checksum-verified multilingual Small model; see the [Telugu setup and verification guide](Docs/Telugu/IMPLEMENTATION.md). Optional [Model Lab](ModelLab/README.md) Python dependencies are separate and are not required to build the app. Model weights, virtual environments, private screenshots, raw evidence and generated artifacts are deliberately excluded. The synthetic datasets and pinned provenance/licensing are retained; preparation is not proof of training or inference feasibility.
 
 ## Continuous integration
 
