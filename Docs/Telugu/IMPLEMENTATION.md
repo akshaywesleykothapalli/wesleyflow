@@ -1,5 +1,7 @@
 # Offline Romanised Telugu: repository audit and slice
 
+Historical baseline and callback-fix evidence follows. For the current model setup, routing and real Telugu verification, use [Recognition quality fix](RECOGNITION-QUALITY-FIX.md).
+
 Audit: 2026-11-01. Repository `/Users/akshaywesley/Developer/WesleyFlow`, initial HEAD `c1a9a3e`, clean `main`. The ChatGPT project directory is a reference mirror, not this Git repository.
 
 - App: native SwiftUI, macOS 26 arm64, Swift 6, local WesleyFlowCore package. Explicit project source membership.

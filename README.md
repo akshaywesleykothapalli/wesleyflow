@@ -6,7 +6,7 @@ A native, local-first voice dictation and personal-agent app for Apple Silicon M
 
 - Global hold-to-talk dictation using a configured Fn/Globe or supported right-modifier key, with a small floating recording pill.
 - Installed Apple on-device Speech/Dictation engines; no configured cloud transcription fallback or automatic speech-asset downloads.
-- [Offline Romanised Telugu baseline](Docs/Telugu/IMPLEMENTATION.md): selectable local multilingual Whisper Small, deterministic romanisation and loanword/user replacements. Physical Telugu recognition and code-switch acceptance remain pending.
+- [Offline Romanised Telugu](Docs/Telugu/RECOGNITION-QUALITY-FIX.md): selectable local Telugu-specialist/English Small routing, deterministic romanisation and loanword/user replacements. Public Telugu and English audio passed local inference tests; live microphone and code-switch acceptance remain pending.
 - Dictionary, protected vocabulary, phrase replacements and deterministic formatting options.
 - Local dictation history, copy/delete controls, activity Insights and calendar heatmap.
 - Permission-aware insertion into supported editable fields, with original-target validation, observed-result verification and clipboard recovery safeguards.
@@ -62,7 +62,7 @@ xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platfo
 
 Choose a fresh result-bundle path per test run. For `test-without-building`, run immediately after `test` or `build-for-testing`; an ordinary app build may remove the hosted test bundle. Tests use disposable fixtures; they do not record microphone audio, post native insertion keys, run coding agents or infer real-app delivery success.
 
-Xcode references the local package under `Packages/WesleyFlowCore`; keep that directory and its fixtures in the checkout. VoiceInput also uses a checksum-pinned whisper.cpp 1.8.2 XCFramework fetched at build time. Runtime inference uses a separately installed, checksum-verified multilingual Small model; see the [Telugu setup and verification guide](Docs/Telugu/IMPLEMENTATION.md). Optional [Model Lab](ModelLab/README.md) Python dependencies are separate and are not required to build the app. Model weights, virtual environments, private screenshots, raw evidence and generated artifacts are deliberately excluded. The synthetic datasets and pinned provenance/licensing are retained; preparation is not proof of training or inference feasibility.
+Xcode references the local package under `Packages/WesleyFlowCore`; keep that directory and its fixtures in the checkout. VoiceInput also uses a checksum-pinned whisper.cpp 1.8.2 XCFramework fetched at build time. Runtime inference uses separately installed, checksum-verified Telugu-specialist Small weights and, for Auto mode, multilingual Small weights; see the [Telugu setup and verification guide](Docs/Telugu/RECOGNITION-QUALITY-FIX.md). Optional [Model Lab](ModelLab/README.md) Python dependencies are separate and are not required to build the app. Model weights, virtual environments, private screenshots, raw evidence and generated artifacts are deliberately excluded. The synthetic datasets and pinned provenance/licensing are retained; preparation is not proof of training or inference feasibility.
 
 ## Continuous integration
 
