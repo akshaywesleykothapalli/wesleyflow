@@ -1,6 +1,6 @@
 # Telugu recognition quality fix — 2026-11-01
 
-Follow-up: [language settings, empty-speech diagnosis and installed-build mismatch](SETTINGS-REFINEMENT.md).
+Follow-ups: [language settings and installed-build mismatch](SETTINGS-REFINEMENT.md); [English microphone-array correction and Telugu timing](ENGLISH-ARRAY-AUDIO-FIX.md).
 
 The reported Apple Notes receipt confirms that 110 UTF-16 units were inserted and read back. `EDITOR_REPLACEMENT_UNSUPPORTED` concerns optional subsequent AI replacement; it does not explain the Kannada transcript. The stock multilingual Small recognizer generated unsupported script and a repeated syllable loop, which the Telugu romaniser correctly left unchanged. The saved recognition preference was already Telugu-only. The same class of failure reproduced on public Telugu speech with the stock model, including CPU inference.
 
