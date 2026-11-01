@@ -53,7 +53,9 @@ struct AppComposition {
             let provider = try OllamaProvider(endpoint:OllamaEndpoint(),transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
             return try await provider.discover() // Metadata only; no generate/cancel/unload call.
         }
-        return SystemWideDictationCoordinator(input:AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership),targets:NativeInsertionTargetCapture(),
+        let speech = LanguageDictationInput(english:AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership),
+            telugu:TeluguDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership))
+        return SystemWideDictationCoordinator(input:speech,targets:NativeInsertionTargetCapture(),
             insertion:TextInsertionService(clipboard:NativeDictationPasteboard(),clock:clock),shortcut:NativeDictationShortcut(),clock:clock,
             historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },personalPlanner:ApplePersonalPlanner(memory:SystemInferenceMemory(),clock:clock),personalMessageResolution:{plan in try await NativeAgentResolution.resolve(plan)},modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250)
     }

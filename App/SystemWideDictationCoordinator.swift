@@ -1315,6 +1315,9 @@ import VoiceInput
     let localeIdentifier: String
     let networkPolicy: ApplicationNetworkPolicy
     @Published private(set) var networkSnapshot: ApplicationNetworkPolicy.Snapshot
+    private var activeLanguageMode: DictationLanguageMode = .english
+    private var activeTeluguOverrides: [DictationPhraseReplacement] = []
+    private var activeTeluguWhitespace = true
     private let input: any DictationInput
     private let targets: any InsertionTargetCapturing
     private let insertion: any DictationTextInserting
@@ -1503,6 +1506,10 @@ import VoiceInput
             catch { fallback = .init(.unsupportedTarget,.unsupported) }
         }
         if destination == nil && !manual { captureExplanation = targets.failureExplanation }
+        activeLanguageMode = commandSession ? .english : preferences.languageMode
+        activeTeluguOverrides = preferences.formatting.replacements
+        activeTeluguWhitespace = preferences.spacingCleanup
+        if let routing = input as? LanguageDictationInput { routing.mode = activeLanguageMode; routing.recognitionLanguage = preferences.teluguRecognitionLanguage }
         session = id; timestamp = wallTime(); recordingBegan = nil; historyConsentAtStart = preferences.keepHistory
         raw = ""; cleaned = ""; engine = nil; phase = .preparing
         message = "Preparing on-device speech. Allow microphone and speech access if asked."
@@ -1540,7 +1547,9 @@ import VoiceInput
                 self.audioCaptureResult = Task.isCancelled ? .cancelled : .failed
                 self.transcriptionResult = Task.isCancelled ? .cancelled : .failed
                 self.speechFailureCode = String(describing:error as? DictationFailure ?? .recognitionFailed)
-                self.message = self.speechFailureDiagnostics?.failureDescription ?? DictationModel.description(error as? DictationFailure ?? .recognitionFailed)
+                self.message = self.activeLanguageMode == .teluguRomanised && (error as? DictationFailure) == .assetsMissing
+                    ? "Multilingual Whisper Small is missing or failed checksum verification. Install the verified Small model described in the Telugu setup guide. No microphone audio was captured."
+                    : (self.speechFailureDiagnostics?.failureDescription ?? DictationModel.description(error as? DictationFailure ?? .recognitionFailed))
                 if self.agentHUD != nil { self.agentShortcutStatus = "Agent speech failed: " + self.message }
             }
             if self.session == id { self.startup = nil }
@@ -1569,7 +1578,7 @@ import VoiceInput
         stopAudioVisualization()
         if commandSession { agentHUD = "Processing command"; agentShortcutStatus = "Agent released. Processing command…" }
         phase = .finalizing; message = "Transcribing…"; timer?.cancel(); input.stop()
-        if phase == .finalizing { armTimer(8000,id:id,finishing:true) }
+        if phase == .finalizing { armTimer(activeLanguageMode == .teluguRomanised ? 60_000 : 8000,id:id,finishing:true) }
     }
     func cancel() {
         stopAudioVisualization(); cancelInPlaceRewrite()
@@ -1601,7 +1610,15 @@ import VoiceInput
         guard session == id, phase != .inserting else { return }
         stopAudioVisualization()
         timer?.cancel(); timer = nil; startup = nil
-        cleaned = commandSession ? DictationText.cleaned(raw) : NativeDictationFormatting.format(raw,options:preferences.formatting,whitespace:preferences.spacingCleanup,locale:localeIdentifier)
+        if !commandSession && activeLanguageMode == .teluguRomanised {
+            cleaned = TeluguDictationText.render(raw,overrides:activeTeluguOverrides,whitespace:activeTeluguWhitespace)
+        } else {
+            cleaned = commandSession ? DictationText.cleaned(raw) : NativeDictationFormatting.format(raw,options:preferences.formatting,whitespace:preferences.spacingCleanup,locale:localeIdentifier)
+        }
+        if cleaned.utf8.count > DictationText.maximumBytes {
+            input.cancel(); session = nil; destination = nil; phase = .error
+            cleaned = ""; message = "Romanised text exceeds the 64 KiB limit. Raw text is retained; nothing inserted."; return
+        }
         audioCaptureResult = forced?.outcome == .cancelled ? .cancelled : (audioCaptureResult == .recording && forced?.reason != .speechFailed ? .success : .failed)
         transcriptionResult = forced?.outcome == .cancelled ? .cancelled : (forced == nil && !cleaned.isEmpty ? .success : .failed)
         if forced?.reason == .deadline { speechFailureCode = "timedOut" }

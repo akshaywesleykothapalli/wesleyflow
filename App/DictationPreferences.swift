@@ -35,6 +35,8 @@ enum DictationAppearance: String, Codable, CaseIterable {
     var colorScheme: ColorScheme? { switch self { case .system:nil; case .light:.light; case .dark:.dark } }
 }
 struct DictationPreferences: Codable, Equatable {
+    var languageMode: DictationLanguageMode = .english
+    var teluguRecognitionLanguage: TeluguRecognitionLanguage = .automatic
     var version = 1
     var keepHistory = true
     var spacingCleanup = true
@@ -54,9 +56,11 @@ struct DictationPreferences: Codable, Equatable {
     var previewShortcutsEnabled = false
     var offlineAIRewriting = false
     init() {}
-    private enum CodingKeys: String, CodingKey { case agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
+    private enum CodingKeys: String, CodingKey { case languageMode, teluguRecognitionLanguage, agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
+        languageMode = try c.decodeIfPresent(DictationLanguageMode.self,forKey:.languageMode) ?? .english
+        teluguRecognitionLanguage = try c.decodeIfPresent(TeluguRecognitionLanguage.self,forKey:.teluguRecognitionLanguage) ?? .automatic
         version = try c.decode(Int.self,forKey:.version)
         keepHistory = try c.decode(Bool.self,forKey:.keepHistory)
         spacingCleanup = try c.decode(Bool.self,forKey:.spacingCleanup)

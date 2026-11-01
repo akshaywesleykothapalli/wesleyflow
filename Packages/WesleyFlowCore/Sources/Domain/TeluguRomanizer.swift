@@ -13,11 +13,11 @@ public enum TeluguRecognitionLanguage: String, Codable, CaseIterable, Sendable {
 public enum TeluguRomanizer {
     private static let vowels: [UInt32:String] = [
         0x0C05:"a",0x0C06:"aa",0x0C07:"i",0x0C08:"ee",0x0C09:"u",0x0C0A:"oo",
-        0x0C0B:"ru",0x0C0C:"lu",0x0C0E:"e",0x0C0F:"ee",0x0C10:"ai",0x0C12:"o",0x0C13:"oo",0x0C14:"au",
+        0x0C0B:"ru",0x0C0C:"lu",0x0C0E:"e",0x0C0F:"e",0x0C10:"ai",0x0C12:"o",0x0C13:"o",0x0C14:"au",
         0x0C60:"roo",0x0C61:"loo"]
     private static let signs: [UInt32:String] = [
         0x0C3E:"aa",0x0C3F:"i",0x0C40:"ee",0x0C41:"u",0x0C42:"oo",0x0C43:"ru",0x0C44:"roo",
-        0x0C46:"e",0x0C47:"ee",0x0C48:"ai",0x0C4A:"o",0x0C4B:"oo",0x0C4C:"au",0x0C62:"lu",0x0C63:"loo"]
+        0x0C46:"e",0x0C47:"e",0x0C48:"ai",0x0C4A:"o",0x0C4B:"o",0x0C4C:"au",0x0C62:"lu",0x0C63:"loo"]
     private static let consonants: [UInt32:String] = [
         0x0C15:"k",0x0C16:"kh",0x0C17:"g",0x0C18:"gh",0x0C19:"ng",
         0x0C1A:"ch",0x0C1B:"chh",0x0C1C:"j",0x0C1D:"jh",0x0C1E:"ny",
@@ -37,7 +37,8 @@ public enum TeluguRomanizer {
         flush()
         var result = "", inherent = false, teluguContext = false
         func finishConsonant() { if inherent { result += "a"; inherent = false } }
-        for scalar in normalized.unicodeScalars {
+        let scalars = Array(normalized.unicodeScalars)
+        for (index, scalar) in scalars.enumerated() {
             let value = scalar.value
             if let stem = consonants[value] { finishConsonant(); result += stem; inherent = true; teluguContext = true }
             else if let vowel = signs[value] { inherent = false; result += vowel; teluguContext = true }
@@ -47,7 +48,11 @@ public enum TeluguRomanizer {
             else {
                 finishConsonant()
                 if let vowel = vowels[value] { result += vowel }
-                else if value == 0x0C00 || value == 0x0C01 || value == 0x0C02 { result += "m" }
+                else if value == 0x0C00 || value == 0x0C01 || value == 0x0C02 {
+                    // Colloquial nasal spelling before velar/palatal/retroflex/dental stops.
+                    let next = index + 1 < scalars.count ? scalars[index + 1].value : 0
+                    result += (0x0C15...0x0C28).contains(next) ? "n" : "m"
+                }
                 else if value == 0x0C03 { result += "h" }
                 else if (0x0C66...0x0C6F).contains(value) { result += String(value - 0x0C66) }
                 else if value == 0x0C55 { result += "e" }

@@ -4690,3 +4690,81 @@ extension PersonalCloseR3Tests {
         #expect(source.contains("set w to window id 17"));#expect(source.contains(NativeAgentScript.literal("reviewed-tab")));#expect(!source.contains("\nopen Safari\n"))
     }
 }
+
+@MainActor private final class TeluguRoutingFixture: TeluguLanguageConfiguring {
+    var language: TeluguRecognitionLanguage = .automatic
+    var starts = 0, stops = 0, cancels = 0
+    var receive: (@MainActor @Sendable (DictationEvent)->Void)?
+    func start(localeIdentifier:String,receive:@escaping @MainActor @Sendable (DictationEvent)->Void) async throws -> DictationInfo {
+        starts += 1; self.receive = receive
+        return .init(engine:"Fixture Small",localeIdentifier:language.whisperLanguage)
+    }
+    func stop() { stops += 1 }
+    func cancel() { cancels += 1 }
+}
+@Suite("Telugu coordinator vertical slice",.serialized) @MainActor struct TeluguCoordinatorTests {
+    @Test func oldPreferencesDefaultToExistingEnglishAndRoundTripNewMode() throws {
+        var old = try #require(JSONSerialization.jsonObject(with:JSONEncoder().encode(DictationPreferences())) as? [String:Any])
+        old.removeValue(forKey:"languageMode"); old.removeValue(forKey:"teluguRecognitionLanguage")
+        var value = try JSONDecoder().decode(DictationPreferences.self,from:JSONSerialization.data(withJSONObject:old))
+        #expect(value.languageMode == .english); #expect(value.teluguRecognitionLanguage == .automatic)
+        value.languageMode = .teluguRomanised; value.teluguRecognitionLanguage = .teluguOnly
+        #expect(try JSONDecoder().decode(DictationPreferences.self,from:JSONEncoder().encode(value)) == value)
+    }
+    @Test func routerDefaultsToEnglishAndAgentIgnoresTeluguSelection() async throws {
+        let english = GInput(), telugu = TeluguRoutingFixture()
+        let router = LanguageDictationInput(english:english,telugu:telugu)
+        _ = try await router.start(localeIdentifier:"en-IN") { _ in }
+        #expect(english.starts == 1); #expect(telugu.starts == 0); router.cancel()
+        router.mode = .teluguRomanised
+        _ = try await router.start(localeIdentifier:"en-IN") { _ in }
+        #expect(telugu.starts == 1); #expect(telugu.language == .automatic)
+        router.mode = .english; router.stop(); #expect(telugu.stops == 1); router.cancel()
+        router.mode = .teluguRomanised; router.recognitionLanguage = .teluguOnly
+        _ = try await router.start(localeIdentifier:"en-IN") { _ in }
+        #expect(telugu.language == .teluguOnly); router.cancel()
+        _ = try await router.startAgent(localeIdentifier:"en-IN") { _ in }
+        #expect(english.starts == 2); #expect(telugu.starts == 2); router.cancel()
+    }
+    @Test func realInsertionServiceReceivesRomanisedTextOnceAfterRelease() async {
+        let input = GInput(), capture = GCapture(), shortcut = GShortcut(), clipboard = GClipboard()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:shortcut,preferenceStore:preferences())
+        c.preferences.keepHistory = false; c.preferences.languageMode = .teluguRomanised
+        c.preferences.formatting.correctSpelling = true
+        c.preferences.formatting.replacements = [.init(phrase:"మీటింగ్",replacement:"standup")]
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("రేపు మీటింగ్ API"))
+        #expect(capture.target?.replacements == 0)
+        // A settings edit cannot change the backend or dictionary of an active gesture.
+        c.preferences.languageMode = .english; c.preferences.formatting.replacements = []
+        shortcut.receive?(.released); input.receive?(.finished); input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        #expect(c.cleaned == "repu standup API")
+        #expect(capture.target?.value == "arepu standup APIbc")
+        #expect(capture.target?.replacements == 1); #expect(clipboard.installed == 0)
+        c.close()
+    }
+    @Test func cancelledTeluguCannotInsertThroughLateCompletionOrNextSession() async {
+        let input = GInput(), capture = GCapture(), shortcut = GShortcut()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:shortcut,preferenceStore:preferences())
+        c.preferences.keepHistory = false; c.preferences.languageMode = .teluguRomanised
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        let old = input.receive; input.receive?(.transcript("మీటింగ్")); shortcut.receive?(.cancelled)
+        await c.waitForInsertionCompletion(); #expect(capture.target?.replacements == 0)
+        shortcut.receive?(.pressed); await c.waitUntilRecording()
+        old?(.transcript("old")); old?(.finished)
+        input.receive?(.transcript("కాల్")); shortcut.receive?(.released); input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        #expect(c.cleaned == "call"); #expect(capture.target?.replacements == 1)
+        c.close()
+    }
+    @Test func missingModelHasActionableMessageAndNoInsertion() async {
+        let input = GInput(), capture = GCapture()
+        input.startFailure = .assetsMissing
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        c.preferences.languageMode = .teluguRomanised
+        c.startManual(); await c.waitForCaptureStartup()
+        #expect(c.phase == .error); #expect(c.message.contains("Small model")); #expect(capture.count == 0)
+        c.close()
+    }
+}

@@ -531,8 +531,17 @@ import VoiceInput
                 FlowSettingsRow("Show clickable pill while idle") { Toggle("Show clickable pill while idle",isOn:$coordinator.preferences.idlePillEnabled) }
             }
             FlowSettingsGroup("Speech engine") {
+                FlowSettingsRow("Dictation mode",description:"English keeps the current Apple engine and Mac language. Telugu runs multilingual Whisper Small locally. Agent capture keeps its current engine.") {
+                    Picker("Dictation mode",selection:$coordinator.preferences.languageMode) { ForEach(DictationLanguageMode.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
+                }
+                if coordinator.preferences.languageMode == .teluguRomanised {
+                    FlowSettingsRow("Recognition language",description:"Automatic supports English-only and mixed speech. Telugu only may turn English speech into Telugu-script words.") {
+                        Picker("Recognition language",selection:$coordinator.preferences.teluguRecognitionLanguage) { ForEach(TeluguRecognitionLanguage.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
+                    }
+                    FlowSettingsRow("Offline Small model",description:"Requires multilingual Small (487.6 MB); see the Telugu setup guide. The file is verified before use. Dictionary replacements take priority; spelling cleanup is skipped.") { Text(FileManager.default.fileExists(atPath:WhisperSmallModel.installedURL.path) ? "File present · verified on load" : "Not installed").foregroundStyle(.secondary) }
+                }
                 FlowSettingsRow("Recognition engine",description:"Installed modern engines are preferred. Legacy compatibility can stop at about one minute; continuous long dictation requires modern resources.") { Text(coordinator.busy ? (coordinator.engine?.engine ?? "Preparing capture") : (coordinator.speechConfiguration?.recommendedEngineLabel ?? "Inspect availability")).foregroundStyle(.secondary) }
-                if let actual = coordinator.engine { FlowSettingsRow("Last capture engine",description:"Actual engine: \(actual.engine). Actual Apple locale: \(actual.localeIdentifier).") { Text(actual.localeIdentifier).foregroundStyle(.secondary) } }
+                if let actual = coordinator.engine { FlowSettingsRow("Last capture engine",description:"Actual engine: \(actual.engine). Actual recognition language: \(actual.localeIdentifier).") { Text(actual.localeIdentifier).foregroundStyle(.secondary) } }
                 FlowSettingsRow("Language") { Text(Locale.current.localizedString(forIdentifier:coordinator.localeIdentifier) ?? coordinator.localeIdentifier).foregroundStyle(.secondary) }
                 FlowSettingsRow("Installed speech assets",description:"Inspection never downloads. Install explicitly requests Apple language resources; macOS may continue or retry that request in the background.") { Button("Inspect availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking) }
                 if let speech = coordinator.speechConfiguration {
