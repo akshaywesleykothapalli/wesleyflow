@@ -252,10 +252,11 @@ final class AudioIngress: Sendable {
             let locale = Locale(identifier: localeIdentifier)
             taskGeneration += 1
             diagnostic.recognitionTaskGeneration = taskGeneration; diagnostic.recognitionTaskIdentifier = UUID().uuidString
-            // Do not inspect every modern inventory or prepare an analyzer for a ready short-command engine.
+            // Commands use the same verified modern path as English when resources are ready.
+            // Legacy remains an offline fallback, with application-name hints.
             let candidate=fastAgent ? SFSpeechRecognizer(locale:locale):nil
             let fastRecognizer=(candidate?.isAvailable == true && candidate?.supportsOnDeviceRecognition == true) ? candidate:nil
-            if fastRecognizer == nil {
+            do {
                 currentStage = .resourceInspection
                 let readiness = await AppleSpeechConfiguration.inspect(localeIdentifier:localeIdentifier)
                 try current(id)
@@ -269,14 +270,14 @@ final class AudioIngress: Sendable {
                     try current(id)
                     switch selectedEngine {
                     case .speechTranscriber:
-                        return try await beginModern(AppleSpeechModules.speech(selected),locale:selected,id:id,name:selectedEngine.label)
+                        return try await beginModern(AppleSpeechModules.speech(selected),locale:selected,id:id,name:selectedEngine.label,agent:fastAgent)
                     case .dictationTranscriber:
-                        return try await beginModern(AppleSpeechModules.dictation(selected),locale:selected,id:id,name:selectedEngine.label)
+                        return try await beginModern(AppleSpeechModules.dictation(selected),locale:selected,id:id,name:selectedEngine.label,agent:fastAgent)
                     }
                 }
             }
             diagnostic.provider = .legacyOnDevice; diagnostic.resolvedLocale = locale.identifier
-            diagnostic.fallbackReason = fastRecognizer == nil ? "modernModuleAssetsNotReady":"agentFastOnDevice"; diagnostic.preparation = "notApplicableLegacy"
+            diagnostic.fallbackReason = fastAgent ? "agentModernResourcesUnavailable":"modernModuleAssetsNotReady"; diagnostic.preparation = "notApplicableLegacy"
             currentStage = .legacyRecognition
             guard let recognizer = fastRecognizer ?? SFSpeechRecognizer(locale: locale), recognizer.isAvailable,
                   recognizer.supportsOnDeviceRecognition else { throw DictationFailure.assetsMissing }
@@ -355,7 +356,7 @@ final class AudioIngress: Sendable {
         guard format.sampleRate > 0, format.channelCount > 0 else { throw DictationFailure.audioUnavailable }
         engine = audio; return audio
     }
-    private func beginModern<M: SpeechModule>(_ module: M, locale: Locale, id: UUID, name: String) async throws -> DictationInfo {
+    private func beginModern<M: SpeechModule>(_ module: M, locale: Locale, id: UUID, name: String, agent:Bool = false) async throws -> DictationInfo {
         currentStage = .modernPreparation; diagnostic.preparation = "preparing"
         let audio = try makeEngine()
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) else { throw DictationFailure.audioUnavailable }
@@ -364,6 +365,10 @@ final class AudioIngress: Sendable {
         ingress = try AudioIngress(source: audio.inputNode.outputFormat(forBus: 0), target: format, modern: pair.continuation, onFailure: failureHandler(id))
         let worker = SpeechAnalyzer(modules: [module], options: .init(priority: .userInitiated, modelRetention: .whileInUse))
         analyzer = worker
+        if agent {
+            try await worker.setContext(AgentSpeechContext.make(applicationNames:agentApplicationNames))
+            try current(id)
+        }
         try await worker.prepareToAnalyze(in: format); try current(id)
         diagnostic.preparation = "succeeded"
         results = Task { [weak self] in
@@ -718,5 +723,15 @@ struct LegacyTranscriptBuffer {
         latestEnd = max(latestEnd,end)
         if let anchor, let duration { metadataStart = anchor; metadataDuration = duration }
         return all
+    }
+}
+
+
+@MainActor enum AgentSpeechContext {
+    static func make(applicationNames:[String]) -> AnalysisContext {
+        let context = AnalysisContext()
+        let hints = FlowVoiceControl.examples + ["Telugu","Telugu only","English","open Notes","show battery status"] + applicationNames
+        context.contextualStrings[.general] = Array(Set(hints.filter { !$0.isEmpty && $0.utf8.count <= 128 })).sorted().prefix(512).map { $0 }
+        return context
     }
 }

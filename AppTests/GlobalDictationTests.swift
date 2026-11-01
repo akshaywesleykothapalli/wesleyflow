@@ -987,6 +987,9 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func nativePagesInstantiateInBothAppearancesWithoutStartingSpeech() async throws {
         let input = GInput(), coordinator = world(input:input)
+        coordinator.preferences.formattingShortcutAction = .nextRecording
+        coordinator.preferences.previewShortcutsEnabled = true
+        coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("WesleyFlow-RenderedPages-\(UUID().uuidString)",isDirectory:true)
         defer { try? FileManager.default.removeItem(at:root) }
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
@@ -1009,6 +1012,9 @@ private actor GHistory: DictationHistoryStore {
                 let data = try #require(bitmap.representation(using:.png,properties:[:]))
                 #expect(bitmap.pixelsWide >= 800); #expect(bitmap.pixelsHigh >= 520); #expect(data.count > 1000)
                 try data.write(to:root.appendingPathComponent("\(page.rawValue)-\(appearance.rawValue).png"))
+                if appearance == .dark, [.commands,.dictation,.smartFormatting].contains(page) {
+                    try data.write(to:URL(fileURLWithPath:"/private/tmp/wesley-compatible-" + page.rawValue + ".png"))
+                }
                 window.close()
             }
         }
@@ -4914,5 +4920,57 @@ extension FlowAgentControlTests {
         #expect(!c.previewPresented && resolver.calls == 0)
         #expect(await driver.calls == 0)
         c.cancel(); c.close()
+    }
+}
+
+@Suite("One-shot formatting before insertion",.serialized) @MainActor struct BeforeInsertionShortcutTests {
+    @Test(arguments:[OfflinePreviewKind.polish,.promptEngineering])
+    func unsupportedRewriteEditorStillReceivesOneFormattedInsertion(_ kind:OfflinePreviewKind) async throws {
+        let input = GInput(), capture = GCapture(), board = GClipboard(), key = GShortcut(), driver = GOfflineRewrite()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:board,clock:GClock()),shortcut:key,preferenceStore:preferences(),offlineRewriter:driver)
+        c.preferences.keepHistory = false; c.preferences.formattingShortcutAction = .nextRecording
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true; c.preferences.inPlaceAIRewrite = false
+        c.preferences.formatting.sentenceCapitalization = false; c.preferences.formatting.correctSpelling = false
+        c.invokeAIShortcut(kind,originProcessIdentifier:42)
+        #expect(c.armedFormattingKind == kind && input.starts == 0)
+        #expect(c.pillVisible && c.pillContent == .label(kind == .polish ? "Polish armed" : "Prompt armed"))
+        c.enableShortcut(); key.receive?(.pressed); await c.waitUntilRecording()
+        let target = try #require(capture.target); target.rewriteCreationFailure = .unsupportedEditor
+        input.receive?(.transcript("um please check the save button")); key.receive?(.released); input.receive?(.finished); input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        #expect(target.replacements == 1 && c.armedFormattingKind == nil)
+        #expect(c.cleaned == (try LocalShortcutFormatting.format("um please check the save button",kind:kind)))
+        #expect(await driver.calls == 0); #expect(!c.previewPresented && c.lastAIShortcutFailure == nil)
+        #expect(c.beforeFormattingNotice.contains("local formatting")); c.close()
+    }
+    @Test func cancellationAndDifferentAppDoNotCarryFormattingIntoAnotherRecording() async {
+        let input = GInput(), capture = GCapture(), key = GShortcut()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:key,preferenceStore:preferences())
+        c.preferences.keepHistory = false; c.preferences.formattingShortcutAction = .nextRecording; c.preferences.offlineAIRewriting = true
+        c.preferences.formatting.sentenceCapitalization = false; c.preferences.formatting.correctSpelling = false
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); c.enableShortcut(); key.receive?(.pressed); await c.waitUntilRecording()
+        key.receive?(.cancelled)
+        #expect(c.armedFormattingKind == nil)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:99)
+        key.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("um keep words")); key.receive?(.released); input.receive?(.finished); await c.waitForInsertionCompletion()
+        #expect(c.cleaned == "um keep words"); #expect(c.armedFormattingKind == nil)
+        #expect(c.beforeFormattingNotice.contains("target app changed")); c.close()
+    }
+    @Test func legacySettingsKeepTheirOldAfterInsertionBehavior() throws {
+        var encoded = try #require(JSONSerialization.jsonObject(with:JSONEncoder().encode(DictationPreferences())) as? [String:Any])
+        encoded.removeValue(forKey:"formattingShortcutAction")
+        #expect(try JSONDecoder().decode(DictationPreferences.self,from:JSONSerialization.data(withJSONObject:encoded)).formattingShortcutAction == .lastInsertion)
+    }
+}
+
+
+extension BeforeInsertionShortcutTests {
+    @Test func escapeBeforeRecordingDisarmsWithoutMicrophone() {
+        let input = GInput()
+        let c = SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences())
+        c.preferences.formattingShortcutAction = .nextRecording; c.preferences.offlineAIRewriting = true
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); c.cancel()
+        #expect(c.armedFormattingKind == nil && input.starts == 0); c.close()
     }
 }

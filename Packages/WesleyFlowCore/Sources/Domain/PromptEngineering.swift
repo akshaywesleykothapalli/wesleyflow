@@ -35,6 +35,24 @@ public struct PromptEngineeringContract: Sendable {
         lines = original
         numberedMaskedText = masked.enumerated().map { "\($0.offset): \($0.element)" }.joined(separator:"\n")
     }
+    /// Local extractive structure: exact source units, no generated requirements.
+    public func renderLocally() throws -> String {
+        var sections = Array(repeating:[Int](),count:5), current = 0
+        for (index,line) in lines.enumerated() {
+            if index > 0 {
+                let lower = line.trimmingCharacters(in:.whitespaces).lowercased()
+                let prefixes:[(Int,[String])] = [(1,["context:","background:"]),(2,["requirements:","must ","ensure "]),(3,["constraints:","keep ","preserve ","do not ","don't ","without "]),(4,["output:","return ","deliver ","report ","provide "])]
+                if let next = prefixes.first(where:{ $0.1.contains(where:{lower.hasPrefix($0)}) })?.0, next >= current { current = next }
+            }
+            sections[current].append(index)
+        }
+        let keys = ["objective","context","requirements","constraints","expectedOutput"]
+        let plan = Dictionary(uniqueKeysWithValues:zip(keys,sections))
+        let data = try JSONSerialization.data(withJSONObject:plan,options:.sortedKeys)
+        let output = try render(String(decoding:data,as:UTF8.self))
+        try validateRendered(output)
+        return output
+    }
     /// Revalidate the existing renderer's restored output, never accept invented section content.
     public func validateRendered(_ output:String) throws {
         guard output.utf8.count <= 4096 else { throw ProtectedRewriteText.Failure.invalidOutput }

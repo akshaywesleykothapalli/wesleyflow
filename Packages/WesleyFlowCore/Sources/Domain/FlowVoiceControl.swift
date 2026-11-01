@@ -29,6 +29,23 @@ public enum FlowVoiceControl: Equatable, Sendable {
         ]
         return commands.first(where:{$0.1.contains(text)})?.0
     }
+    public var helpDescription:String {
+        switch self {
+        case .language(.english,_): "Use English for the next Fn recording."
+        case .language(.teluguRomanised,.automatic): "Recognise Telugu and English locally."
+        case .language(.teluguRomanised,_): "Recognise Telugu and insert Romanised text."
+        case .navigate(.settings): "Open language, microphone and key settings."
+        case .navigate(.dictation): "Show the dictation page."
+        case .navigate(.history): "Show saved dictations."
+        case .navigate(.dictionary): "Show your vocabulary and replacements."
+        case .navigate(.formatting): "Show formatting shortcuts and their status."
+        case .navigate(.commands): "Show this command reference."
+        case .saveHistory(true): "Save future dictations on this Mac."
+        case .saveHistory(false): "Stop saving new dictations; keep existing history."
+        case .spacing(true): "Clean up whitespace in future dictations."
+        case .spacing(false): "Keep dictated whitespace unchanged."
+        }
+    }
     public var confirmation:String {
         switch self {
         case .language(.english,_): "English selected for the next Fn dictation."

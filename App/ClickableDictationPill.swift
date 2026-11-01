@@ -78,6 +78,8 @@ enum DictationHUDContent: Equatable {
 }
 @MainActor extension SystemWideDictationCoordinator {
     var pillContent:DictationHUDContent {
+        // Explicit shortcut arming is visible without activating the destination app.
+        if hudFeedbackVisible, !busy, let kind = armedFormattingKind { return .label(kind == .polish ? "Polish armed" : "Prompt armed") }
         // Keep actionable AI status as text; ordinary errors stay in Dictation.
         if let agentHUD { return .label(agentHUD) }
         if hideCompletedDictationPill { return .hidden }

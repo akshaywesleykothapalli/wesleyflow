@@ -132,6 +132,14 @@ import VoiceInput
     }
     private var dictationPage: some View {
         VStack(alignment:.leading,spacing:0) {
+            if coordinator.preferences.previewShortcutsEnabled && coordinator.preferences.formattingShortcutAction == .nextRecording {
+                VStack(alignment:.leading,spacing:6) {
+                    Text("⌥1  Smart Polish     ⌥2  Structured prompt").font(.callout.weight(.semibold))
+                    Text("Press a shortcut in your target app, then hold Fn and speak English. Local formatting happens before insertion.").font(.caption).foregroundStyle(.secondary)
+                    if !coordinator.beforeFormattingNotice.isEmpty { Text(coordinator.beforeFormattingNotice).font(.caption).textSelection(.enabled) }
+                    if coordinator.armedFormattingKind != nil { Button("Cancel armed shortcut") { coordinator.cancelArmedFormatting() } }
+                }.padding(.horizontal,22).padding(.vertical,12)
+            }
             if coordinator.busy || coordinator.phase == .error || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil || coordinator.lastAIShortcutFailure != nil {
                 VStack(alignment:.leading,spacing:8) {
                     if coordinator.busy { HStack { Text(coordinator.message).font(.callout); Spacer(); Button("Cancel dictation") { coordinator.cancel() } } }
@@ -201,34 +209,40 @@ import VoiceInput
             Text("If access is denied, you can still dictate here and copy the text manually.").font(.caption).foregroundStyle(.secondary)
         }
     }
+    private static let macCommandHelp = ["Open Notes":"Open the Notes app.","Set volume to thirty percent":"Set system output volume to 30%.","Turn volume up":"Increase system output volume.","Mute audio":"Mute system output audio.","Show battery status":"Read the current battery level.","Move Safari to the left half":"Place Safari's window on the left half of its display."]
     private var commandsPage: some View {
         FlowPage {
             Text("Hold \(coordinator.preferences.agentKey.label) for Agent commands; hold \(coordinator.preferences.activationKey.label) for dictation. Speak Agent commands in English. Language commands change your next dictation.").foregroundStyle(.secondary)
-            Text("On-device personal agent · 45A-R3").font(.headline)
-            TextField("Ask the agent…", text:$coordinator.agentCommandText).disabled(coordinator.agentQuestion != nil)
-            HStack {
-                Button("Run text request") { coordinator.reviewAgentCommand() }.disabled(coordinator.busy)
-                Button("What can you do?") { commandLibraryExpanded=true;coordinator.showAgentHelp() }.disabled(coordinator.busy)
-                Button("Load saved tasks") { coordinator.loadAgentQueue() }.disabled(coordinator.busy)
+            FlowSettingsGroup("Command key") {
+                FlowSettingsRow(coordinator.preferences.agentKey.label,description:coordinator.agentShortcutStatus) {
+                    Toggle("Enable command key",isOn:Binding(get:{coordinator.preferences.agentHotkeyEnabled},set:{ if $0 {coordinator.enableAgentShortcut()} else {coordinator.disableAgentShortcut()} })).disabled(coordinator.busy)
+                }
             }
-            Text(coordinator.agentNotice).font(.caption).foregroundStyle(.secondary)
+            Text(coordinator.agentNotice).font(.callout).foregroundStyle(coordinator.phase == .error ? .orange : .secondary)
             FlowSettingsGroup("Dictation controls") {
                 FlowSettingsRow("Current dictation language") { Text(coordinator.preferences.languageMode == .english ? "English" : (coordinator.preferences.teluguRecognitionLanguage == .teluguOnly ? "Telugu only" : "Telugu + English")).foregroundStyle(.secondary) }
                 ForEach(FlowVoiceControl.examples,id:\.self) { example in
-                    FlowSettingsRow(example) { Button("Use command") { coordinator.agentCommandText = example }.disabled(coordinator.busy || coordinator.agentQuestion != nil) }
+                    FlowCommandHelpRow(command:example,explanation:FlowVoiceControl.parse(example)?.helpDescription ?? "")
                 }
             }
             FlowSettingsGroup("Everyday Mac actions") {
                 ForEach(["Open Notes","Set volume to thirty percent","Turn volume up","Mute audio","Show battery status","Move Safari to the left half"],id:\.self) { example in
-                    FlowSettingsRow(example) { Button("Use command") { coordinator.agentCommandText = example }.disabled(coordinator.busy || coordinator.agentQuestion != nil) }
+                    FlowCommandHelpRow(command:example,explanation:Self.macCommandHelp[example] ?? "")
                 }
             }
-            Text("Choose an example to fill the request below, then Run text request. Installed-app, Accessibility and Automation requirements still apply to Mac actions.").font(.caption).foregroundStyle(.secondary)
+            Text("Hold the command key, say one command, then release. Commands are listed for reference; Mac actions use existing permissions.").font(.caption).foregroundStyle(.secondary)
             Text("Speak normally with the separate Agent key. Installed apps can be opened or normally quit. Google/YouTube searches open in your default browser. Music controls the existing player. Messages require a final recipient and text confirmation.").font(FlowTypography.secondary).foregroundStyle(.secondary)
             Text(coordinator.agentShortcutStatus).font(.caption).foregroundStyle(.secondary)
-            if let failure=coordinator.lastAgentFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
+            if let failure=coordinator.lastAgentFailure {
+                Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                Button("Copy command speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
+            }
             Text("Hold the Agent key, speak, then release. Routine requests run directly. Ambiguous requests stop for clarification; messages require confirmation. Dictation always inserts text.").font(.caption).foregroundStyle(.secondary)
             Divider()
+            DisclosureGroup("Type a command instead") {
+                TextField("Command",text:$coordinator.agentCommandText).disabled(coordinator.agentQuestion != nil)
+                Button("Run text request") { coordinator.reviewAgentCommand() }.disabled(coordinator.busy)
+            }
             DisclosureGroup("Command library",isExpanded:$commandLibraryExpanded) {
                 ForEach(PersonalCommandLibrary.examples,id:\.self) { example in Text(example).font(.caption).textSelection(.enabled) }
                 Text("Natural requests: Hey, open WhatsApp · Go open Google · Open Gmail in Safari · Open YouTube and search for piano music").font(.caption).textSelection(.enabled)
@@ -245,10 +259,10 @@ import VoiceInput
             }
             Text("Folder commands use Documents, Desktop or Downloads. Delete moves to Trash only after review; it never permanently erases. Finder controls and protected folders may need macOS consent. Browser searches use the named installed browser.").font(.caption).foregroundStyle(.secondary)
             if !coordinator.agentHeard.isEmpty {
-                DisclosureGroup("Latest request") {
-                    Text("Your words: " + coordinator.agentHeard).textSelection(.enabled)
-                    if !coordinator.agentInterpretation.isEmpty { Text("Understood: " + coordinator.agentInterpretation).textSelection(.enabled) }
-                }.font(.caption)
+                FlowSettingsGroup("Latest spoken request") {
+                    FlowCommandHelpRow(command:"Heard",explanation:coordinator.agentHeard)
+                    if !coordinator.agentInterpretation.isEmpty { FlowCommandHelpRow(command:"Understood",explanation:coordinator.agentInterpretation) }
+                }
             }
             if let question=coordinator.agentQuestion {
                 VStack(alignment:.leading,spacing:8) {
@@ -441,11 +455,21 @@ import VoiceInput
     private var formattingPage: some View {
         FlowPage {
             FlowSettingsGroup("Option+1 · Smart Polish / Option+2 · Prompt Engineering") {
-                FlowSettingsRow("Enable AI shortcuts",description:coordinator.previewShortcutStatus) { Toggle("Enable AI shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
-                FlowSettingsRow("Replacement readiness",description:coordinator.inPlaceReadinessDescription) { Text("In-place only").foregroundStyle(.secondary) }
+                FlowSettingsRow("Enable formatting shortcuts",description:coordinator.previewShortcutStatus) { Toggle("Enable formatting shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
+                FlowSettingsRow("Shortcut behavior",description:coordinator.shortcutModeDescription) {
+                    Picker("Shortcut behavior",selection:$coordinator.preferences.formattingShortcutAction) {
+                        ForEach(FormattingShortcutAction.allCases,id:\.self) { Text($0.label).tag($0) }
+                    }.pickerStyle(.menu).disabled(coordinator.busy || coordinator.inPlaceRunning)
+                }
+                FlowSettingsRow(coordinator.preferences.formattingShortcutAction == .nextRecording ? "Recording readiness" : "Replacement readiness",description:coordinator.inPlaceReadinessDescription) { Text(coordinator.preferences.formattingShortcutAction == .nextRecording ? "Before insertion" : "In-place only").foregroundStyle(.secondary) }
                 if let failure = coordinator.lastAIShortcutFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(14) }
+                if coordinator.preferences.formattingShortcutAction == .nextRecording {
+                    FlowSettingsRow("Formatter",description:"English formatting with local rules. No model load or generated requirements.") { Text("Local formatting").foregroundStyle(.secondary) }
+                }
+                if coordinator.preferences.formattingShortcutAction == .lastInsertion {
                 FlowSettingsRow("Local AI readiness",description:coordinator.rewriteReadinessNotice) {
                     Button(coordinator.checkingRewriteReadiness ? "Checking…" : "Check") { Task { await coordinator.inspectRewriteReadiness() } }.disabled(coordinator.busy || coordinator.inPlaceRunning || coordinator.isPreviewingRewrite || coordinator.checkingRewriteReadiness)
+                }
                 }
                 FlowSettingsRow("Shortcut diagnostics",description:"Metadata only. No shortcut falls back to a preview or copies text automatically.") {
                     Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.verificationDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
@@ -465,7 +489,7 @@ import VoiceInput
                 FlowSettingsRow("Handle explicit self corrections",description:"Only ‘Red. Scratch that. Blue.’ within one unprotected utterance. Ambiguous cues are preserved.") { Toggle("Handle explicit self corrections",isOn:$coordinator.preferences.formatting.handleSelfCorrections) }
             }
             FlowSettingsGroup("Smart polish") {
-                FlowSettingsRow("Enable Smart Polish preview",description:"Apple on-device copyediting. Manual previews are explicit; global AI shortcuts require separate in-place opt-in.") { Toggle("Enable Smart Polish preview",isOn:$coordinator.preferences.offlineAIRewriting) }
+                FlowSettingsRow("Enable Smart Polish",description:"Next recording uses local rules. Last-insertion AI and manual AI previews remain separate guarded actions.") { Toggle("Enable Smart Polish preview",isOn:$coordinator.preferences.offlineAIRewriting) }
                 FlowSettingsRow("Tone",description:"Limited to punctuation, capitalization and hesitation removal. Rewording is rejected.") {
                     Picker("Tone",selection:$coordinator.preferences.polishTone) { ForEach(OfflineRewriteTone.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu).disabled(!coordinator.preferences.offlineAIRewriting || coordinator.isPreviewingRewrite)
                 }
@@ -499,7 +523,7 @@ import VoiceInput
                 Button("Preview latest dictation") { coordinator.startRewritePreview() }.disabled(!coordinator.canPreviewRewrite)
             }
             FlowSettingsGroup("Prompt engineering") {
-                FlowSettingsRow("Enable Prompt Engineering preview",description:"Organize supplied sentences under relevant headings. Original words remain intact; missing requirements are never invented.") { Toggle("Enable Prompt Engineering preview",isOn:$coordinator.preferences.promptEngineeringEnabled) }
+                FlowSettingsRow("Enable structured prompts",description:"Organize source sentences under relevant headings. Local formatting preserves the supplied words and never invents requirements.") { Toggle("Enable Prompt Engineering preview",isOn:$coordinator.preferences.promptEngineeringEnabled) }
             }
             Button("Preview structured prompt") { coordinator.startSuppliedPreview(.promptEngineering) }.disabled(!coordinator.canPreviewSupplied(.promptEngineering))
             if coordinator.isPreviewingRewrite { Button("Cancel preview") { coordinator.cancelRewritePreview() } }
@@ -869,4 +893,15 @@ private func agentTaskHeading(_ record:PersonalTaskRecord)->String {
 func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
     guard record.state == .needsReview,let close=record.receipts.values.first(where:{!$0.verified && $0.appClose != nil})?.appClose else {return record.state.rawValue}
     return switch close.outcome {case .pending:"Quit pending";case .refused:"Quit refused";case .reopened:"App reopened";case .unavailable:"Can't check app";case .unconfirmed,.closed:"Check app"}
+}
+
+
+@MainActor private struct FlowCommandHelpRow: View {
+    let command:String, explanation:String
+    var body:some View {
+        HStack(alignment:.top,spacing:20) {
+            Text(command).frame(maxWidth:.infinity,alignment:.leading)
+            Text(explanation).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading)
+        }.font(.callout).textSelection(.enabled).padding(14).accessibilityElement(children:.combine)
+    }
 }

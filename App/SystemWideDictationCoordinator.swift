@@ -10,6 +10,27 @@ import VoiceInput
     enum Phase: String, CaseIterable { case idle, preparing, recording, finalizing, inserting, success, error }
     @Published private(set) var phase: Phase = .idle
     enum InPlaceHUD: Equatable { case idle, polishing, structuring, success, error }
+    @Published private(set) var armedFormattingKind:OfflinePreviewKind?
+    @Published private(set) var beforeFormattingNotice = ""
+    private var armedFormattingOrigin:Int32?
+    private var armedFormattingAt:ContinuousClock.Instant?
+    private var activeBeforeFormatting:OfflinePreviewKind?
+    func cancelArmedFormatting() {
+        armedFormattingKind = nil; armedFormattingOrigin = nil; armedFormattingAt = nil
+        beforeFormattingNotice = "Formatting shortcut cancelled."
+        feedbackTask?.cancel(); hudFeedbackVisible = false
+    }
+    private func armFormatting(_ kind:OfflinePreviewKind,origin:Int32?) {
+        guard let origin, origin > 0 else { lastAIShortcutFailure = "Press the shortcut from the app where you will dictate."; return }
+        guard kind == .polish ? preferences.offlineAIRewriting : preferences.promptEngineeringEnabled else {
+            lastAIShortcutFailure = kind == .polish ? "Enable Smart Polish in Smart Formatting." : "Enable Prompt Engineering in Smart Formatting."; return
+        }
+        armedFormattingKind = kind; armedFormattingOrigin = origin; armedFormattingAt = .now
+        let label = kind == .polish ? "Smart Polish" : "Structured prompt"
+        beforeFormattingNotice = "\(label) armed. Hold Fn in the same app, speak, then release. Local formatting; no AI model is used."
+        previewShortcutStatus = beforeFormattingNotice
+        inPlaceHUD = .idle; message = beforeFormattingNotice; showHUDFeedback()
+    }
     @Published private(set) var lastAIShortcutFailure:String?
     @Published private(set) var inPlaceHUD: InPlaceHUD = .idle { didSet {
         if inPlaceHUD == .error { lastAIShortcutFailure = message }
@@ -309,7 +330,8 @@ import VoiceInput
         #endif
     }
     var shortcutModeDescription: String {
-        preferences.inPlaceAIRewrite
+        if preferences.formattingShortcutAction == .nextRecording { return "Press Option+1 for local Smart Polish or Option+2 for a local structured prompt, then hold Fn to record. The text is transformed before insertion." }
+        return preferences.inPlaceAIRewrite
             ? "38L3R3 · Option+1/2 request in-place AI only. A new verified dictation and supported unchanged editor are required. No preview opens on failure. Nothing is submitted."
             : "38L3R3 · Option+1/2 show only the pill while this switch is OFF. Enable before a new verified dictation. Manual preview is available only through Settings."
     }
@@ -317,6 +339,7 @@ import VoiceInput
     var verificationDiagnosticSummary: String {
         let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown"
         return "45A-R3 / speech38L3R3 build=" + build + " lifecycle=" + (closed ? "closed" : phase.rawValue)
+            + " formattingShortcutAction=" + preferences.formattingShortcutAction.rawValue
             + " outcome=" + latestInsertionOutcome + " verifiedReceipt=" + String(verifiedReceiptCreated)
             + " eligibleReceipt=" + String(eligibleReceiptPresent) + " reason=" + provenanceReason.rawValue
             + " expiration=" + (provenanceReason == .expired ? "expired" : (eligibleReceiptPresent ? "native120sRecheckedOnUse" : "noActiveAnchor"))
@@ -625,6 +648,7 @@ import VoiceInput
     @Published private(set) var clipboardPending = false
     @Published private(set) var shortcutEnabled = false
     @Published var preferences: DictationPreferences { didSet {
+        if oldValue.formattingShortcutAction != preferences.formattingShortcutAction, armedFormattingKind != nil { cancelArmedFormatting() }
         if oldValue.useFocusedTextWhenUnselected != preferences.useFocusedTextWhenUnselected { cancelTextCapture() }
         if oldValue.inPlaceAIRewrite != preferences.inPlaceAIRewrite { cancelTextCapture(); cancelRewritePreview(); previewPresented = false }
         if oldValue.inPlaceAIRewrite != preferences.inPlaceAIRewrite || (oldValue.offlineAIRewriting && !preferences.offlineAIRewriting) || (oldValue.promptEngineeringEnabled && !preferences.promptEngineeringEnabled) { cancelInPlaceRewrite() }
@@ -640,6 +664,7 @@ import VoiceInput
     @Published private(set) var rewriteReadinessNotice = "Not checked. This does not inspect editor contents or start generation."
     @Published private(set) var checkingRewriteReadiness = false
     var inPlaceReadinessDescription:String {
+        if preferences.formattingShortcutAction == .nextRecording { return "Formats the next Fn recording locally before one insertion. No editor-replacement receipt or AI model is required." }
         if !preferences.previewShortcutsEnabled { return "Option+1/2 are disabled. Enable AI shortcuts below." }
         if !preferences.inPlaceAIRewrite { return "In-place rewrite is disabled. Enable it before dictating a new sentence." }
         if !preferences.offlineAIRewriting && !preferences.promptEngineeringEnabled { return "Smart Polish and Prompt Engineering are disabled." }
@@ -1264,6 +1289,9 @@ import VoiceInput
             lastAIShortcutFailure = explanation; previewShortcutStatus = explanation
             traceRoute(kind,.ignoredBusy); return
         }
+        if preferences.formattingShortcutAction == .nextRecording {
+            armFormatting(kind,origin:originProcessIdentifier); return
+        }
         guard preferenceStore.load().inPlaceAIRewrite == preferences.inPlaceAIRewrite else {
             cancelInPlaceRewrite()
             rejectInPlace(kind,.settingsDisagree,"In-place settings changed in another app instance. Reopen this build safely. Nothing replaced."); return
@@ -1533,6 +1561,7 @@ import VoiceInput
     func startManual() { guard !busy, !closed else { return }; begin(manual:true) }
     private func begin(manual: Bool, fromShortcut: Bool = false, activation:DictationActivationContext?=nil, agent:Bool = false) {
         guard !speechResourceWorking else { message = "Speech resource setup is in progress. Finish or stop waiting before recording."; return }
+        activeBeforeFormatting = nil
         commandSession = agent; agentHUD = agent ? "Starting mic…" : nil
         if agent { agentStartupBegan=ProcessInfo.processInfo.systemUptime;agentStartupMilliseconds=nil }
         captureActivation=activation;captureObservedIdentity=nil
@@ -1583,6 +1612,15 @@ import VoiceInput
             catch { fallback = .init(.unsupportedTarget,.unsupported) }
         }
         if destination == nil && !manual { captureExplanation = targets.failureExplanation }
+        if fromShortcut, !agent, let kind = armedFormattingKind {
+            let validAge = armedFormattingAt.map { $0.duration(to:.now) < .seconds(120) } ?? false
+            let sameApp = destination?.info.processID == armedFormattingOrigin
+            armedFormattingKind = nil; armedFormattingOrigin = nil; armedFormattingAt = nil
+            if validAge && sameApp {
+                activeBeforeFormatting = kind
+                beforeFormattingNotice = "Local formatting will run when this recording finishes."
+            } else { beforeFormattingNotice = "The armed shortcut expired or the target app changed. This recording uses ordinary dictation." }
+        }
         activeLanguageMode = commandSession ? .english : preferences.languageMode
         activeTeluguOverrides = preferences.formatting.replacements
         activeTeluguWhitespace = preferences.spacingCleanup
@@ -1661,6 +1699,7 @@ import VoiceInput
         if phase == .finalizing { armTimer(activeLanguageMode == .teluguRomanised ? 60_000 : 8000,id:id,finishing:true) }
     }
     func cancel() {
+        if armedFormattingKind != nil { cancelArmedFormatting() }
         stopAudioVisualization(); cancelInPlaceRewrite()
         cancelRewritePreview()
         if let id=agentPlanningID {
@@ -1709,7 +1748,11 @@ import VoiceInput
             guard forced == nil, !cleaned.isEmpty else {
                 phase = forced?.outcome == .cancelled ? .idle : .error
                 agentHUD = forced?.outcome == .cancelled ? "Agent cancelled" : "Agent speech failed"
-                agentNotice = "Command incomplete or cancelled. Nothing ran. Partial speech is never executed."
+                if forced?.outcome == .cancelled { agentNotice = "Command cancelled. No action ran." }
+                else if forced != nil {
+                    agentNotice = (speechFailureDiagnostics?.failureDescription ?? terminalSpeechFailure.map(DictationModel.description) ?? "Command recognition did not finish.") + " No command was executed."
+                } else { agentNotice = "No command words were recognised. Speak after ‘Agent listening’, then release the command key. No action ran." }
+                lastAgentFailure = agentNotice
                 agentShortcutStatus = agentNotice; message = agentNotice; showHUDFeedback(); return
             }
             phase = .idle; agentCommandText = cleaned
@@ -1721,6 +1764,19 @@ import VoiceInput
             commandStatus = agentNotice; agentShortcutStatus = agentNotice; message = agentNotice; showHUDFeedback()
             if agentPlan != nil { requestAgentReview() }
             return
+        }
+        var formattedLabel:String?
+        if let kind = activeBeforeFormatting {
+            activeBeforeFormatting = nil
+            if forced != nil { beforeFormattingNotice = "Recording did not complete. The formatting shortcut was cancelled." }
+            else if activeLanguageMode != .english { beforeFormattingNotice = "Local shortcut formatting currently supports English. Romanised Telugu is inserted unchanged." }
+            else if !cleaned.isEmpty {
+                do {
+                    cleaned = try LocalShortcutFormatting.format(cleaned,kind:kind)
+                    formattedLabel = kind == .polish ? "Smart Polish" : "Structured prompt"
+                    beforeFormattingNotice = "Prepared with local formatting; inserting once."
+                } catch { beforeFormattingNotice = "Local formatting could not preserve this text safely. Original dictation retained for insertion." }
+            } else { beforeFormattingNotice = "No words recognised. The formatting shortcut was cancelled." }
         }
         guard !cleaned.isEmpty else {
             input.cancel(); session = nil; destination = nil; phase = forced?.outcome == .cancelled ? .idle : .error
@@ -1735,6 +1791,7 @@ import VoiceInput
             return
         }
         phase = .inserting; message = "Checking the original target and insertion result…"
+        let completedFormattingLabel = formattedLabel
         let target = destination, source = target?.info.applicationName, raw = raw, text = cleaned
         let fallback = fallback, captureExplanation = captureExplanation, date = timestamp, began = recordingBegan, saveAtStart = historyConsentAtStart
         work = Task { [weak self] in
@@ -1806,6 +1863,9 @@ import VoiceInput
             }
             guard self.session == id else { return }
             self.input.cancel(); self.session = nil; self.destination = nil; self.work = nil
+            if let label = completedFormattingLabel {
+                self.beforeFormattingNotice = receipt.status == .insertedVerified ? "\(label) inserted using local formatting." : "\(label) prepared locally. Check the insertion result below."
+            }
             if receipt.outcome == .inserted { self.phase = .success; self.message = "Text insertion verified in the original field." }
             else if receipt.reason == .manualOnly { self.phase = .success; self.message = "Dictation ready for review and manual copy." }
             else if receipt.outcome == .cancelled { self.phase = .idle; self.message = "Cancelled. Dictation retained locally; nothing was submitted." }
@@ -1967,6 +2027,7 @@ import VoiceInput
         return true
     }
     func close() {
+        armedFormattingKind = nil; armedFormattingOrigin = nil; armedFormattingAt = nil; activeBeforeFormatting = nil
         for task in closeObservers.values {task.cancel()};closeObservers.removeAll()
         agentDialogue.clear();agentQuestion=nil;agentRecipientChoice=nil;agentReplyText="";agentHeard="";agentInterpretation=""
         unmergedSpeechRecoveryEntry = nil
