@@ -46,15 +46,22 @@ struct DictationInsertionExpectation: Sendable {
     }
 }
 
-/// Missing capabilities are unsupported, never evidence that source text changed.
+/// Optional descriptive metadata is distinct from required read/write capabilities.
 enum DictationRewriteCapabilities {
     static func validateEditor(subrole:String?,editable:Bool) throws {
-        guard let subrole else { throw DictationRewriteValidationFailure.unsupportedEditor }
+        let subrole = subrole ?? ""
         guard !subrole.lowercased().contains("secure"), !subrole.lowercased().contains("password") else { throw DictationRewriteValidationFailure.secureInput }
         guard editable else { throw DictationRewriteValidationFailure.unsupportedEditor }
     }
-    static func validateComposition(markedLength:Int?) throws {
-        guard let markedLength, markedLength >= 0 else { throw DictationRewriteValidationFailure.compositionUnavailable }
+    static func validateComposition(markedLength:Int?, standardKeyboardUnchanged:Bool = false, inputUntouched:Bool = false) throws {
+        // Missing AXMarkedTextRange is common for committed native/web text.
+        // Only a stable keyboard layout (never an IME) and an armed input fence
+        // permit this fallback. Malformed or positive ranges never use it.
+        guard let markedLength else {
+            guard standardKeyboardUnchanged && inputUntouched else { throw DictationRewriteValidationFailure.compositionUnavailable }
+            return
+        }
+        guard markedLength >= 0 else { throw DictationRewriteValidationFailure.compositionUnavailable }
         guard markedLength == 0 else { throw DictationRewriteValidationFailure.secureInput }
     }
 }

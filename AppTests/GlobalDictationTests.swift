@@ -4974,3 +4974,46 @@ extension BeforeInsertionShortcutTests {
         #expect(c.armedFormattingKind == nil && input.starts == 0); c.close()
     }
 }
+
+
+extension InPlaceRewriteTests {
+    @Test func fnThenOptionTwoReplacesOriginalWithoutAnotherRecording() async throws {
+        let input = GInput(), key = GShortcut(), capture = GCapture(), clipboard = GClipboard()
+        let registrar = GPreviewRegistrar(), driver = InPlaceFixtureRewriter()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:key,preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar)
+        c.preferences.keepHistory = false
+        c.preferences.formattingShortcutAction = .lastInsertion
+        c.preferences.offlineAIRewriting = true; c.preferences.promptEngineeringEnabled = true
+        c.preferences.inPlaceAIRewrite = true; c.preferences.previewShortcutsEnabled = true
+        c.preferences.formatting.correctSpelling = false; c.preferences.formatting.sentenceCapitalization = false
+        c.enableShortcut(); key.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript("check the button")); key.receive?(.released); input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        let target = try #require(capture.target)
+        #expect(target.value == "acheck the buttonbc")
+        let recordings = input.starts
+        registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:42))
+        await c.waitForInPlaceRewrite()
+        #expect(target.value == "a## Objective\ncheck the buttonbc")
+        #expect(input.starts == recordings && c.armedFormattingKind == nil)
+        #expect(target.rewriteFixture?.replacements == 1 && c.inPlaceHUD == .success)
+        #expect(!c.previewPresented && clipboard.installed == 0)
+        registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:42))
+        await c.waitForInPlaceRewrite()
+        #expect(await driver.calls == 1 && target.rewriteFixture?.replacements == 1)
+        c.close()
+    }
+}
+
+@Suite("Rewrite input fence policy") struct RewriteInputPolicyTests {
+    @Test func onlyFormattingGesturesMayLeaveTheAnchorUsable() {
+        for code:UInt16 in [18,19] {
+            #expect(NativeRewriteInputPolicy.isFormattingGesture(keyDown:true,keyCode:code,modifiers:.option))
+            #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:true,keyCode:code,modifiers:[.option,.command]))
+            #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:true,keyCode:code,modifiers:[.option,.shift]))
+            #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:true,keyCode:code,modifiers:[]))
+            #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:false,keyCode:code,modifiers:.option))
+        }
+        #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:true,keyCode:0,modifiers:[]))
+    }
+}

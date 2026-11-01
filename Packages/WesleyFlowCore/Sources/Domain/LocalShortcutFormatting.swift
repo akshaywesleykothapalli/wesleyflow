@@ -2,7 +2,7 @@ import Foundation
 
 public enum FormattingShortcutAction: String, Codable, CaseIterable, Sendable {
     case lastInsertion, nextRecording
-    public var label:String { self == .nextRecording ? "Next recording · local formatting" : "Last insertion · on-device AI" }
+    public var label:String { self == .nextRecording ? "Next recording · local formatting" : "Replace last dictation · on-device AI" }
 }
 /// Explicit, deterministic formatting. It never runs a model or invents source content.
 public enum LocalShortcutFormatting {

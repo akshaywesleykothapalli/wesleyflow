@@ -132,6 +132,12 @@ import VoiceInput
     }
     private var dictationPage: some View {
         VStack(alignment:.leading,spacing:0) {
+            if coordinator.preferences.previewShortcutsEnabled && coordinator.preferences.formattingShortcutAction == .lastInsertion {
+                VStack(alignment:.leading,spacing:6) {
+                    Text("⌥1  Polish last dictation     ⌥2  Turn it into a prompt").font(.callout.weight(.semibold))
+                    Text("Hold Fn, speak and release. After your text appears, press Option+1 or Option+2 without moving the cursor. The result replaces that dictation in the same editor.").font(.caption).foregroundStyle(.secondary)
+                }.padding(.horizontal,22).padding(.vertical,12)
+            }
             if coordinator.preferences.previewShortcutsEnabled && coordinator.preferences.formattingShortcutAction == .nextRecording {
                 VStack(alignment:.leading,spacing:6) {
                     Text("⌥1  Smart Polish     ⌥2  Structured prompt").font(.callout.weight(.semibold))

@@ -3,6 +3,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import CryptoKit
+import Synchronization
 
 /// Read-only application/system observations must identify the same bound process.
 @MainActor enum NativeFocusedElementResolver {
@@ -100,8 +101,8 @@ enum NativeEditorCapability {
         guard enabled != false, editable != false, !console, !secure else { return false }
         return editable == true || writableText
     }
-    /// Existing direct-edit exclusion, retained for both ordinary route selection
-    /// and precise replacement. The installed ChatGPT-branded bundle uses this ID.
+    /// Ordinary initial insertion retains its existing paste-only exception.
+    /// A later exact selected-span rewrite is checked independently.
     static func allowsDirectTextReplacement(_ bundleIdentifier: String?) -> Bool { bundleIdentifier != "com.openai.codex" }
     static func allowsAutomaticInsertion(_ bundleIdentifier: String?) -> Bool { bundleIdentifier != "com.apple.Terminal" }
     static func isConsole(_ bundleIdentifier: String?) -> Bool {
@@ -246,7 +247,7 @@ enum NativeEditorCapability {
         }
         let textWritable = writable(kAXSelectedTextAttribute,.selectedTextWritable)
         let rangeWritable = writable(kAXSelectedTextRangeAttribute,.selectionWritable)
-        if !NativeEditorCapability.allowsDirectTextReplacement(application.bundleIdentifier) || textWritable == false || rangeWritable == false { replacementCapability = .unavailable }
+        if textWritable == false || rangeWritable == false { replacementCapability = .unavailable }
         else if textWritable == true && rangeWritable == true { replacementCapability = .available }
         else { replacementCapability = .unknown }
         reportDiagnostic(.init(.selection,.replacementCapability,replacementCapability == .available ? .success : (replacementCapability == .unavailable ? .unsupported : .pending)))
@@ -638,6 +639,27 @@ private struct AnchorCreationFailure: Error {
     let reason: DictationRewriteValidationFailure
     let diagnostics: [DictationVerificationDiagnostic]
 }
+/// Gesture-scoped metadata only: no characters, coordinates or clipboard data.
+/// Any typing/click/scroll invalidates a pending rewrite, including an edit that
+/// is later undone. The two registered formatting gestures do not invalidate it.
+enum NativeRewriteInputPolicy {
+    static func isFormattingGesture(keyDown:Bool,keyCode:UInt16,modifiers:NSEvent.ModifierFlags) -> Bool {
+        keyDown && (keyCode == 18 || keyCode == 19) && modifiers.intersection([.command,.control,.shift,.option]) == .option
+    }
+}
+private final class NativeRewriteInputFence: @unchecked Sendable {
+    private let changed = Mutex(false)
+    private var monitor: Any?
+    @MainActor init() {
+        monitor = NSEvent.addGlobalMonitorForEvents(matching:[.keyDown,.leftMouseDown,.rightMouseDown,.otherMouseDown,.scrollWheel]) { [weak self] event in
+            if NativeRewriteInputPolicy.isFormattingGesture(keyDown:event.type == .keyDown,keyCode:event.keyCode,modifiers:event.modifierFlags) { return }
+            self?.changed.withLock { $0 = true }
+        }
+    }
+    deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+    var untouched: Bool { monitor != nil && !changed.withLock { $0 } }
+}
+
 /// Owns only the dictated span and a whole-context digest, not an unrelated document copy.
 @MainActor private final class NativeDictationRewriteAnchor: DictationRewriteAnchor {
     let sessionID: String, originalText: String
@@ -646,6 +668,17 @@ private struct AnchorCreationFailure: Error {
     private let window: AXUIElement, element: AXUIElement
     private let span: TextSelection, documentHash: String
     private let epoch = TextFocusEpoch(center:NSWorkspace.shared.notificationCenter)
+    private let inputFence = NativeRewriteInputFence()
+    private let keyboard = NativeDictationRewriteAnchor.standardKeyboardIdentity()
+    private static func standardKeyboardIdentity() -> String? {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let typePointer = TISGetInputSourceProperty(source,kTISPropertyInputSourceType),
+              let idPointer = TISGetInputSourceProperty(source,kTISPropertyInputSourceID) else { return nil }
+        let type = Unmanaged<CFString>.fromOpaque(typePointer).takeUnretainedValue()
+        let identity = Unmanaged<CFString>.fromOpaque(idPointer).takeUnretainedValue() as String
+        guard CFEqual(type,kTISTypeKeyboardLayout), identity.hasPrefix("com.apple.keylayout.") else { return nil }
+        return identity
+    }
     private let born = ContinuousClock.now
     private var used = false
     init(sessionID:String,originalText:String,application:NSRunningApplication,window:AXUIElement,element:AXUIElement,expectedDocument:String,span:TextSelection) throws {
@@ -685,19 +718,32 @@ private struct AnchorCreationFailure: Error {
         guard !application.isTerminated, let front = NSWorkspace.shared.frontmostApplication else { record(.init(.target,.unavailable)); throw DictationRewriteValidationFailure.editorUnavailable }
         guard epoch.current == 0, front.processIdentifier == processID, front.launchDate == launch else { record(.init(.target,.different)); throw DictationRewriteValidationFailure.targetChanged }
         record(.init(.target,.matched))
-        guard NativeEditorCapability.allowsDirectTextReplacement(application.bundleIdentifier), !NativeEditorCapability.isConsole(application.bundleIdentifier) else { throw DictationRewriteValidationFailure.unsupportedEditor }
+        guard !NativeEditorCapability.isConsole(application.bundleIdentifier) else { throw DictationRewriteValidationFailure.unsupportedEditor }
         let root = AXUIElementCreateApplication(processID); AXUIElementSetMessagingTimeout(root,0.08); AXUIElementSetMessagingTimeout(element,0.08)
         guard let focusedWindow = NativeInsertionTarget.elementAttribute(root,kAXFocusedWindowAttribute),
               let focused = try? NativeInsertionTarget.focusedElement(root,processID:processID) else { record(.init(.element,.unavailable)); throw DictationRewriteValidationFailure.editorUnavailable }
         guard CFEqual(window,focusedWindow), CFEqual(focused,element) else { record(.init(.element,.different)); throw DictationRewriteValidationFailure.targetChanged }
         record(.init(.element,.matched))
+        guard inputFence.untouched else { throw DictationRewriteValidationFailure.caretChanged }
+        let role = NativeInsertionTarget.attribute(element,kAXRoleAttribute) as? String ?? ""
+        guard [kAXTextAreaRole,kAXTextFieldRole,kAXComboBoxRole].contains(role) else { throw DictationRewriteValidationFailure.unsupportedEditor }
         do { try DictationRewriteCapabilities.validateEditor(subrole:NativeInsertionTarget.attribute(element,kAXSubroleAttribute) as? String,editable:NativeInsertionTarget.editable(element,console:false)) }
         catch { record(.init(.element,.unsupported)); throw error }
-        guard let raw = NativeInsertionTarget.attribute(element,"AXMarkedTextRange"), CFGetTypeID(raw) == AXValueGetTypeID() else { record(.init(.composition,.unavailable)); throw DictationRewriteValidationFailure.compositionUnavailable }
-        let marked = unsafeDowncast(raw,to:AXValue.self); var markedRange = CFRange()
-        guard AXValueGetType(marked) == .cfRange, AXValueGetValue(marked,.cfRange,&markedRange) else { throw DictationRewriteValidationFailure.compositionUnavailable }
-        try DictationRewriteCapabilities.validateComposition(markedLength:markedRange.length)
-        record(.init(.composition,.valid))
+        var raw: CFTypeRef?
+        let compositionError = AXUIElementCopyAttributeValue(element,"AXMarkedTextRange" as CFString,&raw)
+        var markedLength: Int?
+        if compositionError == .success {
+            guard let raw, CFGetTypeID(raw) == AXValueGetTypeID() else { throw DictationRewriteValidationFailure.compositionUnavailable }
+            let marked = unsafeDowncast(raw,to:AXValue.self); var markedRange = CFRange()
+            guard AXValueGetType(marked) == .cfRange, AXValueGetValue(marked,.cfRange,&markedRange) else { throw DictationRewriteValidationFailure.compositionUnavailable }
+            markedLength = markedRange.length
+        } else {
+            // Timeouts, denial and invalid elements are not unsupported metadata.
+            guard compositionError == .attributeUnsupported || compositionError == .noValue else { throw DictationRewriteValidationFailure.compositionUnavailable }
+        }
+        try DictationRewriteCapabilities.validateComposition(markedLength:markedLength,
+            standardKeyboardUnchanged:keyboard != nil && keyboard == Self.standardKeyboardIdentity(),inputUntouched:inputFence.untouched)
+        record(.init(.composition,markedLength == nil ? .unavailable : .valid))
         var writable = DarwinBoolean(false)
         guard AXUIElementIsAttributeSettable(element,kAXSelectedTextAttribute as CFString,&writable) == .success, writable.boolValue,
               AXUIElementIsAttributeSettable(element,kAXSelectedTextRangeAttribute as CFString,&writable) == .success, writable.boolValue else { throw DictationRewriteValidationFailure.unsupportedEditor }
@@ -722,7 +768,7 @@ private struct AnchorCreationFailure: Error {
         guard AXUIElementSetAttributeValue(element,kAXSelectedTextRangeAttribute as CFString,value) == .success else { return .init(.uncertain,.verificationUnavailable,attempted:true) }
         guard let checked = try? checkedDocument(allowConsumed:true,selected:span), DictationInsertionExpectation.exact(checked,document) else { return .init(.uncertain,.verificationUnavailable,attempted:true) }
         guard AXUIElementSetAttributeValue(element,kAXSelectedTextAttribute as CFString,text as CFString) == .success,
-              NativeInsertionTarget.readText(element,maximumBytes:98_304).map({ DictationInsertionExpectation.exact($0,expected) }) == true, epoch.current == 0, NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return .init(.uncertain,.verificationUnavailable,attempted:true) }
+              NativeInsertionTarget.readText(element,maximumBytes:98_304).map({ DictationInsertionExpectation.exact($0,expected) }) == true, epoch.current == 0, inputFence.untouched, NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return .init(.uncertain,.verificationUnavailable,attempted:true) }
         return .init(.inserted,.verified,attempted:true)
     }
 }

@@ -127,7 +127,7 @@ extension FocusedTextResolverTests {
 
 extension DictationSpanVerificationTests {
     @Test func absentNativeAttributesDoNotBecomeTextMismatch() throws {
-        #expect(throws:DictationRewriteValidationFailure.unsupportedEditor) { try DictationRewriteCapabilities.validateEditor(subrole:nil,editable:true) }
+        try DictationRewriteCapabilities.validateEditor(subrole:nil,editable:true)
         #expect(throws:DictationRewriteValidationFailure.unsupportedEditor) { try DictationRewriteCapabilities.validateEditor(subrole:"",editable:false) }
         #expect(throws:DictationRewriteValidationFailure.secureInput) { try DictationRewriteCapabilities.validateEditor(subrole:"AXSecureTextField",editable:true) }
         #expect(throws:DictationRewriteValidationFailure.compositionUnavailable) { try DictationRewriteCapabilities.validateComposition(markedLength:nil) }
@@ -135,5 +135,23 @@ extension DictationSpanVerificationTests {
         #expect(throws:DictationRewriteValidationFailure.secureInput) { try DictationRewriteCapabilities.validateComposition(markedLength:2) }
         try DictationRewriteCapabilities.validateEditor(subrole:"",editable:true)
         try DictationRewriteCapabilities.validateComposition(markedLength:0)
+    }
+}
+
+
+extension DictationSpanVerificationTests {
+    @Test func absentCompositionNeedsStableNonIMEKeyboardAndUntouchedInput() throws {
+        try DictationRewriteCapabilities.validateComposition(markedLength:nil,standardKeyboardUnchanged:true,inputUntouched:true)
+        for (keyboard,input) in [(false,false),(false,true),(true,false)] {
+            #expect(throws:DictationRewriteValidationFailure.compositionUnavailable) {
+                try DictationRewriteCapabilities.validateComposition(markedLength:nil,standardKeyboardUnchanged:keyboard,inputUntouched:input)
+            }
+        }
+        #expect(throws:DictationRewriteValidationFailure.compositionUnavailable) {
+            try DictationRewriteCapabilities.validateComposition(markedLength:-1,standardKeyboardUnchanged:true,inputUntouched:true)
+        }
+        #expect(throws:DictationRewriteValidationFailure.secureInput) {
+            try DictationRewriteCapabilities.validateComposition(markedLength:2,standardKeyboardUnchanged:true,inputUntouched:true)
+        }
     }
 }
