@@ -82,9 +82,13 @@ private final class TeluguNativeTapBlockFixture: @unchecked Sendable {
         let english = try await asr.transcribe(pcm,language:.automatic,cancellation:SpeechCancellation())
         print("Small auto inference, public JFK sample \(Double(pcm.count)/16000)s: \(begin.duration(to:clock.now))")
         #expect(english.lowercased().contains("country"))
-        let te = try await asr.transcribe(pcm,language:.teluguOnly,cancellation:SpeechCancellation())
-        #expect(te != english) // Forced-te is deliberately tested on English; no accuracy claim.
-        print("Forced-te on English sample: Latin=\(te.unicodeScalars.contains { (65...122).contains($0.value) }) Telugu=\(te.unicodeScalars.contains { (0x0C00...0x0C7F).contains($0.value) })")
+        do {
+            let forced = try await asr.transcribe(pcm,language:.teluguOnly,cancellation:SpeechCancellation())
+            #expect(TeluguRecognitionQuality.failure(in:forced) == nil)
+        } catch {
+            #expect((await asr.recognitionReport()).rejection != nil)
+        }
+        #expect((await asr.recognitionReport()).summary.contains("requested=te"))
         let cancelled = SpeechCancellation(); cancelled.cancel()
         await #expect(throws:CancellationError.self) { _ = try await asr.transcribe(pcm,language:.automatic,cancellation:cancelled) }
         let inFlight = SpeechCancellation()

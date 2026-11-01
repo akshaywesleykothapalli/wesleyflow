@@ -250,6 +250,8 @@ import SystemOperations
         case .audioUnavailable: "The microphone is unavailable or its configuration changed. Check the default input device and try again."
         case .busy: "The previous speech session is still stopping. Try again shortly."
         case .recognitionFailed: "Dictation stopped unexpectedly. Review any partial text or try again."
+        case .unsupportedRecognitionScript: "Recognition returned another writing system instead of Telugu or English. Nothing was inserted."
+        case .repetitiveRecognition: "Recognition returned an unreliable repeated sequence. Nothing was inserted. Try a short sentence again."
         case .overflow: "Dictation stopped because its audio or text limit was reached. Review the partial text."
         case .timedOut: "Speech did not finish in time. Capture was stopped; review any partial text."
         case .anotherInstance: "Another Wesley Flow copy owns dictation. Finish or cancel capture and resolve clipboard recovery, then quit the other copy normally. Nothing was recorded."

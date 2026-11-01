@@ -341,6 +341,8 @@ import VoiceInput
         if speechFailureCode == "microphoneDenied" { return "Microphone access" }
         if speechFailureCode == "speechDenied" { return "Speech access" }
         if speechFailureCode == "audioUnavailable" { return "Microphone interrupted" }
+        if speechFailureCode == "unsupportedRecognitionScript" { return "Wrong recognition script" }
+        if speechFailureCode == "repetitiveRecognition" { return "Recognition repeated" }
         if speechFailureCode != "NONE" { return "Speech failed" }
         if clipboardPending { return "Clipboard pending" }
         if let latest, latest.id == reliableFinalID {
@@ -1549,7 +1551,7 @@ import VoiceInput
                 self.transcriptionResult = Task.isCancelled ? .cancelled : .failed
                 self.speechFailureCode = String(describing:error as? DictationFailure ?? .recognitionFailed)
                 self.message = self.activeLanguageMode == .teluguRomanised && (error as? DictationFailure) == .assetsMissing
-                    ? "Multilingual Whisper Small is missing or failed checksum verification. Install the verified Small model described in the Telugu setup guide. No microphone audio was captured."
+                    ? "Offline Small model files are missing or failed verification. Install the Telugu specialist and multilingual model using the Telugu setup guide. No microphone audio was captured."
                     : (self.speechFailureDiagnostics?.failureDescription ?? DictationModel.description(error as? DictationFailure ?? .recognitionFailed))
                 if self.agentHUD != nil { self.agentShortcutStatus = "Agent speech failed: " + self.message }
             }
@@ -1563,6 +1565,9 @@ import VoiceInput
         case .transcript(let text):
             if commandSession { do { try agentCaptureValidation() } catch { cancel(); return } }
             guard text.utf8.count <= DictationText.maximumBytes else { speechFailureCode = "overflow"; recordSpeechRun("textOverflow",failure:.overflow,stage:.transcriptMerge); input.cancel(); finish(id:id,forced:.init(.denied,.speechFailed)); return }
+            if !commandSession && activeLanguageMode == .teluguRomanised, let failure = TeluguRecognitionQuality.failure(in:text) {
+                receive(.failed(failure),id:id); return
+            }
             raw = text
         case .finished:
             guard phase == .finalizing else {

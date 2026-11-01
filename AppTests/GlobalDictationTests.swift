@@ -4790,3 +4790,19 @@ extension TeluguCoordinatorTests {
         }
     }
 }
+
+
+extension TeluguCoordinatorTests {
+    @Test(arguments:["ಸಿಲಿ" + String(repeating:"ಲಿ",count:52),"సి" + String(repeating:"లి",count:52)])
+    func rejectedRecognitionNeverReachesTheInsertionService(_ rejected:String) async {
+        let input = GInput(), capture = GCapture(), shortcut = GShortcut(), clipboard = GClipboard()
+        let c = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:GClock()),shortcut:shortcut,preferenceStore:preferences())
+        c.preferences.keepHistory = false; c.preferences.languageMode = .teluguRomanised
+        c.enableShortcut(); shortcut.receive?(.pressed); await c.waitUntilRecording()
+        input.receive?(.transcript(rejected)); shortcut.receive?(.released); input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        #expect(c.phase == .error); #expect(capture.target?.replacements == 0); #expect(clipboard.installed == 0)
+        #expect(c.raw.isEmpty && c.cleaned.isEmpty); #expect(c.transcriptionResult == .failed)
+        c.close()
+    }
+}

@@ -23,6 +23,7 @@ MANUAL_TESTS = [
 MIN_APP_CASES = 1374
 MIN_MODEL_LAB_TESTS = 152
 REQUIRED_APP_TESTS = {
+    'TeluguCoordinatorTests/rejectedRecognitionNeverReachesTheInsertionService(_:)',
     'TeluguCoordinatorTests/teluguStartupShowsPreparationUntilAudioIsReadyAndEnglishStaysQuiet()',
     'TeluguCoordinatorTests/oldPreferencesDefaultToExistingEnglishAndRoundTripNewMode()',
     'TeluguCoordinatorTests/routerDefaultsToEnglishAndAgentIgnoresTeluguSelection()',

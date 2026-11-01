@@ -1,0 +1,9 @@
+Telugu Small model: vasista22/whisper-telugu-small, SPRING Lab, IIT Madras.
+Original model card: https://huggingface.co/vasista22/whisper-telugu-small
+Fine-tuned from OpenAI Whisper Small (MIT); finetune is published under Apache-2.0.
+Q8_0 conversion: jacobsamas/shorts-studio-models, revision bd01ed7929666163b173b826e56d6dcdf8afb8ce.
+File: ggml-telugu-small-q8_0.bin, 264464607 bytes.
+SHA-256: 355cef20a0d433ca6ffae35d414c817e0aeecfce21b934d68203efee1e72dcba
+The conversion publisher describes this as a format-only conversion, with no retraining.
+This application does not train the model. Weights are separately installed, not bundled.
+See the adjacent Apache-2.0 and OpenAI Whisper MIT notices.
