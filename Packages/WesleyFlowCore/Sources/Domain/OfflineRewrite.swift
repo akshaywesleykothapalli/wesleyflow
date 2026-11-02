@@ -27,13 +27,43 @@ public struct OfflineRewriteRequest: Sendable {
         self.id = id; self.text = text; self.localeIdentifier = localeIdentifier; self.vocabulary = vocabulary; self.tone = tone; self.kind = kind
     }
 }
+/// Resource metadata only: no transcript, editor contents or model output.
+public struct OfflineRewriteResourceBlock: Sendable, Equatable {
+    public enum Cause: String, Sendable { case lowMemory, memoryPressure, swapGrowth, observationUnavailable, busy }
+    public enum Phase: String, Sendable { case admission, generating, completion }
+    public let cause: Cause
+    public let phase: Phase
+    public let availableBytes: UInt64?
+    public let requiredBytes: UInt64
+    public let swapGrowthBytes: UInt64
+    public init(_ cause:Cause,phase:Phase,availableBytes:UInt64? = nil,requiredBytes:UInt64 = 2*1024*1024*1024,swapGrowthBytes:UInt64 = 0) {
+        self.cause = cause; self.phase = phase; self.availableBytes = availableBytes
+        self.requiredBytes = requiredBytes; self.swapGrowthBytes = swapGrowthBytes
+    }
+    public var message:String {
+        let detail:String
+        switch cause {
+        case .busy: detail = "The previous local AI request is still running or stopping. Wait for it to finish."
+        case .observationUnavailable: detail = "Local AI could not check memory safely. Try again after the system settles."
+        case .memoryPressure: detail = "Local AI stopped because macOS reports elevated memory pressure. Close unused apps before trying again."
+        case .swapGrowth: detail = String(format:"Local AI stopped because swap use grew by %.1f MiB during generation. Close unused apps before trying again.",Double(swapGrowthBytes)/1048576)
+        case .lowMemory: detail = String(format:"Local AI needs %.0f GiB to remain available; %.2f GiB was available. Close unused apps before trying again.",Double(requiredBytes)/1073741824,Double(availableBytes ?? 0)/1073741824)
+        }
+        return detail + " Original text kept."
+    }
+    public var diagnostic:String {
+        "cause="+cause.rawValue+" phase="+phase.rawValue+" availableBytes="+(availableBytes.map(String.init) ?? "unknown")+" requiredBytes="+String(requiredBytes)+" swapGrowthBytes="+String(swapGrowthBytes)
+    }
+}
 public struct OfflineRewriteOutcome: Sendable {
     public let status: OfflineRewriteStatus
     public let text: String
     public let elapsedMilliseconds: Int64
     public let reason: String
-    public init(_ status: OfflineRewriteStatus, text: String, elapsedMilliseconds: Int64 = 0, reason: String = "") {
-        self.status = status; self.text = text; self.elapsedMilliseconds = elapsedMilliseconds; self.reason = reason
+    public let resourceBlock: OfflineRewriteResourceBlock?
+    public init(_ status: OfflineRewriteStatus, text: String, elapsedMilliseconds: Int64 = 0, reason: String = "",resourceBlock:OfflineRewriteResourceBlock? = nil) {
+        self.status = status; self.text = text; self.elapsedMilliseconds = elapsedMilliseconds
+        self.resourceBlock = resourceBlock; self.reason = resourceBlock?.diagnostic ?? reason
     }
 }
 public protocol OfflineTranscriptRewriting: Sendable {

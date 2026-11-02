@@ -92,16 +92,15 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
         guard case .available = readiness else { return .init(.modelUnavailable,"Apple's on-device AI model or this language is unavailable. Check Apple Intelligence in System Settings.") }
         do {
             let sample = try await memory.sample()
-            guard Self.safe(sample,baseline:sample) else {
-                let gib = Double(sample.conservativeAvailableBytes)/1073741824
-                return .init(.resourcesBlocked,String(format:"Local AI is blocked: %.2f GiB available; the unchanged reserve requires 4 GiB and normal memory pressure.",gib))
+            if let block = Self.resourceBlock(sample,baseline:sample,phase:.admission) {
+                return .init(.resourcesBlocked,block.message)
             }
             guard active == nil else { return .init(.busy,"A local AI request started during inspection.") }
             return .init(.ready,"Local AI checks passed. Generation rechecks resources; exact editor replacement must also be supported.")
         } catch { return .init(.observationFailed,"The app could not inspect available memory. No generation was attempted.") }
     }
     public func rewrite(_ request: OfflineRewriteRequest) async -> OfflineRewriteOutcome {
-        guard active == nil else { return .init(.resourceBlocked,text:request.text,reason:"busy-or-settling") }
+        guard active == nil else { return .init(.resourceBlocked,text:request.text,resourceBlock:.init(.busy,phase:.admission)) }
         let ticket = UUID(); epoch = ticket
         active = request.id; cancelled = false; fallback = request.text
         let protected: ProtectedRewriteText
@@ -118,8 +117,11 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
         guard !cancelled, !Task.isCancelled else { active = nil; return .init(.cancelled,text:request.text) }
         guard case .available = readiness else { active = nil; return .init(.modelUnavailable,text:request.text,reason:"model-or-language-unavailable") }
         let initial: InferenceMemorySample
-        do { initial = try await memory.sample(); guard Self.safe(initial,baseline:initial) else { throw NativeRewriteDriverFailure.unavailable } }
-        catch { active = nil; return .init(.resourceBlocked,text:request.text,reason:"host-reserve-or-observation") }
+        do { initial = try await memory.sample() }
+        catch { active = nil; return .init(.resourceBlocked,text:request.text,resourceBlock:.init(.observationUnavailable,phase:.admission)) }
+        if let block = Self.resourceBlock(initial,baseline:initial,phase:.admission) {
+            active = nil; return .init(.resourceBlocked,text:request.text,resourceBlock:block)
+        }
         began = await clock.now()
         guard began >= 0, began <= Int64.max-8000, !cancelled, !Task.isCancelled else { active = nil; return .init(.cancelled,text:request.text) }
         let deadline = began + 8000
@@ -132,10 +134,14 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
                         let restored = try prompt?.render(output) ?? protected.restoreAndValidate(output)
                         let observed: InferenceMemorySample
                         do { observed = try await memory.sample() }
-                        catch { await generated(id:request.id,ticket:ticket,status:.resourceBlocked,text:request.text); return }
-                        guard Self.safe(observed,baseline:initial) else { await generated(id:request.id,ticket:ticket,status:.resourceBlocked,text:request.text); return }
+                        catch { await generated(id:request.id,ticket:ticket,status:.resourceBlocked,text:request.text,resourceBlock:.init(.observationUnavailable,phase:.completion)); return }
+                        if let block = Self.resourceBlock(observed,baseline:initial,phase:.completion) {
+                            await generated(id:request.id,ticket:ticket,status:.resourceBlocked,text:request.text,resourceBlock:block); return
+                        }
                         guard await clock.now() < deadline else { await generated(id:request.id,ticket:ticket,status:.timedOut,text:request.text); return }
                         await generated(id:request.id,ticket:ticket,status:restored == request.text ? .unchanged : .rewritten,text:restored)
+                    } catch PersonalPlanningFailure.busy {
+                        await generated(id:request.id,ticket:ticket,status:.resourceBlocked,text:request.text,resourceBlock:.init(.busy,phase:.generating))
                     } catch {
                         await generated(id:request.id,ticket:ticket,status:error is CancellationError ? .cancelled : .invalidOutput,text:request.text)
                     }
@@ -147,32 +153,48 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
                             if now >= deadline { await abort(id:request.id,ticket:ticket,status:.timedOut); return }
                             try await clock.sleep(until:min(deadline,now+250))
                             try Task.checkCancellation()
-                            let observation = try await memory.sample()
-                            if !Self.safe(observation,baseline:initial) { await abort(id:request.id,ticket:ticket,status:.resourceBlocked); return }
+                            let observation:InferenceMemorySample
+                            do { observation = try await memory.sample() }
+                            catch { await abort(id:request.id,ticket:ticket,status:.resourceBlocked,resourceBlock:.init(.observationUnavailable,phase:.generating)); return }
+                            if let block = Self.resourceBlock(observation,baseline:initial,phase:.generating) {
+                                await abort(id:request.id,ticket:ticket,status:.resourceBlocked,resourceBlock:block); return
+                            }
                         }
-                    } catch { if !Task.isCancelled { await abort(id:request.id,ticket:ticket,status:.resourceBlocked) } }
+                    } catch { if !Task.isCancelled { await abort(id:request.id,ticket:ticket,status:.resourceBlocked,resourceBlock:.init(.observationUnavailable,phase:.generating)) } }
                 }
                 if Task.isCancelled || cancelled { Task { await self.cancel(requestID:request.id) } }
             }
         } onCancel: { Task { await self.cancel(requestID:request.id) } }
     }
+    // A bounded, system-managed 256-token rewrite has its own host reserve.
+    // Heavyweight model/provider and Agent planning policies remain separate.
+    public static let reserveBytes:UInt64 = 2*1024*1024*1024
+    public static func resourceBlock(_ sample:InferenceMemorySample,baseline:InferenceMemorySample,phase:OfflineRewriteResourceBlock.Phase) -> OfflineRewriteResourceBlock? {
+        let cause:OfflineRewriteResourceBlock.Cause
+        if !sample.pressureNormal { cause = .memoryPressure }
+        else if sample.conservativeAvailableBytes < reserveBytes { cause = .lowMemory }
+        else if sample.swapUsedBytes > baseline.swapUsedBytes { cause = .swapGrowth }
+        else { return nil }
+        let growth = sample.swapUsedBytes > baseline.swapUsedBytes ? sample.swapUsedBytes-baseline.swapUsedBytes : 0
+        return .init(cause,phase:phase,availableBytes:sample.conservativeAvailableBytes,requiredBytes:reserveBytes,swapGrowthBytes:growth)
+    }
     public static func safe(_ sample: InferenceMemorySample, baseline: InferenceMemorySample) -> Bool {
-        sample.pressureNormal && sample.conservativeAvailableBytes >= 4*1024*1024*1024 && sample.swapUsedBytes <= baseline.swapUsedBytes
+        resourceBlock(sample,baseline:baseline,phase:.admission) == nil
     }
     public func cancel(requestID: String) async {
         guard active == requestID else { return }; cancelled = true
         await abort(id:requestID,ticket:epoch,status:.cancelled)
     }
-    private func abort(id: String,ticket: UUID,status: OfflineRewriteStatus) async {
+    private func abort(id: String,ticket: UUID,status: OfflineRewriteStatus,resourceBlock:OfflineRewriteResourceBlock? = nil) async {
         guard active == id, epoch == ticket else { return }
         generation?.cancel(); watcher?.cancel(); watcher = nil
         let completion = continuation; continuation = nil
         let text = fallback, start = began
         let now = await clock.now()
         let elapsed = now >= start ? now-start : 0
-        completion?.resume(returning:.init(status,text:text,elapsedMilliseconds:elapsed,reason:status.rawValue))
+        completion?.resume(returning:.init(status,text:text,elapsedMilliseconds:elapsed,reason:status.rawValue,resourceBlock:resourceBlock))
     }
-    private func generated(id: String,ticket: UUID,status: OfflineRewriteStatus,text: String) async {
+    private func generated(id: String,ticket: UUID,status: OfflineRewriteStatus,text: String,resourceBlock:OfflineRewriteResourceBlock? = nil) async {
         guard active == id, epoch == ticket else { return }
         let start = began
         let now = await clock.now()
@@ -182,7 +204,7 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
         // fallback that wins while clock.now suspends cannot be overwritten.
         let completion = continuation; continuation = nil
         watcher?.cancel(); watcher = nil
-        let outcome = OfflineRewriteOutcome(cancelled ? .cancelled : status,text:cancelled ? fallback : text,elapsedMilliseconds:elapsed)
+        let outcome = OfflineRewriteOutcome(cancelled ? .cancelled : status,text:cancelled ? fallback : text,elapsedMilliseconds:elapsed,resourceBlock:cancelled ? nil : resourceBlock)
         // No await after clearing ownership: another request cannot inherit state.
         active = nil; generation = nil
         completion?.resume(returning:outcome)

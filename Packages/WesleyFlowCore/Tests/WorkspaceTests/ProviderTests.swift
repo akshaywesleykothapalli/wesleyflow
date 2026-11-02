@@ -503,7 +503,7 @@ private actor RewriteTestClock: TaskClock {
 private actor RewriteTestMemory: InferenceMemorySource {
     var sampleValue = InferenceMemorySample(conservativeAvailableBytes:6*1024*1024*1024,pressureNormal:true)
     func sample() -> InferenceMemorySample { sampleValue }
-    func block() { sampleValue = .init(conservativeAvailableBytes:3*1024*1024*1024,pressureNormal:true) }
+    func block() { sampleValue = .init(conservativeAvailableBytes:1*1024*1024*1024,pressureNormal:true) }
 }
 private actor RewriteTestGenerator: NativeRewriteGenerating {
     var available = true, hold = false
@@ -544,7 +544,9 @@ private actor RewriteTestGenerator: NativeRewriteGenerating {
         let task = Task { await provider.rewrite(offlineRequest()) }
         await driver.waitForStart(); await clock.waitForSleep(1250); await clock.advance(9000)
         let result = await task.value; #expect(result.status == .timedOut); #expect(result.text == offlineRequest().text)
-        #expect(await provider.rewrite(offlineRequest(id:"new-request")).status == .resourceBlocked)
+        let blocked = await provider.rewrite(offlineRequest(id:"new-request"))
+        #expect(blocked.status == .resourceBlocked && blocked.resourceBlock?.cause == .busy)
+        #expect(blocked.resourceBlock?.message.contains("still running or stopping") == true)
         await driver.release()
     }
     @Test func cancelIsCorrelatedAndIdempotent() async {
@@ -566,10 +568,12 @@ private actor RewriteTestGenerator: NativeRewriteGenerating {
         let provider = AppleTranscriptRewriter(memory:memory,clock:clock,generator:driver)
         let task = Task { await provider.rewrite(offlineRequest()) }; await driver.waitForStart(); await clock.waitForSleep(1250)
         await memory.block(); await clock.advance(1250)
-        let result = await task.value; #expect(result.status == .resourceBlocked); #expect(result.text == offlineRequest().text); await driver.release()
+        let result = await task.value; #expect(result.status == .resourceBlocked); #expect(result.text == offlineRequest().text)
+        #expect(result.resourceBlock?.cause == .lowMemory && result.resourceBlock?.phase == .generating)
+        #expect(result.resourceBlock?.availableBytes == 1024*1024*1024); await driver.release()
     }
-    @Test func unchangedResourceFloorAndSwap() {
-        let initial = InferenceMemorySample(conservativeAvailableBytes:4*1024*1024*1024,pressureNormal:true)
+    @Test func boundedRewriteResourceFloorAndSwap() {
+        let initial = InferenceMemorySample(conservativeAvailableBytes:2*1024*1024*1024,pressureNormal:true)
         #expect(AppleTranscriptRewriter.safe(initial,baseline:initial))
         #expect(!AppleTranscriptRewriter.safe(.init(conservativeAvailableBytes:initial.conservativeAvailableBytes-1,pressureNormal:true),baseline:initial))
         #expect(!AppleTranscriptRewriter.safe(.init(conservativeAvailableBytes:initial.conservativeAvailableBytes,pressureNormal:true,swapUsedBytes:1),baseline:initial))
@@ -839,7 +843,7 @@ extension OfflineRewriteProviderTests {
         #expect(await provider.inspectReadiness(localeIdentifier:"te-IN").status == .unsupportedLanguage)
         await memory.block()
         let blocked = await provider.inspectReadiness(localeIdentifier:"en-IN")
-        #expect(blocked.status == .resourcesBlocked); #expect(blocked.explanation.contains("3.00 GiB")); #expect(blocked.explanation.contains("4 GiB"))
+        #expect(blocked.status == .resourcesBlocked); #expect(blocked.explanation.contains("1.00 GiB")); #expect(blocked.explanation.contains("2 GiB"))
         await driver.configure(available:false)
         #expect(await provider.inspectReadiness(localeIdentifier:"en-IN").status == .modelUnavailable)
         #expect(await driver.calls == 0)
@@ -859,6 +863,14 @@ extension OfflineRewriteProviderTests {
         let readiness = await provider.inspectReadiness(localeIdentifier:"en-IN")
         print("AI_PROBE readiness=\(readiness.status.rawValue) explanation=\(readiness.explanation)")
         guard readiness.status == .ready else { print("AI_PROBE generation=notAttempted"); return }
+        if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_PROMPT_ONLY"] == "1" {
+            let request = OfflineRewriteRequest(id:UUID().uuidString,text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
+            let result = await provider.rewrite(request)
+            print("AI_PROBE prompt=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
+            if result.status == .rewritten || result.status == .unchanged { try PromptEngineeringContract(request).validateRendered(result.text) }
+            else { #expect(result.text == request.text) }
+            return
+        }
         let request = OfflineRewriteRequest(id:UUID().uuidString,text:"um please check the save button and tell me what you find",localeIdentifier:"en-IN")
         let result = await provider.rewrite(request)
         print("AI_PROBE polish=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
@@ -869,5 +881,77 @@ extension OfflineRewriteProviderTests {
         print("AI_PROBE prompt=\(structured.status.rawValue) reason=\(structured.reason) elapsedMs=\(structured.elapsedMilliseconds)")
         if structured.status == .rewritten || structured.status == .unchanged { try PromptEngineeringContract(prompt).validateRendered(structured.text) }
         else { #expect(structured.text == prompt.text) }
+    }
+}
+
+
+private actor RewriteSequenceMemory: InferenceMemorySource {
+    private var values:[InferenceMemorySample]
+    private var index = 0
+    private let failAfterFirst:Bool
+    init(_ values:[InferenceMemorySample],failAfterFirst:Bool = false) { self.values = values; self.failAfterFirst = failAfterFirst }
+    func sample() throws -> InferenceMemorySample {
+        if failAfterFirst && index > 0 { throw InferenceFailure.memoryAdmissionDenied }
+        let result = values[min(index,values.count-1)]; index += 1; return result
+    }
+}
+
+extension OfflineRewriteProviderTests {
+    @Test func rewriteHasItsOwnReserveAndDoesNotRelaxAgentPlanning() async {
+        let normal = InferenceMemorySample(conservativeAvailableBytes:3*1024*1024*1024,pressureNormal:true,swapUsedBytes:1024)
+        #expect(AppleTranscriptRewriter.safe(normal,baseline:normal))
+        #expect(!ApplePersonalPlanner.safe(normal,baseline:normal))
+        let original = InferenceMemorySample(conservativeAvailableBytes:4*1024*1024*1024,pressureNormal:true)
+        #expect(ApplePersonalPlanner.safe(original,baseline:original))
+        #expect(!ApplePersonalPlanner.safe(.init(conservativeAvailableBytes:original.conservativeAvailableBytes-1,pressureNormal:true),baseline:original))
+        let driver = RewriteTestGenerator()
+        let provider = AppleTranscriptRewriter(memory:RewriteSequenceMemory([normal]),clock:RewriteTestClock(),generator:driver)
+        #expect(await provider.inspectReadiness(localeIdentifier:"en-IN").status == .ready)
+        let result = await provider.rewrite(offlineRequest())
+        #expect(result.status == .unchanged && result.resourceBlock == nil)
+        #expect(await driver.calls == 1)
+    }
+    @Test func admissionFailureCarriesNumbersWithoutStartingGeneration() async {
+        let driver = RewriteTestGenerator(), memory = RewriteTestMemory(); await memory.block()
+        let provider = AppleTranscriptRewriter(memory:memory,clock:RewriteTestClock(),generator:driver)
+        let request = offlineRequest(), result = await provider.rewrite(offlineRequest())
+        #expect(result.status == .resourceBlocked && result.text == request.text)
+        #expect(result.resourceBlock?.cause == .lowMemory && result.resourceBlock?.phase == .admission)
+        #expect(result.resourceBlock?.message.contains("1.00 GiB") == true)
+        #expect(result.resourceBlock?.message.contains("2 GiB") == true)
+        #expect(await driver.calls == 0)
+    }
+    @Test(arguments:[OfflineRewriteResourceBlock.Cause.lowMemory,.memoryPressure,.swapGrowth])
+    func completedOutputStillRequiresAllResourceGuards(_ cause:OfflineRewriteResourceBlock.Cause) async {
+        let baseline = InferenceMemorySample(conservativeAvailableBytes:3*1024*1024*1024,pressureNormal:true,swapUsedBytes:1024)
+        let observed:InferenceMemorySample
+        switch cause {
+        case .lowMemory: observed = .init(conservativeAvailableBytes:2*1024*1024*1024-1,pressureNormal:true,swapUsedBytes:1024)
+        case .memoryPressure: observed = .init(conservativeAvailableBytes:baseline.conservativeAvailableBytes,pressureNormal:false,swapUsedBytes:1024)
+        default: observed = .init(conservativeAvailableBytes:baseline.conservativeAvailableBytes,pressureNormal:true,swapUsedBytes:1025)
+        }
+        let provider = AppleTranscriptRewriter(memory:RewriteSequenceMemory([baseline,observed]),clock:RewriteTestClock(),generator:RewriteTestGenerator())
+        let result = await provider.rewrite(offlineRequest())
+        #expect(result.status == .resourceBlocked && result.text == offlineRequest().text)
+        #expect(result.resourceBlock?.cause == cause && result.resourceBlock?.phase == .completion)
+        #expect(result.resourceBlock?.swapGrowthBytes == (cause == .swapGrowth ? 1 : 0))
+        #expect(!result.reason.isEmpty)
+    }
+    @Test func missingMemoryObservationIsNotReportedAsLowMemory() async {
+        let provider = AppleTranscriptRewriter(memory:UnavailableMemoryCounters(),clock:RewriteTestClock(),generator:RewriteTestGenerator())
+        let result = await provider.rewrite(offlineRequest())
+        #expect(result.resourceBlock?.cause == .observationUnavailable && result.resourceBlock?.phase == .admission)
+        #expect(result.resourceBlock?.availableBytes == nil)
+    }
+    @Test func observationFailureDuringGenerationKeepsItsStage() async {
+        let memory = RewriteSequenceMemory([.init(conservativeAvailableBytes:3*1024*1024*1024,pressureNormal:true)],failAfterFirst:true)
+        let driver = RewriteTestGenerator(), clock = RewriteTestClock(); await driver.configure(hold:true)
+        let provider = AppleTranscriptRewriter(memory:memory,clock:clock,generator:driver)
+        let task = Task { await provider.rewrite(offlineRequest()) }
+        await driver.waitForStart(); await clock.waitForSleep(1250); await clock.advance(1250)
+        let result = await task.value
+        #expect(result.status == .resourceBlocked && result.text == offlineRequest().text)
+        #expect(result.resourceBlock?.cause == .observationUnavailable && result.resourceBlock?.phase == .generating)
+        await driver.release()
     }
 }

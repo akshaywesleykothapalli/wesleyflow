@@ -41,7 +41,7 @@ public struct ApplePersonalIntentGenerator: PersonalIntentGenerating {
         } catch { await FoundationGenerationLease.shared.release(lease);throw error }
     }
 }
-/// Same 4 GiB/pressure/swap reserve as local rewriting; one slot remains owned until generation settles.
+/// Separate 4 GiB/pressure/swap reserve for Agent planning; one slot remains owned until generation settles.
 public actor ApplePersonalPlanner: PersonalIntentPlanning {
     private let generator:any PersonalIntentGenerating
     private let memory:any InferenceMemorySource
@@ -52,6 +52,9 @@ public actor ApplePersonalPlanner: PersonalIntentPlanning {
     private var watcher:Task<Void,Never>?
     private var cancelled=false
     public init(memory:any InferenceMemorySource,clock:any TaskClock,generator:any PersonalIntentGenerating = ApplePersonalIntentGenerator()) { self.memory=memory;self.clock=clock;self.generator=generator }
+    static func safe(_ sample:InferenceMemorySample,baseline:InferenceMemorySample) -> Bool {
+        sample.pressureNormal && sample.conservativeAvailableBytes >= 4*1024*1024*1024 && sample.swapUsedBytes <= baseline.swapUsedBytes
+    }
     public func plan(_ request:PersonalIntentRequest) async throws -> PersonalPlan {
         guard active == nil else { throw PersonalPlanningFailure.busy }
         try PersonalConversation.validate(request)
@@ -60,7 +63,7 @@ public actor ApplePersonalPlanner: PersonalIntentPlanning {
         guard await generator.available(locale:request.locale) else { active=nil;throw PersonalPlanningFailure.modelUnavailable }
         guard !Task.isCancelled,!cancelled else { active=nil;throw CancellationError() }
         let baseline:InferenceMemorySample
-        do { baseline=try await memory.sample();guard AppleTranscriptRewriter.safe(baseline,baseline:baseline) else { throw PersonalPlanningFailure.resourceBlocked } }
+        do { baseline=try await memory.sample();guard Self.safe(baseline,baseline:baseline) else { throw PersonalPlanningFailure.resourceBlocked } }
         catch { active=nil;throw PersonalPlanningFailure.resourceBlocked }
         let now=await clock.now()
         guard now>=0,now<=Int64.max-8000,!Task.isCancelled,!cancelled else { active=nil;throw CancellationError() }
@@ -73,7 +76,7 @@ public actor ApplePersonalPlanner: PersonalIntentPlanning {
                         let slots=try await generator.generate(request)
                         let plan=try PersonalConversation.ground(slots,request:request)
                         let observed=try await memory.sample()
-                        guard AppleTranscriptRewriter.safe(observed,baseline:baseline) else { throw PersonalPlanningFailure.resourceBlocked }
+                        guard Self.safe(observed,baseline:baseline) else { throw PersonalPlanningFailure.resourceBlocked }
                         guard await clock.now()<deadline else { throw PersonalPlanningFailure.timedOut }
                         settled(id:request.id,result:.success(plan))
                     } catch { settled(id:request.id,result:.failure(error)) }
@@ -85,7 +88,7 @@ public actor ApplePersonalPlanner: PersonalIntentPlanning {
                             if now>=deadline { abort(id:request.id,error:PersonalPlanningFailure.timedOut);return }
                             try await clock.sleep(until:min(deadline,now+250));try Task.checkCancellation()
                             let sample=try await memory.sample()
-                            if !AppleTranscriptRewriter.safe(sample,baseline:baseline) { abort(id:request.id,error:PersonalPlanningFailure.resourceBlocked);return }
+                            if !Self.safe(sample,baseline:baseline) { abort(id:request.id,error:PersonalPlanningFailure.resourceBlocked);return }
                         }
                     } catch { if !Task.isCancelled { abort(id:request.id,error:PersonalPlanningFailure.resourceBlocked) } }
                 }

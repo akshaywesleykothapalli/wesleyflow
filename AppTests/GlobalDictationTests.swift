@@ -2069,15 +2069,16 @@ extension FocusedPreviewCaptureTests {
 private actor InPlaceFixtureRewriter: OfflineTranscriptRewriting {
     var blocked = false, held = false, invalid = false
     var forcedOutcome:OfflineRewriteStatus?
+    var forcedResourceBlock:OfflineRewriteResourceBlock?
     var calls = 0
     var requests:[OfflineRewriteRequest] = []
     var pending:CheckedContinuation<OfflineRewriteOutcome,Never>?
     var started:CheckedContinuation<Void,Never>?
     var waiting = false
-    func configure(blocked:Bool = false,held:Bool = false,invalid:Bool = false,outcome:OfflineRewriteStatus? = nil) { self.blocked = blocked; self.held = held; self.invalid = invalid; self.forcedOutcome = outcome }
+    func configure(blocked:Bool = false,held:Bool = false,invalid:Bool = false,outcome:OfflineRewriteStatus? = nil,resourceBlock:OfflineRewriteResourceBlock? = nil) { self.blocked = blocked; self.held = held; self.invalid = invalid; self.forcedOutcome = outcome; self.forcedResourceBlock = resourceBlock }
     func rewrite(_ request:OfflineRewriteRequest) async -> OfflineRewriteOutcome {
         calls += 1; requests.append(request)
-        if let forcedOutcome { return .init(forcedOutcome,text:request.text) }
+        if let forcedOutcome { return .init(forcedOutcome,text:request.text,resourceBlock:forcedResourceBlock) }
         if blocked { return .init(.resourceBlocked,text:request.text) }
         if held { waiting = true; started?.resume(); started = nil; return await withCheckedContinuation { pending = $0 } }
         if invalid { return .init(.rewritten,text:"invented requirements and numbers 123") }
@@ -2219,7 +2220,7 @@ extension InPlaceRewriteTests {
         registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:42)); await c.waitForInPlaceRewrite()
         #expect(!c.previewPresented && c.inPlaceHUD == .error && target.value == original)
         #expect(target.rewriteFixture?.replacements == 0 && clipboard.installed == 0)
-        let expected = switch status { case .modelUnavailable:"Local AI"; case .resourceBlocked:"memory/resource admission"; case .timedOut:"timed out"; default:"cancelled" }
+        let expected = switch status { case .modelUnavailable:"Local AI"; case .resourceBlocked:"Local AI resources"; case .timedOut:"timed out"; default:"cancelled" }
         #expect(c.message.contains(expected) && c.previewShortcutStatus == c.message)
         #expect(await driver.calls == 1); c.close()
     }
@@ -2364,7 +2365,7 @@ extension InPlaceRewriteTests {
         c.preferences.spacingCleanup.toggle()
         // Exercise a genuine HUD lifecycle without replacing/consuming the record.
         c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
-        #expect(c.eligibleReceiptPresent && c.message.contains("memory/resource"))
+        #expect(c.eligibleReceiptPresent && c.message.contains("Local AI resources"))
         await hud.waitForSleep(2200); await hud.advance(2200); await c.waitForHUDFeedback()
         #expect(!c.hudFeedbackVisible && c.eligibleReceiptPresent)
         c.invokeAIShortcut(kind,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
@@ -5015,5 +5016,30 @@ extension InPlaceRewriteTests {
             #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:false,keyCode:code,modifiers:.option))
         }
         #expect(!NativeRewriteInputPolicy.isFormattingGesture(keyDown:true,keyCode:0,modifiers:[]))
+    }
+}
+
+
+extension InPlaceRewriteTests {
+    @Test(arguments:[OfflineRewriteResourceBlock.Cause.lowMemory,.memoryPressure,.swapGrowth,.observationUnavailable,.busy])
+    func resourceFailureShowsExactCauseAndPreservesInsertedText(_ cause:OfflineRewriteResourceBlock.Cause) async throws {
+        let block = OfflineRewriteResourceBlock(cause,phase:.generating,availableBytes:1024*1024*1024,swapGrowthBytes:1048576)
+        let driver = InPlaceFixtureRewriter(); await driver.configure(outcome:.resourceBlocked,resourceBlock:block)
+        let (c,target,clipboard) = try await prepare(driver)
+        let original = target.value
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.message == block.message && c.lastAIShortcutFailure == block.message)
+        let label = switch cause {
+        case .lowMemory: "Memory low"
+        case .memoryPressure: "Memory pressure"
+        case .swapGrowth: "Swap increased"
+        case .observationUnavailable: "Memory check failed"
+        case .busy: "AI busy"
+        }
+        #expect(c.compactAIStatus == label)
+        #expect(target.value == original && target.rewriteFixture?.replacements == 0 && clipboard.installed == 0)
+        #expect(!c.previewPresented && c.inPlaceHUD == .error)
+        #expect(c.verificationDiagnosticSummary.contains(cause == .busy ? "LOCAL_AI_BUSY" : "MODEL_MEMORY_BLOCKED"))
+        c.close()
     }
 }

@@ -132,7 +132,7 @@ import VoiceInput
         case readbackUnavailable = "ACCESSIBILITY_READBACK_UNAVAILABLE", rangeUnavailable = "INSERTION_RANGE_UNAVAILABLE"
         case targetChanged = "INSERTION_TARGET_CHANGED", replacementUnsupported = "EDITOR_REPLACEMENT_UNSUPPORTED"
         case verifiedInsertion = "VERIFIED_INSERTION_AVAILABLE", sourceChanged = "SOURCE_TEXT_CHANGED"
-        case memoryBlocked = "MODEL_MEMORY_BLOCKED", generationFailed = "GENERATION_FAILED"
+        case memoryBlocked = "MODEL_MEMORY_BLOCKED", generationBusy = "LOCAL_AI_BUSY", generationFailed = "GENERATION_FAILED"
         case replacementVerified = "REPLACEMENT_VERIFIED", replacementUncertain = "REPLACEMENT_UNCERTAIN"
         case featureDisabled = "AI_FEATURE_DISABLED", settingsConflict = "SETTINGS_CONFLICT"
         case clipboardPending = "CLIPBOARD_RECOVERY_PENDING", inputRejected = "AI_INPUT_REJECTED"
@@ -402,6 +402,12 @@ import VoiceInput
         if provenanceReason == .disabled && message == rewriteEligibility { return "New dictation needed" }
         if message.contains("No eligible recent dictation") { return "No recent dictation" }
         if message.contains("Destination editor") { return "Editor unsupported" }
+        if message.hasPrefix("The previous local AI request") { return "AI busy" }
+        if message.hasPrefix("Local AI could not check memory") { return "Memory check failed" }
+        if message.hasPrefix("Local AI stopped because macOS") { return "Memory pressure" }
+        if message.hasPrefix("Local AI stopped because swap") { return "Swap increased" }
+        if message.hasPrefix("Local AI needs") { return "Memory low" }
+        if message.hasPrefix("Local AI resources are unavailable") { return "AI paused" }
         if message.contains("memory/resource") { return "Memory blocked" }
         if message.contains("unavailable") { return "AI unavailable" }
         if message.contains("cancelled") { return "Cancelled" }
@@ -518,16 +524,17 @@ import VoiceInput
             #if DEBUG
             self.verificationModelState = result.status.rawValue
             self.verificationDetail += " · model=" + result.status.rawValue
+            if let block = result.resourceBlock { self.verificationDetail += " · " + block.diagnostic }
             #endif
             guard result.status == .rewritten || result.status == .unchanged else {
                 switch result.status {
-                case .resourceBlocked: self.message = "Model memory/resource admission blocked generation. Original retained."
+                case .resourceBlocked: self.message = result.resourceBlock?.message ?? "Local AI resources are unavailable. Original text kept."
                 case .modelUnavailable: self.message = "Local AI or its language support is unavailable. Original retained."
                 case .cancelled: self.message = "AI generation cancelled. Original retained."
                 case .timedOut: self.message = "AI generation timed out. Original retained."
                 default: self.message = "AI output was invalid or incomplete. Original retained."
                 }
-                self.generationStatus = result.status == .resourceBlocked ? .memoryBlocked : .generationFailed
+                self.generationStatus = result.status == .resourceBlocked ? (result.resourceBlock?.cause == .busy ? .generationBusy : .memoryBlocked) : .generationFailed
                 self.crossAppFailure = self.generationStatus
                 self.inPlaceHUD = .error; self.showHUDFeedback(); return
             }
@@ -1391,7 +1398,7 @@ import VoiceInput
         case .rewritten: return "Preview ready. Review before copying."
         case .unchanged: return "The model returned the deterministic text unchanged. Review before copying."
         case .modelUnavailable: return "The model or language is unavailable. Deterministic text retained."
-        case .resourceBlocked: return "Safe resources are unavailable or the provider is settling. Deterministic text retained."
+        case .resourceBlocked: return result.resourceBlock?.message ?? "Local AI resources are unavailable. Original text kept."
         case .cancelled: return "Preview cancelled. Deterministic text retained."
         case .timedOut: return "Rewrite timed out. Deterministic text retained."
         case .invalidOutput: return "The rewrite did not pass preservation checks. Deterministic text retained."
