@@ -27,3 +27,11 @@ A second bounded real synthetic Prompt Engineering request, after that transport
 Actual native build/test, packaging and installation outcomes follow when complete. Temporary products will be removed after handoff. The running Debug copy must accept normal Quit before the canonical Applications copy is reopened; no forced termination or unrelated app closure is authorized or performed.
 
 Full native suite: **854 declarations / 1,936 expanded cases passed**, zero failures. Release with complete concurrency checking passed. Repository checks passed; CI helper tests 15/15 and local packaging tests 3/3 passed. No test expectations were weakened to allow critical/unknown pressure or unsafe plans.
+
+## Installed handoff
+
+Installed and reopened **45.0.11** from `/Applications/Wesley Flow.app`. All running identified Wesley Flow copies accepted normal Quit, including the Xcode Debug product. The stale stopped 45.0.10 Debug app bundle was removed after successful handoff; Xcode itself and its other caches were preserved. Every existing preference compared equal after launch; `formattingShortcutAction` remains `lastInsertion`. Strict/deep signature verification and a 15-second launch-survival check passed.
+
+The temporary prepared app, previous Applications backup and both temporary build caches were removed after successful launch. Native test reports and logs remain under ignored `Evidence/RewritePressureFix`. Implementation commit: `9a12ae3`; metadata-only provenance: `Evidence/RewritePressureFix/handoff.json`. No user audio or editor contents are retained there.
+
+Physical acceptance uses the Applications copy and a fresh Fn dictation (old process-local replacement provenance intentionally cannot survive restart). After insertion, press Option+2 without editing/moving the caret. The actual physical cross-app replacement remains user-tested; the recorded real verification is on-device prompt generation under warning plus the existing deterministic replacement/cancellation suite.
