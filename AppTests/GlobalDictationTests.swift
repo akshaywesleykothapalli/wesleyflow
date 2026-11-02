@@ -2090,7 +2090,7 @@ private actor InPlaceFixtureRewriter: OfflineTranscriptRewriting {
     func cancel(requestID:String) {}
 }
 @Suite("In-place dictation rewrite",.serialized) @MainActor struct InPlaceRewriteTests {
-    private func prepare(_ driver:InPlaceFixtureRewriter, verified:Bool = true, registrar:GPreviewRegistrar? = nil, presentation:PreviewPresentationSpy? = nil, transcript:String = "check the button", hudClock:GClock = GClock(), clock:GClock = GClock()) async throws -> (SystemWideDictationCoordinator,GTarget,GClipboard) {
+    private func prepare(_ driver:any OfflineTranscriptRewriting, verified:Bool = true, registrar:GPreviewRegistrar? = nil, presentation:PreviewPresentationSpy? = nil, transcript:String = "check the button", hudClock:GClock = GClock(), clock:GClock = GClock()) async throws -> (SystemWideDictationCoordinator,GTarget,GClipboard) {
         let input = GInput(), capture = GCapture(), clipboard = GClipboard()
         let coordinator = SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:clipboard,clock:clock),shortcut:GShortcut(),clock:clock,hudClock:hudClock,preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar,previewPresentationRequest:{ presentation?.requests.append($0) })
         coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true; coordinator.preferences.inPlaceAIRewrite = true
@@ -5040,6 +5040,30 @@ extension InPlaceRewriteTests {
         #expect(target.value == original && target.rewriteFixture?.replacements == 0 && clipboard.installed == 0)
         #expect(!c.previewPresented && c.inPlaceHUD == .error)
         #expect(c.verificationDiagnosticSummary.contains(cause == .busy ? "LOCAL_AI_BUSY" : "MODEL_MEMORY_BLOCKED"))
+        c.close()
+    }
+}
+
+
+private struct IndexedPolishFixtureGenerator: NativeRewriteGenerating {
+    func readiness(localeIdentifier:String) -> NativeRewriteReadiness { .available }
+    func generate(maskedText:String,localeIdentifier:String) throws -> String {
+        try IndexedPolishText(maskedText).render(.init(capitalize:[7],periods:[6],questions:[10]))
+    }
+}
+private struct PolishFixtureMemory: InferenceMemorySource {
+    func sample() -> InferenceMemorySample { .init(conservativeAvailableBytes:3*1024*1024*1024,pressureLevel:.warning) }
+}
+extension InPlaceRewriteTests {
+    @Test func optionOneUsesValidatedEditsToReplaceOnlyTheLastDictation() async throws {
+        let provider = AppleTranscriptRewriter(memory:PolishFixtureMemory(),clock:GClock(),generator:IndexedPolishFixtureGenerator())
+        let (c,target,clipboard) = try await prepare(provider,transcript:"I said this is a chuck up, it's working or not.")
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .success && c.lastAIShortcutFailure == nil)
+        #expect(target.value == "aI said this is a chuck up. It's working or not?bc")
+        #expect(target.rewriteFixture?.replacements == 1 && clipboard.installed == 0 && !c.previewPresented)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(target.rewriteFixture?.replacements == 1)
         c.close()
     }
 }

@@ -885,6 +885,18 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
         let readiness = await provider.inspectReadiness(localeIdentifier:"en-IN")
         print("AI_PROBE readiness=\(readiness.status.rawValue) explanation=\(readiness.explanation)")
         guard readiness.status == .ready else { print("AI_PROBE generation=notAttempted"); return }
+        if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_POLISH_ONLY"] == "1" {
+            let source = ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_POLISH_ROUGH"] == "1" ? "um please check this it is not done" : "I said this is a chuck up, it's working or not."
+            let request = OfflineRewriteRequest(id:UUID().uuidString,text:source,localeIdentifier:"en-IN",kind:.polish)
+            let result = await provider.rewrite(request)
+            print("AI_PROBE polish=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
+            print("AI_PROBE resources=\(await memory.summary())")
+            if result.status == .rewritten || result.status == .unchanged {
+                try ProtectedRewriteText(request).validateRestored(result.text)
+                print("AI_PROBE syntheticPolishOutput=\(result.text)")
+            } else { #expect(result.text == request.text) }
+            return
+        }
         if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_PROMPT_ONLY"] == "1" {
             let request = OfflineRewriteRequest(id:UUID().uuidString,text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
             let result = await provider.rewrite(request)
@@ -1035,5 +1047,71 @@ extension OfflineRewriteProviderTests {
                         NativePromptSections(objective:[0],context:[],requirements:[2],constraints:[1],expectedOutput:[])] {
             #expect(throws:(any Error).self) { _ = try contract.render(invalid.encoded()) }
         }
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test func indexedPolishReproducesUserExampleWithoutChangingWords() throws {
+        let source = "I said this is a chuck up, it's working or not."
+        let request = OfflineRewriteRequest(id:"polish-example",text:source,localeIdentifier:"en-IN")
+        let protected = try ProtectedRewriteText(request), contract = try IndexedPolishText(protected.masked)
+        let candidate = try contract.render(.init(capitalize:[7],periods:[6],questions:[10]))
+        let result = try protected.restoreAndValidate(candidate)
+        #expect(result == "I said this is a chuck up. It's working or not?")
+        try protected.validateRestored(result)
+    }
+    @Test func indexedPolishNeverGrantsWordDeletionOrProtectedEdits() throws {
+        let request = OfflineRewriteRequest(id:"polish-safe",text:"please keep customTerm not no no at /tmp/a.swift with 12 kg",localeIdentifier:"en-IN",vocabulary:["customTerm"])
+        let protected = try ProtectedRewriteText(request), contract = try IndexedPolishText(protected.masked)
+        let positions = Array(protected.masked.split(whereSeparator: { $0.isWhitespace }).indices)
+        let output = try contract.render(.init(capitalize:positions,removeFillers:positions,questions:positions))
+        let result = try protected.restoreAndValidate(output)
+        try protected.validateRestored(result)
+        #expect(result.contains("customTerm") && result.contains("/tmp/a.swift") && result.contains("12 kg"))
+        let words = result.lowercased().components(separatedBy:CharacterSet.letters.inverted).filter { !$0.isEmpty }
+        #expect(words.filter { $0 == "not" }.count == 1 && words.filter { $0 == "no" }.count == 2)
+    }
+    @Test func indexedPolishPreservesRepetitionContractionsAndNewlines() throws {
+        let request = OfflineRewriteRequest(id:"polish-lines",text:"um please please keep it\nuh it's not done",localeIdentifier:"en-IN")
+        let protected = try ProtectedRewriteText(request), contract = try IndexedPolishText(protected.masked)
+        let result = try protected.restoreAndValidate(contract.render(.init(capitalize:[1,6],removeFillers:[0,5],periods:[8])))
+        #expect(result == "Please please keep it\n It's not done.")
+        try protected.validateRestored(result)
+    }
+    @Test func malformedEditPlansNeverMutateAnything() throws {
+        let contract = try IndexedPolishText("keep not no")
+        for plan in [PolishEditPlan(capitalize:[-1]),.init(periods:[3]),.init(questions:[Int.max]),.init(capitalize:[0,0]),.init(commas:[1],questions:[1]),.init(removeFillers:Array(repeating:0,count:17))] {
+            #expect(throws:ProtectedRewriteText.Failure.invalidOutput) { _ = try contract.render(plan) }
+        }
+    }
+    @Test func boundaryFillersAndAllFillerInputStaySafelyValidated() throws {
+        for text in ["um Wesley", "Wesley um", "um uh erm"] {
+            let protected = try ProtectedRewriteText(.init(id:"polish-boundary",text:text,localeIdentifier:"en-IN"))
+            let contract = try IndexedPolishText(protected.masked)
+            let indexes = Array(protected.masked.split(whereSeparator: { $0.isWhitespace }).indices)
+            let result = try protected.restoreAndValidate(contract.render(.init(removeFillers:indexes)))
+            try protected.validateRestored(result)
+            #expect(result == text)
+        }
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test func polishDoesNotBreakOrNotOrCapitalizeInsideThePhrase() throws {
+        let request = OfflineRewriteRequest(id:"polish-or-not",text:"I said this is a chuck up, it's working or not.",localeIdentifier:"en-IN")
+        let protected = try ProtectedRewriteText(request), contract = try IndexedPolishText(protected.masked)
+        let result = try protected.restoreAndValidate(contract.render(.init(capitalize:[10],periods:[9],questions:[10])))
+        #expect(result == "I said this is a chuck up, it's working or not?")
+        try protected.validateRestored(result)
+        let splitBeforeOr = try protected.restoreAndValidate(contract.render(.init(periods:[8],questions:[10])))
+        #expect(splitBeforeOr == result)
+    }
+    @Test func acceptedSentenceBreakCapitalizesWithoutAddingWords() throws {
+        let protected = try ProtectedRewriteText(.init(id:"polish-case",text:"please check this it is not done",localeIdentifier:"en-IN"))
+        let result = try protected.restoreAndValidate(IndexedPolishText(protected.masked).render(.init(capitalize:[0],periods:[2,6])))
+        #expect(result == "Please check this. It is not done.")
+        try protected.validateRestored(result)
     }
 }
