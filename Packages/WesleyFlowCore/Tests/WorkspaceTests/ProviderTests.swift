@@ -856,6 +856,19 @@ extension OfflineRewriteProviderTests {
     }
 }
 
+private actor DiagnosticRewriteDriver: NativeRewriteGenerating {
+    private let driver:any NativeRewriteGenerating = AppleRewriteGenerator()
+    private var candidate:String?
+    func readiness(localeIdentifier:String) async -> NativeRewriteReadiness { await driver.readiness(localeIdentifier:localeIdentifier) }
+    func generate(maskedText:String,localeIdentifier:String) async throws -> String { try await driver.generate(maskedText:maskedText,localeIdentifier:localeIdentifier) }
+    func generate(maskedText:String,localeIdentifier:String,tone:OfflineRewriteTone,kind:OfflinePreviewKind,polishStyle:PolishStyle) async throws -> String {
+        let output = try await driver.generate(maskedText:maskedText,localeIdentifier:localeIdentifier,tone:tone,kind:kind,polishStyle:polishStyle)
+        if kind == .polish && polishStyle == .grammar { candidate = output }
+        return output
+    }
+    func syntheticCandidate() -> String? { candidate }
+}
+
 private actor NativeRewriteProbeMemory: InferenceMemorySource {
     private var levels = Set<String>()
     private var samples = 0
@@ -881,10 +894,24 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
         let memory = NativeRewriteProbeMemory()
         let observation = try await memory.sample()
         print("AI_PROBE pressure=\(observation.pressureLevel.rawValue) availableBytes=\(observation.conservativeAvailableBytes) swapBytes=\(observation.swapUsedBytes)")
-        let provider = AppleTranscriptRewriter(memory:memory,clock:SystemTaskClock())
+        let diagnosticDriver = DiagnosticRewriteDriver()
+        let provider = AppleTranscriptRewriter(memory:memory,clock:SystemTaskClock(),generator:diagnosticDriver)
         let readiness = await provider.inspectReadiness(localeIdentifier:"en-IN")
         print("AI_PROBE readiness=\(readiness.status.rawValue) explanation=\(readiness.explanation)")
         guard readiness.status == .ready else { print("AI_PROBE generation=notAttempted"); return }
+        if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_GRAMMAR_ONLY"] == "1" {
+            let request = OfflineRewriteRequest(id:UUID().uuidString,text:"This is a checkup if it's working or not.",localeIdentifier:"en-IN",kind:.polish,polishStyle:.grammar)
+            let result = await provider.rewrite(request)
+            print("AI_PROBE grammar=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
+            print("AI_PROBE syntheticCandidate=\(await diagnosticDriver.syntheticCandidate() ?? "notReturned")")
+            print("AI_PROBE resources=\(await memory.summary())")
+            if result.status == .rewritten || result.status == .unchanged {
+                try ProtectedRewriteText(request).validateRestored(result.text)
+                print("AI_PROBE syntheticGrammarOutput=\(result.text)")
+            }
+            #expect(result.status == .rewritten && result.text != request.text)
+            return
+        }
         if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_POLISH_ONLY"] == "1" {
             let source = ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_POLISH_ROUGH"] == "1" ? "um please check this it is not done" : "I said this is a chuck up, it's working or not."
             let request = OfflineRewriteRequest(id:UUID().uuidString,text:source,localeIdentifier:"en-IN",kind:.polish)
@@ -1113,5 +1140,70 @@ extension OfflineRewriteProviderTests {
         let result = try protected.restoreAndValidate(IndexedPolishText(protected.masked).render(.init(capitalize:[0],periods:[2,6])))
         #expect(result == "Please check this. It is not done.")
         try protected.validateRestored(result)
+    }
+}
+
+
+private struct UncertainGrammarGenerator: NativeRewriteGenerating {
+    func readiness(localeIdentifier:String) -> NativeRewriteReadiness { .available }
+    func generate(maskedText:String,localeIdentifier:String) throws -> String { throw NativeRewriteDriverFailure.meaningUncertain }
+}
+extension OfflineRewriteProviderTests {
+    @Test func grammarCanRephraseTheUserExampleWhileCleanupStaysStrict() throws {
+        let source = "This is a checkup if it's working or not."
+        let target = "This is a check to see whether it's working or not."
+        let request = OfflineRewriteRequest(id:"grammar-example",text:source,localeIdentifier:"en-IN",polishStyle:.grammar)
+        let protected = try ProtectedRewriteText(request)
+        #expect(!protected.masked.contains("WFSPAN"))
+        let result = try protected.restoreAndValidate(GrammarPolishText(protected.masked).render([.init(index:0,text:target)]))
+        #expect(result == target); try protected.validateRestored(result)
+        let cleanup = try ProtectedRewriteText(.init(id:"cleanup-example",text:source,localeIdentifier:"en-IN"))
+        #expect(throws:(any Error).self) { try cleanup.validateRestored(target) }
+    }
+    @Test func grammarKeepsNamesNumbersDictionaryAndCodeAppOwned() throws {
+        let source = "Please ask Wesley to keep customTerm at 12 kg and never run `rm -rf /tmp/a`."
+        let protected = try ProtectedRewriteText(.init(id:"grammar-fixed",text:source,localeIdentifier:"en-IN",vocabulary:["customTerm"],polishStyle:.grammar))
+        let contract = try GrammarPolishText(protected.masked)
+        #expect(!contract.input.contains("Wesley") && !contract.input.contains("customTerm") && !contract.input.contains("/tmp/a"))
+        let result = try protected.restoreAndValidate(contract.render([.init(index:1,text:" to retain ")]))
+        #expect(result == "Please ask Wesley to retain customTerm at 12 kg and never run `rm -rf /tmp/a`.")
+        try protected.validateRestored(result)
+        for bad in [result.replacingOccurrences(of:"12 kg",with:"13 kg"),result.replacingOccurrences(of:"Wesley",with:"Alice"),result.replacingOccurrences(of:"never ",with:""),result.replacingOccurrences(of:"/tmp/a",with:"/tmp/b")] {
+            #expect(throws:(any Error).self) { try protected.validateRestored(bad) }
+        }
+    }
+    @Test func grammarRejectsIntroducedFactsPolarityActorsAndModality() throws {
+        let source = "This can work without changes today."
+        for target in ["This will work without changes today.","This can work with changes today.","I can make this work without changes today.","This can work without changes tomorrow.","Alice can make this work without changes today.","This can work without 3 changes today."] {
+            #expect(throws:(any Error).self) { try GrammarPolishRules.validate(source:source,output:target) }
+        }
+        try GrammarPolishRules.validate(source:"You don't need to run it.",output:"You do not need to run it.")
+        #expect(throws:(any Error).self) { try GrammarPolishRules.validate(source:"You don't need to run it.",output:"You need to run it.") }
+    }
+    @Test func grammarPassageEditsCannotInventMarkersOrChangeFixedOrder() throws {
+        let contract = try GrammarPolishText("hello WFSPANabcX0END there")
+        for edits in [[GrammarPassageEdit(index:-1,text:"x")],[.init(index:3,text:"x")],[.init(index:0,text:"x"),.init(index:0,text:"y")],[.init(index:0,text:"[fixed 0]")],[.init(index:0,text:"WFSPANabcX0END")]] {
+            #expect(throws:(any Error).self) { _ = try contract.render(edits) }
+        }
+    }
+    @Test func uncertainGrammarKeepsOriginalWithAnExplicitReason() async {
+        let provider = AppleTranscriptRewriter(memory:RewriteTestMemory(),clock:RewriteTestClock(),generator:UncertainGrammarGenerator())
+        let result = await provider.rewrite(.init(id:"grammar-uncertain",text:"This is a test.",localeIdentifier:"en-IN",polishStyle:.grammar))
+        #expect(result.status == .unchanged && result.text == "This is a test." && result.reason == "meaning-uncertain")
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test func grammarDistinguishesOptionalAlternativesFromAssertedNegation() throws {
+        let source = "This is a checkup if it's working or not."
+        let target = "This is a checkup to see if it's working."
+        let protected = try ProtectedRewriteText(.init(id:"grammar-alternative",text:source,localeIdentifier:"en-IN",polishStyle:.grammar))
+        try protected.validateRestored(target)
+        try GrammarPolishRules.validate(source:"Check whether or not it works.",output:"Check whether it works.")
+        try GrammarPolishRules.validate(source:"I don't know if it works or not.",output:"I do not know whether it works.")
+        for pair in [("Do this or not.","Do this."),("If it works, do not delete it.","If it works, delete it."),("Check if it's working or not.","Check if it's not working."),("I don't know if it works or not.","I know if it works.")] {
+            #expect(throws:(any Error).self) { try GrammarPolishRules.validate(source:pair.0,output:pair.1) }
+        }
     }
 }

@@ -146,18 +146,26 @@ import VoiceInput
                     if coordinator.armedFormattingKind != nil { Button("Cancel armed shortcut") { coordinator.cancelArmedFormatting() } }
                 }.padding(.horizontal,22).padding(.vertical,12)
             }
+            if let result = coordinator.lastAIShortcutResult, coordinator.lastAIShortcutFailure == nil, !coordinator.busy {
+                VStack(alignment:.leading,spacing:6) {
+                    Text("Last formatting result").font(.callout.weight(.semibold))
+                    Text(result).font(.callout).textSelection(.enabled)
+                    Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
+                }.padding(.horizontal,22).padding(.vertical,12)
+            }
             if coordinator.busy || coordinator.phase == .error || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil || coordinator.lastAIShortcutFailure != nil {
                 VStack(alignment:.leading,spacing:8) {
                     if coordinator.busy { HStack { Text(coordinator.message).font(.callout); Spacer(); Button("Cancel dictation") { coordinator.cancel() } } }
                     if let failure = coordinator.lastAIShortcutFailure, !coordinator.busy {
                         Text(failure).font(.callout).foregroundStyle(.orange)
                         Button("Shortcut status & requirements") { page = .smartFormatting }
+                        Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
                     }
                     if coordinator.phase == .error && !coordinator.clipboardPending && coordinator.lastAIShortcutFailure == nil {
                         Text(coordinator.message).font(.callout).foregroundStyle(.orange)
                         HStack {
                             Button("Language & microphone settings") { page = .general }
-                            Button("Copy speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
+                            Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
                         }
                     }
                     if coordinator.clipboardPending {
@@ -496,7 +504,10 @@ import VoiceInput
             }
             FlowSettingsGroup("Smart polish") {
                 FlowSettingsRow("Enable Smart Polish",description:"Next recording uses local rules. Last-insertion AI and manual AI previews remain separate guarded actions.") { Toggle("Enable Smart Polish preview",isOn:$coordinator.preferences.offlineAIRewriting) }
-                FlowSettingsRow("Tone",description:"Limited to punctuation, capitalization and hesitation removal. Rewording is rejected.") {
+                FlowSettingsRow("Polish style",description:"Grammar improves phrasing while checking protected facts and negation. Cleanup keeps the original words.") {
+                    Picker("Polish style",selection:$coordinator.preferences.polishStyle) { ForEach(PolishStyle.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy || coordinator.inPlaceRunning)
+                }
+                FlowSettingsRow("Tone",description:"Used by the selected polish style.") {
                     Picker("Tone",selection:$coordinator.preferences.polishTone) { ForEach(OfflineRewriteTone.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu).disabled(!coordinator.preferences.offlineAIRewriting || coordinator.isPreviewingRewrite)
                 }
             }
@@ -664,7 +675,7 @@ import VoiceInput
                 }
             }
                 FlowSettingsRow("Speech diagnostics",description:coordinator.speechFailureDiagnostics?.failureDescription ?? "Metadata only: provider, locale, capture timing, native error codes and delivery counters. No text or audio.") {
-                    Button("Copy speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
+                    Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
                 }
                 FlowSettingsRow("Speech readiness",description:coordinator.speechResourceStatus) {
                     if coordinator.speechResourceWorking {

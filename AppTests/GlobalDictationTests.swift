@@ -987,7 +987,8 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func nativePagesInstantiateInBothAppearancesWithoutStartingSpeech() async throws {
         let input = GInput(), coordinator = world(input:input)
-        coordinator.preferences.formattingShortcutAction = .nextRecording
+        coordinator.preferences.formattingShortcutAction = .lastInsertion
+        coordinator.preferences.polishStyle = .grammar
         coordinator.preferences.previewShortcutsEnabled = true
         coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.promptEngineeringEnabled = true
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("WesleyFlow-RenderedPages-\(UUID().uuidString)",isDirectory:true)
@@ -5065,5 +5066,45 @@ extension InPlaceRewriteTests {
         c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
         #expect(target.rewriteFixture?.replacements == 1)
         c.close()
+    }
+}
+
+
+private struct GrammarFixtureGenerator: NativeRewriteGenerating {
+    func readiness(localeIdentifier:String) -> NativeRewriteReadiness { .available }
+    func generate(maskedText:String,localeIdentifier:String) throws -> String {
+        try GrammarPolishText(maskedText).render([.init(index:0,text:"This is a check to see whether it's working or not.")])
+    }
+}
+extension InPlaceRewriteTests {
+    @Test func grammarPolishActuallyChangesWordingAndReplacesOnlyOriginalSpan() async throws {
+        let provider = AppleTranscriptRewriter(memory:PolishFixtureMemory(),clock:GClock(),generator:GrammarFixtureGenerator())
+        let (c,target,clipboard) = try await prepare(provider,transcript:"This is a checkup if it's working or not.")
+        c.preferences.polishStyle = .grammar
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .success)
+        #expect(target.value == "aThis is a check to see whether it's working or not.bc")
+        #expect(target.rewriteFixture?.replacements == 1 && clipboard.installed == 0 && !c.previewPresented)
+        #expect(c.lastAIShortcutResult != nil && c.lastAIShortcutFailure == nil)
+        c.close()
+    }
+    @Test func unchangedResultPersistsAfterPillAndCombinedDiagnosticsIncludeAI() async throws {
+        let driver = InPlaceFixtureRewriter(), hudClock = GClock(); await driver.configure(outcome:.unchanged)
+        let (c,target,_) = try await prepare(driver,hudClock:hudClock)
+        c.invokeAIShortcut(.polish,originProcessIdentifier:42); await c.waitForInPlaceRewrite()
+        let result = try #require(c.lastAIShortcutResult)
+        #expect(result.contains("No wording changes"))
+        await hudClock.waitForSleep(2200); await hudClock.advance(2200); await c.waitForHUDFeedback()
+        #expect(c.inPlaceHUD == .idle && c.lastAIShortcutResult == result)
+        #expect(c.combinedDictationDiagnostics.contains("AI_GENERATION=") && c.combinedDictationDiagnostics.contains("model=unchanged"))
+        #expect(target.rewriteFixture?.replacements == 0)
+        c.close()
+    }
+    @Test func grammarPreferenceRoundTripsAndLegacyDefaultsStayCleanup() throws {
+        let store = preferences(); var value = store.load(); #expect(value.polishStyle == .cleanup)
+        value.polishStyle = .grammar; store.save(value); #expect(store.load().polishStyle == .grammar)
+        var object = try #require(JSONSerialization.jsonObject(with:JSONEncoder().encode(value)) as? [String:Any]); object.removeValue(forKey:"polishStyle")
+        let legacy = try JSONDecoder().decode(DictationPreferences.self,from:JSONSerialization.data(withJSONObject:object))
+        #expect(legacy.polishStyle == .cleanup)
     }
 }

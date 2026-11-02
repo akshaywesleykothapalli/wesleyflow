@@ -50,6 +50,7 @@ struct DictationPreferences: Codable, Equatable {
     var agentHotkeyEnabled = true
     var idlePillEnabled = false
     var blockNetworkRequests = false
+    var polishStyle:PolishStyle = .cleanup
     var polishTone: OfflineRewriteTone = .natural
     var promptEngineeringEnabled = false
     var inPlaceAIRewrite = false
@@ -57,9 +58,10 @@ struct DictationPreferences: Codable, Equatable {
     var previewShortcutsEnabled = false
     var offlineAIRewriting = false
     init() {}
-    private enum CodingKeys: String, CodingKey { case formattingShortcutAction, languageMode, teluguRecognitionLanguage, agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
+    private enum CodingKeys: String, CodingKey { case polishStyle, formattingShortcutAction, languageMode, teluguRecognitionLanguage, agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
+        polishStyle = try c.decodeIfPresent(PolishStyle.self,forKey:.polishStyle) ?? .cleanup
         formattingShortcutAction = try c.decodeIfPresent(FormattingShortcutAction.self,forKey:.formattingShortcutAction) ?? .lastInsertion
         languageMode = try c.decodeIfPresent(DictationLanguageMode.self,forKey:.languageMode) ?? .english
         teluguRecognitionLanguage = try c.decodeIfPresent(TeluguRecognitionLanguage.self,forKey:.teluguRecognitionLanguage) ?? .automatic

@@ -31,10 +31,11 @@ import VoiceInput
         previewShortcutStatus = beforeFormattingNotice
         inPlaceHUD = .idle; message = beforeFormattingNotice; showHUDFeedback()
     }
+    @Published private(set) var lastAIShortcutResult:String?
     @Published private(set) var lastAIShortcutFailure:String?
     @Published private(set) var inPlaceHUD: InPlaceHUD = .idle { didSet {
-        if inPlaceHUD == .error { lastAIShortcutFailure = message }
-        else if inPlaceHUD == .success { lastAIShortcutFailure = nil }
+        if inPlaceHUD == .error { lastAIShortcutFailure = message; lastAIShortcutResult = message }
+        else if inPlaceHUD == .success { lastAIShortcutFailure = nil; lastAIShortcutResult = message }
     } }
     @Published private(set) var hudFeedbackVisible = false
     @Published private(set) var audioBars = [Double](repeating:0,count:7)
@@ -336,10 +337,11 @@ import VoiceInput
             : "38L3R3 · Option+1/2 show only the pill while this switch is OFF. Enable before a new verified dictation. Manual preview is available only through Settings."
     }
     @Published private var verificationDetail = "No verification requested"
+    var combinedDictationDiagnostics:String { speechDiagnosticSummary + "\n\nAI shortcut diagnostics:\n" + verificationDiagnosticSummary }
     var verificationDiagnosticSummary: String {
         let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown"
         return "45A-R3 / speech38L3R3 build=" + build + " lifecycle=" + (closed ? "closed" : phase.rawValue)
-            + " formattingShortcutAction=" + preferences.formattingShortcutAction.rawValue
+            + " formattingShortcutAction=" + preferences.formattingShortcutAction.rawValue + " polishStyle=" + preferences.polishStyle.rawValue
             + " outcome=" + latestInsertionOutcome + " verifiedReceipt=" + String(verifiedReceiptCreated)
             + " eligibleReceipt=" + String(eligibleReceiptPresent) + " reason=" + provenanceReason.rawValue
             + " expiration=" + (provenanceReason == .expired ? "expired" : (eligibleReceiptPresent ? "native120sRecheckedOnUse" : "noActiveAnchor"))
@@ -461,6 +463,7 @@ import VoiceInput
     }
     func invokeInPlaceRewrite(_ kind:OfflinePreviewKind, originProcessIdentifier:Int32?) {
         guard !closed, !busy, inPlaceTask == nil else { traceRoute(kind,.ignoredBusy); return }
+        lastAIShortcutResult = nil
         verificationModelState = "notRequested"
         generationStatus = .notRequested; replacementResultStatus = .notRequested
         shortcutOperation = kind.rawValue
@@ -496,7 +499,7 @@ import VoiceInput
         let id = UUID().uuidString; inPlaceID = id
         inPlaceHUD = kind == .polish ? .polishing : .structuring
         message = kind == .polish ? "Polishing on this Mac…" : "Structuring on this Mac…"
-        let request = OfflineRewriteRequest(id:id,text:anchor.originalText,localeIdentifier:localeIdentifier,vocabulary:preferences.formatting.vocabulary + preferences.formatting.replacements.map(\.replacement),tone:preferences.polishTone,kind:kind)
+        let request = OfflineRewriteRequest(id:id,text:anchor.originalText,localeIdentifier:localeIdentifier,vocabulary:preferences.formatting.vocabulary + preferences.formatting.replacements.map(\.replacement),tone:preferences.polishTone,kind:kind,polishStyle:preferences.polishStyle)
         let createdAt = receiptCreatedAt
         inPlaceTask = Task { [weak self,clock] in
             let now = await clock.now()
@@ -521,11 +524,9 @@ import VoiceInput
             }
             self.traceRoute(kind,.generationReturned)
             self.generationStatus = .generationCompleted
-            #if DEBUG
             self.verificationModelState = result.status.rawValue
             self.verificationDetail += " · model=" + result.status.rawValue
             if let block = result.resourceBlock { self.verificationDetail += " · " + block.diagnostic }
-            #endif
             guard result.status == .rewritten || result.status == .unchanged else {
                 switch result.status {
                 case .resourceBlocked: self.message = result.resourceBlock?.message ?? "Local AI resources are unavailable. Original text kept."
@@ -550,7 +551,7 @@ import VoiceInput
                 self.rejectProvenance(error); self.traceRoute(kind,.sourceChanged); self.message = self.rewriteEligibility; self.inPlaceHUD = .error; self.showHUDFeedback(); return
             }
             if result.text == anchor.originalText {
-                self.traceRoute(kind,.unchanged); self.message = "No change needed; original retained."; self.inPlaceHUD = .success; self.showHUDFeedback(); return
+                self.traceRoute(kind,.unchanged); self.message = result.reason == "meaning-uncertain" ? "The AI could not suggest a faithful rewrite. Original text kept." : "No wording changes were suggested. Original text kept."; self.inPlaceHUD = .success; self.showHUDFeedback(); return
             }
             self.invalidateProvenance(.consumed,"No eligible recent dictation; that insertion was already used.")
             self.traceRoute(kind,.replacementRequested)
@@ -655,6 +656,7 @@ import VoiceInput
     @Published private(set) var clipboardPending = false
     @Published private(set) var shortcutEnabled = false
     @Published var preferences: DictationPreferences { didSet {
+        if oldValue.polishStyle != preferences.polishStyle { cancelInPlaceRewrite(); cancelRewritePreview() }
         if oldValue.formattingShortcutAction != preferences.formattingShortcutAction, armedFormattingKind != nil { cancelArmedFormatting() }
         if oldValue.useFocusedTextWhenUnselected != preferences.useFocusedTextWhenUnselected { cancelTextCapture() }
         if oldValue.inPlaceAIRewrite != preferences.inPlaceAIRewrite { cancelTextCapture(); cancelRewritePreview(); previewPresented = false }
@@ -1254,7 +1256,7 @@ import VoiceInput
         let token = UUID().uuidString; previewToken = token; previewKind = kind; isPreviewingRewrite = true
         rewritePreview = nil; promptPreview = nil; previewOriginalText = text; previewNotice = "Preview requested. Focus and clipboard stay unchanged."
         let request = OfflineRewriteRequest(id:token,text:text,localeIdentifier:localeIdentifier,
-            vocabulary:preferences.formatting.vocabulary + preferences.formatting.replacements.map(\.replacement).filter { !$0.isEmpty },tone:preferences.polishTone,kind:kind)
+            vocabulary:preferences.formatting.vocabulary + preferences.formatting.replacements.map(\.replacement).filter { !$0.isEmpty },tone:preferences.polishTone,kind:kind,polishStyle:preferences.polishStyle)
         let task = Task { [weak self] in
             let result = await offlineRewriter.rewrite(request)
             guard let self, self.previewToken == token, !self.closed, !Task.isCancelled, !self.busy,
@@ -1283,7 +1285,7 @@ import VoiceInput
     }
     /// Global AI gestures have no path to the explicit preview presenter.
     func invokeAIShortcut(_ kind: OfflinePreviewKind, originProcessIdentifier: Int32? = nil) {
-        lastAIShortcutFailure = nil
+        lastAIShortcutFailure = nil; lastAIShortcutResult = nil
         traceRoute(kind,.received)
         // Fence a pending explicit capture/result and hide an already-open manual
         // editor. A late capture must not open it after this gesture.
@@ -1576,7 +1578,7 @@ import VoiceInput
         audioCaptureResult = .pending; transcriptionResult = .pending; targetCaptureResult = .notStarted
         targetValidationResult = .notStarted; pasteboardLeaseResult = .notStarted; insertionDispatchResult = .notStarted
         destinationBundleIdentifier = nil; speechFailureCode = "NONE"; terminalSpeechFailure = nil; speechFailureDiagnostics = nil; unmergedSpeechRecoveryEntry = nil
-        lastAIShortcutFailure = nil
+        lastAIShortcutFailure = nil; lastAIShortcutResult = nil
         diagnosticOperation = UUID().uuidString; captureElapsedMilliseconds = nil; insertionElapsedMilliseconds = nil
         activeCaptureDiagnostics = []; insertionTraceSummary = "No insertion readback for this operation"
         insertionLookupSummary = "No shortcut receipt lookup"; verificationDetail = "No rewrite verification for this operation"

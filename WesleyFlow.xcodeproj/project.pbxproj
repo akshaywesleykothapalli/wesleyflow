@@ -714,7 +714,7 @@
         "ENABLE_APP_SANDBOX" = "NO";
         "INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
         "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks";
-        "CURRENT_PROJECT_VERSION" = "45.0.12";
+        "CURRENT_PROJECT_VERSION" = "45.0.13";
         "PRODUCT_NAME" = "Wesley Flow";
       };
       "name" = "Release";
@@ -905,7 +905,7 @@
         "ENABLE_APP_SANDBOX" = "NO";
         "INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
         "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks";
-        "CURRENT_PROJECT_VERSION" = "45.0.12";
+        "CURRENT_PROJECT_VERSION" = "45.0.13";
         "PRODUCT_NAME" = "Wesley Flow";
       };
       "name" = "Debug";

@@ -22,9 +22,10 @@ public struct OfflineRewriteRequest: Sendable {
     public let localeIdentifier: String
     public let vocabulary: [String]
     public let kind: OfflinePreviewKind
+    public let polishStyle: PolishStyle
     public let tone: OfflineRewriteTone
-    public init(id: String, text: String, localeIdentifier: String, vocabulary: [String] = [], tone: OfflineRewriteTone = .natural, kind: OfflinePreviewKind = .polish) {
-        self.id = id; self.text = text; self.localeIdentifier = localeIdentifier; self.vocabulary = vocabulary; self.tone = tone; self.kind = kind
+    public init(id: String, text: String, localeIdentifier: String, vocabulary: [String] = [], tone: OfflineRewriteTone = .natural, kind: OfflinePreviewKind = .polish, polishStyle:PolishStyle = .cleanup) {
+        self.id = id; self.text = text; self.localeIdentifier = localeIdentifier; self.vocabulary = vocabulary; self.tone = tone; self.kind = kind; self.polishStyle = polishStyle
     }
 }
 /// Resource metadata only: no transcript, editor contents or model output.
@@ -78,16 +79,20 @@ public struct ProtectedRewriteText: Sendable {
     private let spans: [(marker: String, text: String)]
     private let original: String
     private let prefix: String
+    private let grammar:Bool
     public init(_ request: OfflineRewriteRequest) throws {
         guard !request.id.isEmpty, request.id.utf8.count <= 64,
               request.id.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }),
               !request.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, request.text.utf8.count <= 2048,
               request.vocabulary.count <= 128, request.vocabulary.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 128 }) else { throw Failure.invalidInput }
+        let grammar = request.kind == .polish && request.polishStyle == .grammar
+        let common = GrammarPolishRules.starts.map { $0.prefix(1).uppercased()+$0.dropFirst() }.sorted().joined(separator:"|")
+        let capitalized = grammar ? #"\b(?!(?:"# + common + #")\b)[A-Z][A-Za-z]+\b"# : #"\b[A-Z][A-Za-z]+\b"#
         let prefix = "WFSPAN" + request.id.replacingOccurrences(of:"-",with:"") + "X"
         guard !request.text.contains("WFSPAN") else { throw Failure.invalidInput }
         var patterns = [#"(?s)```.*?```|`[^`\n]*`"#,
             #"(?m)^[\t ]*(?:\$\s|(?:sudo|git|npm|swift|python3?|curl|rm|cd|ssh|brew)\s)[^\n]*"#,
-            #"\S*[/\\_@=<>$|{}\[\]()0-9+⌘⌥⌃⇧]\S*|\b[a-z]+[A-Z][A-Za-z]*\b|\b[A-Z][A-Za-z]+\b"#,
+            #"\S*[/\\_@=<>$|{}\[\]()0-9+⌘⌥⌃⇧]\S*|\b[a-z]+[A-Z][A-Za-z]*\b|"# + capitalized,
             #"\b[0-9]+(?:\.[0-9]+)?\s*(?:kg|g|mg|km|cm|mm|m|ms|seconds?|minutes?|hours?|GB|GiB|MB|MiB|percent|%)\b"#]
         patterns.append(#"\b[A-Za-z][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12}\b|(?<!\S)\.[A-Za-z][A-Za-z0-9_-]*"#)
         patterns += request.vocabulary.map { #"(?i)(?<![\p{L}\p{N}_])"# + NSRegularExpression.escapedPattern(for:$0) + #"(?![\p{L}\p{N}_])"# }
@@ -113,7 +118,7 @@ public struct ProtectedRewriteText: Sendable {
         // Initial release supports English prose only. Mixed scripts fail closed,
         // while exact protected vocabulary/code may contain any valid Unicode.
         guard !masked.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) && $0.value > 127 }) else { throw Failure.unsupportedLanguage }
-        self.masked = masked; self.spans = spans; original = request.text; self.prefix = prefix
+        self.masked = masked; self.spans = spans; original = request.text; self.prefix = prefix; self.grammar = grammar
     }
     /// Segment only visible prose boundaries: code, URLs, decimal values and
     /// protected vocabulary are opaque markers before splitting. No source words
@@ -157,16 +162,22 @@ public struct ProtectedRewriteText: Sendable {
             guard let c else { return "" }; return c.isNewline ? "\n" : c.isWhitespace ? " " : String(c)
         }
         for span in spans {
-            guard let sourceRange = masked.range(of:span.marker), let resultRange = output.range(of:span.marker),
-                  edge(masked,sourceRange,before:true) == edge(output,resultRange,before:true),
-                  edge(masked,sourceRange,before:false) == edge(output,resultRange,before:false) else { throw Failure.invalidOutput }
+            guard let sourceRange = masked.range(of:span.marker), let resultRange = output.range(of:span.marker) else { throw Failure.invalidOutput }
+            for before in [true,false] {
+                let old = edge(masked,sourceRange,before:before), new = edge(output,resultRange,before:before)
+                let proseBoundary = new.isEmpty || new.unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) || ".,!?:;\"'“”‘’…".unicodeScalars.contains($0) }
+                guard old == new || (grammar && proseBoundary) else { throw Failure.invalidOutput }
+            }
         }
         var restored = output
         for span in spans { restored = restored.replacingOccurrences(of:span.marker,with:span.text) }
-        guard !restored.contains("WFSPAN"), restored.utf8.count <= 4096,
-              Self.ledger(output) == Self.ledger(masked) else { throw Failure.invalidOutput }
-        // Marker restoration is exact and ordered; content words may not be
-        // added/removed/reordered. Only fillers, punctuation and case can differ.
+        guard !restored.contains("WFSPAN"), restored.utf8.count <= 4096 else { throw Failure.invalidOutput }
+        if grammar {
+            guard !output.unicodeScalars.contains(where:{ CharacterSet.letters.contains($0) && $0.value > 127 }) else { throw Failure.invalidOutput }
+            try GrammarPolishRules.validate(source:original,output:restored)
+        } else { guard Self.ledger(output) == Self.ledger(masked) else { throw Failure.invalidOutput } }
+        // Fixed spans remain exact and ordered. Cleanup also requires the word
+        // ledger; explicitly selected grammar rewriting uses its fact checks.
         let refined = restored.trimmingCharacters(in:.whitespacesAndNewlines)
         guard !refined.isEmpty else { throw Failure.invalidOutput }
         return refined
