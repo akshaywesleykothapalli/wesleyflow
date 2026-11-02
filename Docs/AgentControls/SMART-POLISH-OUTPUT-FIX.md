@@ -27,3 +27,11 @@ Real on-device synthetic checks used production contracts, networking denied, an
 Physical keyboard/microphone capture and external editor replacement were not automated. Full native/build/packaging and installed handoff outcomes follow when complete. Temporary app/build copies will be removed after verified installation.
 
 Final full native verification: **862 declarations / 1,944 expanded cases passed**, zero failures. Release with complete concurrency checking passed. Repository checks passed; CI helper tests 15/15 and local signing/packaging tests 3/3 passed. No ordinary speech, resource policy or prompt contract was weakened to obtain these results.
+
+## Handoff
+
+Installed and reopened **45.0.12** at `/Applications/Wesley Flow.app` after identified old Wesley Flow copies accepted normal Quit. Strict/deep signature verification and the 15-second launch-survival check passed. Every existing preference compared equal after launch; the shortcut action remains `lastInsertion`. No history/model changes, clipboard access, forced termination or unrelated-app closure occurred.
+
+Temporary signed/staged copies, the previous Applications app backup and both temporary build caches were removed after launch verification; test reports and logs remain under ignored `Evidence/SmartPolishFix`. Implementation commit: `d3db195`. Metadata-only installation provenance: `Evidence/SmartPolishFix/handoff.json`.
+
+A fresh Fn recording is required after app restart because editor replacement provenance is deliberately process-local. Option+1 requests safe polish of that inserted span. Already formatted text may be accepted unchanged; no wording change is forced to simulate progress. Physical user-operated editor acceptance remains outstanding, separate from the real on-device output checks and the 1,944-case fixture suite.
