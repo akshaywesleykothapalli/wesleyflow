@@ -19,6 +19,20 @@ public extension NativeRewriteGenerating {
         try await generate(maskedText:maskedText,localeIdentifier:localeIdentifier)
     }
 }
+/// Guided output fixes the transport shape; the Domain contract still rejects
+/// missing/duplicate/out-of-order indices and preserves all source text.
+@Generable struct NativePromptSections {
+    var objective:[Int]
+    var context:[Int]
+    var requirements:[Int]
+    var constraints:[Int]
+    var expectedOutput:[Int]
+    func encoded() throws -> String {
+        let fields = ["objective":objective,"context":context,"requirements":requirements,"constraints":constraints,"expectedOutput":expectedOutput]
+        return String(decoding:try JSONSerialization.data(withJSONObject:fields,options:.sortedKeys),as:UTF8.self)
+    }
+}
+
 public struct AppleRewriteGenerator: NativeRewriteGenerating {
     public init() {}
     public func readiness(localeIdentifier: String) -> NativeRewriteReadiness {
@@ -57,10 +71,17 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
         do {
         try Task.checkCancellation()
         let session = LanguageModelSession(model:SystemLanguageModel.default,tools:[],instructions:instructions)
-        let response = try await session.respond(to:maskedText,options:GenerationOptions(temperature:0,maximumResponseTokens:256))
+        let output:String
+        if kind == .promptEngineering {
+            let response = try await session.respond(to:maskedText,generating:NativePromptSections.self,options:GenerationOptions(temperature:0,maximumResponseTokens:256))
+            output = try response.content.encoded()
+        } else {
+            let response = try await session.respond(to:maskedText,options:GenerationOptions(temperature:0,maximumResponseTokens:256))
+            output = response.content
+        }
         try Task.checkCancellation()
         await FoundationGenerationLease.shared.release(lease)
-        return response.content
+        return output
         } catch { await FoundationGenerationLease.shared.release(lease);throw error }
     }
 }
@@ -143,7 +164,8 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
                     } catch PersonalPlanningFailure.busy {
                         await generated(id:request.id,ticket:ticket,status:.resourceBlocked,text:request.text,resourceBlock:.init(.busy,phase:.generating))
                     } catch {
-                        await generated(id:request.id,ticket:ticket,status:error is CancellationError ? .cancelled : .invalidOutput,text:request.text)
+                        await generated(id:request.id,ticket:ticket,status:error is CancellationError ? .cancelled : .invalidOutput,text:request.text,
+                            reason:error is ProtectedRewriteText.Failure || error is DecodingError ? "output-contract" : "native-generator")
                     }
                 }
                 watcher = Task { [clock,memory] in
@@ -171,12 +193,13 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
     public static let reserveBytes:UInt64 = 2*1024*1024*1024
     public static func resourceBlock(_ sample:InferenceMemorySample,baseline:InferenceMemorySample,phase:OfflineRewriteResourceBlock.Phase) -> OfflineRewriteResourceBlock? {
         let cause:OfflineRewriteResourceBlock.Cause
-        if !sample.pressureNormal { cause = .memoryPressure }
+        if sample.pressureLevel == .unknown { cause = .observationUnavailable }
+        else if sample.pressureLevel == .critical { cause = .memoryPressure }
         else if sample.conservativeAvailableBytes < reserveBytes { cause = .lowMemory }
         else if sample.swapUsedBytes > baseline.swapUsedBytes { cause = .swapGrowth }
         else { return nil }
         let growth = sample.swapUsedBytes > baseline.swapUsedBytes ? sample.swapUsedBytes-baseline.swapUsedBytes : 0
-        return .init(cause,phase:phase,availableBytes:sample.conservativeAvailableBytes,requiredBytes:reserveBytes,swapGrowthBytes:growth)
+        return .init(cause,phase:phase,availableBytes:sample.conservativeAvailableBytes,requiredBytes:reserveBytes,swapGrowthBytes:growth,pressureLevel:sample.pressureLevel)
     }
     public static func safe(_ sample: InferenceMemorySample, baseline: InferenceMemorySample) -> Bool {
         resourceBlock(sample,baseline:baseline,phase:.admission) == nil
@@ -194,7 +217,7 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
         let elapsed = now >= start ? now-start : 0
         completion?.resume(returning:.init(status,text:text,elapsedMilliseconds:elapsed,reason:status.rawValue,resourceBlock:resourceBlock))
     }
-    private func generated(id: String,ticket: UUID,status: OfflineRewriteStatus,text: String,resourceBlock:OfflineRewriteResourceBlock? = nil) async {
+    private func generated(id: String,ticket: UUID,status: OfflineRewriteStatus,text: String,reason:String = "",resourceBlock:OfflineRewriteResourceBlock? = nil) async {
         guard active == id, epoch == ticket else { return }
         let start = began
         let now = await clock.now()
@@ -204,7 +227,7 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
         // fallback that wins while clock.now suspends cannot be overwritten.
         let completion = continuation; continuation = nil
         watcher?.cancel(); watcher = nil
-        let outcome = OfflineRewriteOutcome(cancelled ? .cancelled : status,text:cancelled ? fallback : text,elapsedMilliseconds:elapsed,resourceBlock:cancelled ? nil : resourceBlock)
+        let outcome = OfflineRewriteOutcome(cancelled ? .cancelled : status,text:cancelled ? fallback : text,elapsedMilliseconds:elapsed,reason:reason,resourceBlock:cancelled ? nil : resourceBlock)
         // No await after clearing ownership: another request cannot inherit state.
         active = nil; generation = nil
         completion?.resume(returning:outcome)

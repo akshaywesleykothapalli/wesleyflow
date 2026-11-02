@@ -60,11 +60,20 @@ public struct InferenceResponse: Sendable {
     }
 }
 public enum InferenceCancellation: String, Sendable { case notSent, completed, httpCancelledProviderUncertain, residencyAbsent }
+public enum InferenceMemoryPressure: String, Sendable { case normal, warning, critical, unknown }
 public struct InferenceMemorySample: Sendable {
     public let conservativeAvailableBytes: UInt64
     public let swapUsedBytes: UInt64
     public let pressureNormal: Bool
-    public init(conservativeAvailableBytes: UInt64, pressureNormal: Bool, swapUsedBytes: UInt64 = 0) { self.conservativeAvailableBytes = conservativeAvailableBytes; self.pressureNormal = pressureNormal; self.swapUsedBytes = swapUsedBytes }
+    public let pressureLevel: InferenceMemoryPressure
+    /// Legacy sources that only report a Boolean remain conservatively critical.
+    public init(conservativeAvailableBytes: UInt64, pressureNormal: Bool, swapUsedBytes: UInt64 = 0) {
+        self.init(conservativeAvailableBytes:conservativeAvailableBytes,pressureLevel:pressureNormal ? .normal : .critical,swapUsedBytes:swapUsedBytes)
+    }
+    public init(conservativeAvailableBytes:UInt64,pressureLevel:InferenceMemoryPressure,swapUsedBytes:UInt64 = 0) {
+        self.conservativeAvailableBytes = conservativeAvailableBytes; self.pressureLevel = pressureLevel
+        self.pressureNormal = pressureLevel == .normal; self.swapUsedBytes = swapUsedBytes
+    }
 }
 public protocol InferenceMemorySource: Sendable { func sample() async throws -> InferenceMemorySample }
 public protocol LocalModelProvider: Sendable {

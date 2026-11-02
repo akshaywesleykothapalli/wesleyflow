@@ -19,7 +19,16 @@ public struct SystemInferenceMemory: InferenceMemorySource {
         guard pageSize > 0 else { throw InferenceFailure.memoryAdmissionDenied }
         let bytes = try Self.availableBytes(freePagesIncludingSpeculative: UInt64(stats.free_count),
                                             inactivePages: UInt64(stats.inactive_count), pageSize: UInt64(pageSize))
-        return .init(conservativeAvailableBytes: bytes, pressureNormal: pressure == 1, swapUsedBytes: swap.xsu_used)
+        return .init(conservativeAvailableBytes: bytes, pressureLevel: Self.pressureLevel(pressure), swapUsedBytes: swap.xsu_used)
+    }
+    // This sysctl returns converted dispatch flags, not XNU's internal enum.
+    static func pressureLevel(_ raw:Int32) -> InferenceMemoryPressure {
+        switch raw {
+        case 1: .normal
+        case 2: .warning
+        case 4: .critical
+        default: .unknown
+        }
     }
     /// Mach free_count already includes speculative_count. Keep this arithmetic independently testable.
     static func availableBytes(freePagesIncludingSpeculative: UInt64, inactivePages: UInt64, pageSize: UInt64) throws -> UInt64 {

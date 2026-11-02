@@ -856,10 +856,32 @@ extension OfflineRewriteProviderTests {
     }
 }
 
+private actor NativeRewriteProbeMemory: InferenceMemorySource {
+    private var levels = Set<String>()
+    private var samples = 0
+    private var minimum = UInt64.max
+    private var initialSwap:UInt64?
+    private var maximumSwapGrowth:UInt64 = 0
+    func sample() throws -> InferenceMemorySample {
+        let result = try SystemInferenceMemory().sample()
+        levels.insert(result.pressureLevel.rawValue); samples += 1
+        minimum = min(minimum,result.conservativeAvailableBytes)
+        if initialSwap == nil { initialSwap = result.swapUsedBytes }
+        if let initialSwap, result.swapUsedBytes > initialSwap { maximumSwapGrowth = max(maximumSwapGrowth,result.swapUsedBytes-initialSwap) }
+        return result
+    }
+    func summary() -> String {
+        "samples=\(samples) levels=\(levels.sorted().joined(separator:",")) minAvailableBytes=\(minimum) maxSwapGrowthBytes=\(maximumSwapGrowth)"
+    }
+}
+
 @Suite("Opt-in guarded native AI shortcut diagnostic",.serialized) struct NativeAIShortcutDiagnosticTests {
     @Test(.enabled(if:ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_DIAGNOSTIC"] == "1"))
     func inspectThenConditionallyGenerateSyntheticTextOnly() async throws {
-        let provider = AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:SystemTaskClock())
+        let memory = NativeRewriteProbeMemory()
+        let observation = try await memory.sample()
+        print("AI_PROBE pressure=\(observation.pressureLevel.rawValue) availableBytes=\(observation.conservativeAvailableBytes) swapBytes=\(observation.swapUsedBytes)")
+        let provider = AppleTranscriptRewriter(memory:memory,clock:SystemTaskClock())
         let readiness = await provider.inspectReadiness(localeIdentifier:"en-IN")
         print("AI_PROBE readiness=\(readiness.status.rawValue) explanation=\(readiness.explanation)")
         guard readiness.status == .ready else { print("AI_PROBE generation=notAttempted"); return }
@@ -867,6 +889,7 @@ extension OfflineRewriteProviderTests {
             let request = OfflineRewriteRequest(id:UUID().uuidString,text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
             let result = await provider.rewrite(request)
             print("AI_PROBE prompt=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
+            print("AI_PROBE resources=\(await memory.summary())")
             if result.status == .rewritten || result.status == .unchanged { try PromptEngineeringContract(request).validateRendered(result.text) }
             else { #expect(result.text == request.text) }
             return
@@ -953,5 +976,64 @@ extension OfflineRewriteProviderTests {
         #expect(result.status == .resourceBlocked && result.text == offlineRequest().text)
         #expect(result.resourceBlock?.cause == .observationUnavailable && result.resourceBlock?.phase == .generating)
         await driver.release()
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test func rawPressureFlagsAreNotTheInternalKernelEnum() {
+        #expect(SystemInferenceMemory.pressureLevel(1) == .normal)
+        #expect(SystemInferenceMemory.pressureLevel(2) == .warning)
+        #expect(SystemInferenceMemory.pressureLevel(4) == .critical)
+        for raw:Int32 in [0,3,5,-1,Int32.max] { #expect(SystemInferenceMemory.pressureLevel(raw) == .unknown) }
+        let legacy = InferenceMemorySample(conservativeAvailableBytes:3*1024*1024*1024,pressureNormal:false)
+        #expect(legacy.pressureLevel == .critical && !legacy.pressureNormal)
+    }
+    @Test func warningAllowsBoundedRewriteButKeepsHeavyPoliciesClosed() async {
+        let sample = InferenceMemorySample(conservativeAvailableBytes:3*1024*1024*1024,pressureLevel:.warning,swapUsedBytes:1024)
+        #expect(!sample.pressureNormal && sample.pressureLevel == .warning)
+        #expect(AppleTranscriptRewriter.safe(sample,baseline:sample))
+        #expect(!ApplePersonalPlanner.safe(sample,baseline:sample))
+        let provider = AppleTranscriptRewriter(memory:RewriteSequenceMemory([sample]),clock:RewriteTestClock(),generator:RewriteTestGenerator())
+        #expect(await provider.inspectReadiness(localeIdentifier:"en-IN").status == .ready)
+        #expect(await provider.rewrite(offlineRequest()).status == .unchanged)
+    }
+    @Test(arguments:[InferenceMemoryPressure.critical,.unknown])
+    func criticalAndUnknownPressureNeverStartGeneration(_ level:InferenceMemoryPressure) async {
+        let sample = InferenceMemorySample(conservativeAvailableBytes:8*1024*1024*1024,pressureLevel:level)
+        let driver = RewriteTestGenerator()
+        let provider = AppleTranscriptRewriter(memory:RewriteSequenceMemory([sample]),clock:RewriteTestClock(),generator:driver)
+        let result = await provider.rewrite(offlineRequest())
+        #expect(result.status == .resourceBlocked && result.text == offlineRequest().text)
+        #expect(result.resourceBlock?.cause == (level == .critical ? .memoryPressure : .observationUnavailable))
+        #expect(result.resourceBlock?.pressureLevel == level)
+        #expect(await driver.calls == 0)
+    }
+    @Test func warningRetainsTheReserveAndNoSwapGrowthGuards() {
+        let initial = InferenceMemorySample(conservativeAvailableBytes:2*1024*1024*1024,pressureLevel:.warning,swapUsedBytes:1024)
+        #expect(AppleTranscriptRewriter.safe(initial,baseline:initial))
+        let low = InferenceMemorySample(conservativeAvailableBytes:initial.conservativeAvailableBytes-1,pressureLevel:.warning,swapUsedBytes:1024)
+        #expect(AppleTranscriptRewriter.resourceBlock(low,baseline:initial,phase:.generating)?.cause == .lowMemory)
+        let swap = InferenceMemorySample(conservativeAvailableBytes:initial.conservativeAvailableBytes,pressureLevel:.warning,swapUsedBytes:1025)
+        #expect(AppleTranscriptRewriter.resourceBlock(swap,baseline:initial,phase:.generating)?.cause == .swapGrowth)
+        let critical = InferenceMemorySample(conservativeAvailableBytes:initial.conservativeAvailableBytes,pressureLevel:.critical,swapUsedBytes:1024)
+        #expect(AppleTranscriptRewriter.resourceBlock(critical,baseline:initial,phase:.generating)?.cause == .memoryPressure)
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test func guidedPromptTransportRetainsAllContractChecks() throws {
+        let request = OfflineRewriteRequest(id:"guided",text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
+        let contract = try PromptEngineeringContract(request)
+        let valid = NativePromptSections(objective:[0],context:[],requirements:[],constraints:[1],expectedOutput:[2])
+        let output = try contract.render(valid.encoded())
+        try contract.validateRendered(output)
+        #expect(output == "## Objective\nCheck the save button.\n\n## Constraints\nKeep the current layout.\n\n## Expected output\nReturn a short report.")
+        for invalid in [NativePromptSections(objective:[0],context:[],requirements:[],constraints:[],expectedOutput:[2]),
+                        NativePromptSections(objective:[0],context:[],requirements:[],constraints:[1],expectedOutput:[1,2]),
+                        NativePromptSections(objective:[0],context:[],requirements:[2],constraints:[1],expectedOutput:[])] {
+            #expect(throws:(any Error).self) { _ = try contract.render(invalid.encoded()) }
+        }
     }
 }

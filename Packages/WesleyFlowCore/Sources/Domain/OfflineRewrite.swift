@@ -36,23 +36,24 @@ public struct OfflineRewriteResourceBlock: Sendable, Equatable {
     public let availableBytes: UInt64?
     public let requiredBytes: UInt64
     public let swapGrowthBytes: UInt64
-    public init(_ cause:Cause,phase:Phase,availableBytes:UInt64? = nil,requiredBytes:UInt64 = 2*1024*1024*1024,swapGrowthBytes:UInt64 = 0) {
+    public let pressureLevel: InferenceMemoryPressure?
+    public init(_ cause:Cause,phase:Phase,availableBytes:UInt64? = nil,requiredBytes:UInt64 = 2*1024*1024*1024,swapGrowthBytes:UInt64 = 0,pressureLevel:InferenceMemoryPressure? = nil) {
         self.cause = cause; self.phase = phase; self.availableBytes = availableBytes
-        self.requiredBytes = requiredBytes; self.swapGrowthBytes = swapGrowthBytes
+        self.requiredBytes = requiredBytes; self.swapGrowthBytes = swapGrowthBytes; self.pressureLevel = pressureLevel
     }
     public var message:String {
         let detail:String
         switch cause {
         case .busy: detail = "The previous local AI request is still running or stopping. Wait for it to finish."
         case .observationUnavailable: detail = "Local AI could not check memory safely. Try again after the system settles."
-        case .memoryPressure: detail = "Local AI stopped because macOS reports elevated memory pressure. Close unused apps before trying again."
+        case .memoryPressure: detail = "Local AI stopped because macOS reports critical memory pressure. Close unused apps before trying again."
         case .swapGrowth: detail = String(format:"Local AI stopped because swap use grew by %.1f MiB during generation. Close unused apps before trying again.",Double(swapGrowthBytes)/1048576)
         case .lowMemory: detail = String(format:"Local AI needs %.0f GiB to remain available; %.2f GiB was available. Close unused apps before trying again.",Double(requiredBytes)/1073741824,Double(availableBytes ?? 0)/1073741824)
         }
         return detail + " Original text kept."
     }
     public var diagnostic:String {
-        "cause="+cause.rawValue+" phase="+phase.rawValue+" availableBytes="+(availableBytes.map(String.init) ?? "unknown")+" requiredBytes="+String(requiredBytes)+" swapGrowthBytes="+String(swapGrowthBytes)
+        "cause="+cause.rawValue+" phase="+phase.rawValue+" availableBytes="+(availableBytes.map(String.init) ?? "unknown")+" requiredBytes="+String(requiredBytes)+" swapGrowthBytes="+String(swapGrowthBytes)+" pressure="+(pressureLevel?.rawValue ?? "unknown")
     }
 }
 public struct OfflineRewriteOutcome: Sendable {
