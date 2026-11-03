@@ -220,7 +220,6 @@ import VoiceInput
     @Published private var insertionLookupSummary = "No shortcut receipt lookup"
     @Published private var insertionTraceSummary = "No insertion readback recorded"
     private func recordInsertionTrace(_ target:(any InsertionTarget)?,receipt:TextInsertionReceipt) {
-        #if DEBUG
         let native = target?.insertionDiagnostics ?? []
         let service = activeInsertionDiagnostics
         let values = Array(activeCaptureDiagnostics.suffix(12)) + Array(native.prefix(3)) + Array(native.suffix(8)) + Array(service.prefix(6)) + Array(service.suffix(10))
@@ -234,7 +233,6 @@ import VoiceInput
             if let value = d.elapsedMilliseconds { parts.append("elapsedMs=\(value)") }
             return parts.joined(separator:":")
         }.joined(separator:" · ") + " · receipt=" + receipt.status.rawValue
-        #endif
     }
     var eligibleReceiptPresent: Bool { rewriteAnchor != nil }
     private func invalidateProvenance(_ reason:ProvenanceReason,_ explanation:String) {
@@ -351,13 +349,11 @@ import VoiceInput
     }
     private var verificationModelState = "notRequested"
     private func recordVerification(_ phase:String,_ values:[DictationVerificationDiagnostic],failure:(any Error)? = nil) {
-        #if DEBUG
         let fields = values.suffix(12).map { value in
             value.stage.rawValue + ":" + value.result.rawValue + (value.expectedUTF16.map { " expectedUTF16=\($0)" } ?? "") + (value.currentUTF16.map { " currentUTF16=\($0)" } ?? "")
         }.joined(separator:" · ")
         let code = (failure as? DictationRewriteValidationFailure)?.rawValue ?? (failure == nil ? "none" : "unclassified")
         verificationDetail = phase + " model=" + verificationModelState + " failure=" + code + " · " + fields
-        #endif
     }
     var hideCompletedDictationPill:Bool {
         guard inPlaceHUD == .idle,phase == .error,transcriptionResult == .success,
@@ -1858,9 +1854,7 @@ import VoiceInput
                 self.invalidateProvenance(.invalidated,"The insertion session was cancelled or closed. No eligible replacement receipt.")
             }
             self.recordInsertionTrace(target,receipt:receipt)
-            #if DEBUG
             self.insertionTraceSummary += self.eligibleReceiptPresent ? " · INSERTION_RECEIPT_CREATED" : " · ELIGIBLE_RECEIPT_WITHHELD reason=" + self.provenanceReason.rawValue
-            #endif
             let duration = began.map { start -> Int64 in
                 let delta = now.subtractingReportingOverflow(start)
                 return delta.overflow ? 0 : max(0,min(DictationText.maximumDurationMilliseconds,delta.partialValue))

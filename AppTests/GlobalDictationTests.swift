@@ -116,6 +116,8 @@ private actor GClock: TaskClock {
 @MainActor private final class GCapture: InsertionTargetCapturing {
     var failure: TextTargetError?
     var failureExplanation: String?
+    var captureBundleIdentifier:String?
+    var captureDiagnostics:[InsertionVerificationDiagnostic] = []
     var count = 0
     var configure:(@MainActor (GTarget)->Void)?
     var target: GTarget?
@@ -3945,10 +3947,11 @@ private actor FortyOneBlockingResolver {
 @MainActor private final class ClipboardFreeFixture:ClipboardFreeInsertionTarget {
     let base=GTarget()
     var requiresGuardedPaste = false
+    var exposesDirectWrite = false
     var info:InsertionTargetInfo {base.info}
     var original:TargetTextState? {base.original}
     func validate() throws {try base.validate()}
-    func canReplaceSelection()->Bool {false}
+    func canReplaceSelection()->Bool { exposesDirectWrite }
     func replaceSelection(_ text:String) throws {Issue.record("Unexpected direct mutation")}
     func postPaste(whileClipboardOwned:()->Bool) throws { try base.postPaste(whileClipboardOwned:whileClipboardOwned) }
     func observedText()->String? {base.observedText()}
@@ -5115,7 +5118,7 @@ extension PersonalAgent42Tests {
     @Test func codexUsesGuardedPasteWithoutTryingUnicodeFirst() async {
         #expect(NativeEditorCapability.requiresGuardedPaste("com.openai.codex"))
         #expect(!NativeEditorCapability.requiresGuardedPaste("com.apple.Notes"))
-        #expect(!NativeEditorCapability.requiresGuardedPaste("com.openai.chat"))
+        #expect(NativeEditorCapability.requiresGuardedPaste("com.openai.chat"))
         let target=ClipboardFreeFixture(),clipboard=GClipboard()
         target.requiresGuardedPaste=true;target.base.pasted="hello";target.base.unicodeSupported=true
         let service=TextInsertionService(clipboard:clipboard,clock:GClock())
@@ -5193,6 +5196,67 @@ extension InPlaceRewriteTests {
         #expect(target.rewriteFixture?.replacements==1 && clipboard.installed==0 && !c.previewPresented)
         c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42);await c.waitForInPlaceRewrite()
         #expect(target.rewriteFixture?.replacements==1)
+        c.close()
+    }
+}
+
+@Suite("Browser web-app verified insertion",.serialized) @MainActor struct BrowserInsertionTests {
+    @Test func missingApplicationWindowCanUseTheVerifiedEditorWindow() throws {
+        let window=try NativeFocusedWindowResolver.resolve(processID:42,application:{nil as Int?},focusedEditorWindow:{7},owner:{_ in 42},isWindow:{$0==7})
+        #expect(window==7)
+        var fallback=false
+        let direct=try NativeFocusedWindowResolver.resolve(processID:42,application:{3},focusedEditorWindow:{fallback=true;return 7},owner:{_ in 42},isWindow:{_ in true})
+        #expect(direct==3 && !fallback)
+    }
+    @Test(arguments:[false,true]) func windowOwnershipCannotBeRelaxedForWebApps(_ derived:Bool) {
+        #expect(throws:TextTargetError.changed) {
+            _ = try NativeFocusedWindowResolver.resolve(processID:42,application:{derived ? nil : 7},focusedEditorWindow:{7},owner:{_ in 99},isWindow:{_ in true})
+        }
+    }
+    @Test func missingWrongRoleAndDeniedWindowFailWithoutRetargeting() {
+        #expect(throws:TextTargetError.unsupported) { _ = try NativeFocusedWindowResolver.resolve(processID:42,application:{nil as Int?},focusedEditorWindow:{nil},owner:{_ in 42},isWindow:{_ in true}) }
+        #expect(throws:TextTargetError.unsupported) { _ = try NativeFocusedWindowResolver.resolve(processID:42,application:{nil as Int?},focusedEditorWindow:{7},owner:{_ in 42},isWindow:{_ in false}) }
+        #expect(throws:TextTargetError.denied) { _ = try NativeFocusedWindowResolver.resolve(processID:42,application:{()throws->Int? in throw TextTargetError.denied},focusedEditorWindow:{Issue.record("No fallback after denial");return 7},owner:{_ in 42},isWindow:{_ in true}) }
+    }
+    @Test(arguments:["com.openai.codex","com.openai.chat","com.brave.Browser","com.brave.Browser.app.akpamiohjfcnimfljfndmaldlcfphjmp"]) func approvedAppsChoosePasteBeforeAdvertisedAXWrites(_ bundle:String) {
+        #expect(NativeEditorCapability.requiresGuardedPaste(bundle))
+        #expect(!NativeEditorCapability.allowsDirectTextReplacement(bundle))
+    }
+    @Test(arguments:["com.apple.Notes","com.apple.Terminal","com.brave.Browser.app.short","com.brave.Browser.app.akpamiohjfcnimfljfndmaldlcfphjmp.extra","other.com.brave.Browser.app.akpamiohjfcnimfljfndmaldlcfphjmp"]) func unrelatedAndMalformedIdentitiesKeepTheirPolicy(_ bundle:String) {
+        #expect(!NativeEditorCapability.requiresGuardedPaste(bundle))
+        #expect(!NativeEditorCapability.isBraveWebApp(bundle))
+    }
+    @Test(arguments:["hello","hello\nworld"]) func guardedBrowserPasteSkipsDirectAndUnicodeWrites(_ text:String) async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard()
+        target.requiresGuardedPaste=true;target.exposesDirectWrite=true;target.base.unicodeSupported=true;target.base.pasted=text
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let receipt=await service.insert(text,target:target,session:"s")
+        #expect(receipt.status == .insertedVerified && target.base.pastes==1 && target.base.unicodePosts==0)
+        #expect(clipboard.installed==1 && clipboard.restores==1 && clipboard.text=="original" && !service.hasPendingClipboard)
+    }
+    @Test func newClipboardContentBeforeBrowserPastePreventsDispatchAndIsRetained() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard()
+        target.requiresGuardedPaste=true;target.exposesDirectWrite=true
+        target.base.beforePaste={clipboard.externalCopy("new user copy")}
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let receipt=await service.insert("hello",target:target,session:"s")
+        #expect(target.base.pastes==0 && target.base.unicodePosts==0 && receipt.status != .insertedVerified)
+        #expect(clipboard.text=="new user copy" && clipboard.restores==0)
+    }
+}
+extension GlobalCoordinatorTests {
+    @Test func failedWebAppCaptureExportsNativeCodesWithoutTranscriptContents() async {
+        let input=GInput(),capture=GCapture(),clock=GClock(),shortcut=GShortcut()
+        capture.failure = .unsupported;capture.failureExplanation="The focused editor did not expose its window."
+        capture.captureBundleIdentifier="com.brave.Browser.app.akpamiohjfcnimfljfndmaldlcfphjmp"
+        capture.captureDiagnostics=[.init(.target,.applicationRole,.success,axError:0),.init(.target,.focusedWindow,.unsupported,axError:AXError.attributeUnsupported.rawValue)]
+        let c=SystemWideDictationCoordinator(input:input,targets:capture,insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:shortcut,clock:clock,preferenceStore:preferences())
+        c.resumeShortcutIfAuthorized();shortcut.receive?(.pressed);await c.waitUntilRecording()
+        input.receive?(.transcript("retained private fixture words"));shortcut.receive?(.released);input.receive?(.finished);await waitForTerminal(c)
+        let diagnostic=c.combinedDictationDiagnostics
+        #expect(diagnostic.contains("APPLICATION_ROLE") && diagnostic.contains("FOCUSED_WINDOW") && diagnostic.contains("TARGET_CAPTURE_RESULT=FAILED"))
+        #expect(!diagnostic.contains("retained private fixture words"))
+        #expect(c.latest?.cleaned=="retained private fixture words" && c.latest?.insertion.attempted==false)
         c.close()
     }
 }

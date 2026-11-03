@@ -68,7 +68,7 @@ import Foundation
         do { try target.validate() } catch { return Self.failure(error) }
         guard await clock.now() < deadline else { return .init(.timedOut,.deadline) }
         guard !Task.isCancelled else { return .init(.cancelled,.cancelled) }
-        if let expectation, target.canReplaceSelection() {
+        if let expectation, (target as? any ClipboardFreeInsertionTarget)?.requiresGuardedPaste != true, target.canReplaceSelection() {
             var acknowledged = true
             do { try target.replaceSelection(text) }
             catch DirectTextUpdateFailure.dispatchUnconfirmed {
@@ -104,7 +104,7 @@ import Foundation
             return .init(.uncertain,.verificationUnavailable,attempted:true)
         }
         if (target as? any ClipboardFreeInsertionTarget)?.requiresGuardedPaste == true, expectation == nil {
-            failureExplanation = "Codex paste requires readable text and selection so insertion can be verified. No paste was attempted; the transcript remains available for copy."
+            failureExplanation = "Guarded paste requires readable text and selection so insertion can be verified. No paste was attempted; the transcript remains available for copy."
             return .init(.unsupportedTarget,.unsupported)
         }
         guard pending == nil else { return .init(.denied,.clipboardPending,clipboardPending:true) }

@@ -26,6 +26,20 @@ import Synchronization
     }
 }
 
+/// A missing app window may be derived from the already verified focused editor.
+/// Neither route permits an element/window owned by another process.
+@MainActor enum NativeFocusedWindowResolver {
+    static func resolve<Element>(processID:Int32,application:()throws->Element?,focusedEditorWindow:()throws->Element?,owner:(Element)->Int32?,isWindow:(Element)->Bool) throws -> Element {
+        let window:Element
+        if let direct = try application() { window = direct }
+        else if let derived = try focusedEditorWindow() { window = derived }
+        else { throw TextTargetError.unsupported }
+        guard owner(window) == processID else { throw TextTargetError.changed }
+        guard isWindow(window) else { throw TextTargetError.unsupported }
+        return window
+    }
+}
+
 /// Read existing focus metadata only, with explicit node/depth limits. Never guess a field.
 @MainActor enum FocusedDescendantSearch {
     static func find<Element>(root: Element, limit: Int = 64, maximumDepth: Int = 8,
@@ -103,8 +117,14 @@ enum NativeEditorCapability {
     }
     /// Ordinary initial insertion retains its existing paste-only exception.
     /// A later exact selected-span rewrite is checked independently.
-    static func requiresGuardedPaste(_ bundleIdentifier:String?) -> Bool { bundleIdentifier == "com.openai.codex" }
-    static func allowsDirectTextReplacement(_ bundleIdentifier: String?) -> Bool { bundleIdentifier != "com.openai.codex" }
+    static func isBraveWebApp(_ bundleIdentifier:String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        return bundleIdentifier.range(of:#"^com\.brave\.Browser\.app\.[a-p]{32}$"#,options:.regularExpression) != nil
+    }
+    static func requiresGuardedPaste(_ bundleIdentifier:String?) -> Bool {
+        ["com.openai.codex","com.openai.chat","com.brave.Browser"].contains(bundleIdentifier ?? "") || isBraveWebApp(bundleIdentifier)
+    }
+    static func allowsDirectTextReplacement(_ bundleIdentifier: String?) -> Bool { !requiresGuardedPaste(bundleIdentifier) }
     static func allowsAutomaticInsertion(_ bundleIdentifier: String?) -> Bool { bundleIdentifier != "com.apple.Terminal" }
     static func isConsole(_ bundleIdentifier: String?) -> Bool {
         ["com.apple.Terminal","com.googlecode.iterm2"].contains(bundleIdentifier ?? "")
@@ -180,11 +200,16 @@ enum NativeEditorCapability {
         }
         let root = AXUIElementCreateApplication(application.processIdentifier)
         AXUIElementSetMessagingTimeout(root,0.2)
-        reportStage("The app does not expose a focused window. Copy the transcript from History.")
-        let window = try Self.focusElementAttribute(root,kAXFocusedWindowAttribute,code:.focusedWindow,record:reportDiagnostic)
-        guard let window else { throw TextTargetError.unsupported }
-        reportStage("The app does not expose a focused text field. Copy the transcript from History.")
-        let element = try Self.focusedElement(root,processID:application.processIdentifier,record:reportDiagnostic)
+        if NativeEditorCapability.requiresGuardedPaste(application.bundleIdentifier) {
+            // A standard AXRole read, not a private activation attribute write.
+            var raw:CFTypeRef?
+            let status = AXUIElementCopyAttributeValue(root,kAXRoleAttribute as CFString,&raw)
+            reportDiagnostic(.init(.target,.applicationRole,status == .success ? .success : .unsupported,axError:status.rawValue))
+            if status == .apiDisabled { throw TextTargetError.denied }
+            if status == .invalidUIElement { throw TextTargetError.changed }
+        }
+        reportStage("The app does not expose a verified focused window and text field. Click inside its text editor before dictating. Your transcript remains available in History.")
+        let (window,element) = try Self.focusedTarget(root,processID:application.processIdentifier,record:reportDiagnostic)
         AXUIElementSetMessagingTimeout(element,0.2)
         let role = Self.attribute(element,kAXRoleAttribute) as? String ?? ""
         let subrole = Self.attribute(element,kAXSubroleAttribute) as? String ?? ""
@@ -301,6 +326,21 @@ enum NativeEditorCapability {
         guard valid, let raw else { return nil }
         return unsafeDowncast(raw,to:AXUIElement.self)
     }
+    fileprivate static func focusedTarget(_ root:AXUIElement,processID:Int32,record:(InsertionVerificationDiagnostic)->Void = { _ in }) throws -> (AXUIElement,AXUIElement) {
+        var verifiedEditor:AXUIElement?
+        let window = try NativeFocusedWindowResolver.resolve(processID:processID,application:{
+            try focusElementAttribute(root,kAXFocusedWindowAttribute,code:.focusedWindow,record:record)
+        },focusedEditorWindow:{
+            let editor = try focusedElement(root,processID:processID,record:record)
+            verifiedEditor = editor
+            return try focusElementAttribute(editor,kAXWindowAttribute,code:.windowFromEditor,record:record)
+        },owner:{ element in
+            var pid:pid_t = 0
+            return AXUIElementGetPid(element,&pid) == .success ? pid : nil
+        },isWindow:{ attribute($0,kAXRoleAttribute) as? String == kAXWindowRole })
+        let editor = try verifiedEditor ?? focusedElement(root,processID:processID,record:record)
+        return (window,editor)
+    }
     fileprivate static func focusedElement(_ root: AXUIElement, processID: Int32,record:(InsertionVerificationDiagnostic)->Void = { _ in }) throws -> AXUIElement {
         try NativeFocusedElementResolver.resolve(processID:processID,application:{
             try focusElementAttribute(root,kAXFocusedUIElementAttribute,code:.applicationFocus,record:record)
@@ -363,8 +403,7 @@ enum NativeEditorCapability {
               (Self.attribute(window,kAXMinimizedAttribute) as? Bool) != true,
               let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier == application.processIdentifier, front.launchDate == launch, front.bundleIdentifier == application.bundleIdentifier else { throw TextTargetError.changed }
         let root = AXUIElementCreateApplication(application.processIdentifier); AXUIElementSetMessagingTimeout(root,0.2)
-        guard let focusedWindow = Self.elementAttribute(root,kAXFocusedWindowAttribute), CFEqual(focusedWindow,window),
-              let focused = try? Self.focusedElement(root,processID:application.processIdentifier), CFEqual(focused,element) else { throw TextTargetError.changed }
+        guard let (focusedWindow,focused) = try? Self.focusedTarget(root,processID:application.processIdentifier), CFEqual(focusedWindow,window), CFEqual(focused,element) else { throw TextTargetError.changed }
     }
     func validate() throws {
         try validateIdentity()
@@ -714,8 +753,7 @@ private final class NativeRewriteInputFence: @unchecked Sendable {
         record(.init(.target,.matched))
         guard !NativeEditorCapability.isConsole(application.bundleIdentifier) else { throw DictationRewriteValidationFailure.unsupportedEditor }
         let root = AXUIElementCreateApplication(processID); AXUIElementSetMessagingTimeout(root,0.08); AXUIElementSetMessagingTimeout(element,0.08)
-        guard let focusedWindow = NativeInsertionTarget.elementAttribute(root,kAXFocusedWindowAttribute),
-              let focused = try? NativeInsertionTarget.focusedElement(root,processID:processID) else { record(.init(.element,.unavailable)); throw DictationRewriteValidationFailure.editorUnavailable }
+        guard let (focusedWindow,focused) = try? NativeInsertionTarget.focusedTarget(root,processID:processID) else { record(.init(.element,.unavailable)); throw DictationRewriteValidationFailure.editorUnavailable }
         guard CFEqual(window,focusedWindow), CFEqual(focused,element) else { record(.init(.element,.different)); throw DictationRewriteValidationFailure.targetChanged }
         record(.init(.element,.matched))
         guard inputFence.untouched else { throw DictationRewriteValidationFailure.caretChanged }

@@ -219,6 +219,7 @@ public struct InsertionVerificationDiagnostic: Sendable, Equatable {
         case captureFailed = "TARGET_CAPTURE_FAILED", roleSupported = "EDITABLE_ROLE_SUPPORTED", subroleKnown = "SUBROLE_EXPOSED"
         case selectedTextWritable = "SELECTED_TEXT_WRITABLE", selectionWritable = "SELECTION_RANGE_WRITABLE"
         case replacementCapability = "PRECISE_REPLACEMENT_CAPABILITY"
+        case applicationRole = "APPLICATION_ROLE", windowFromEditor = "WINDOW_FROM_FOCUSED_EDITOR"
         case targetAcquired = "TARGET_ACQUIRED", originalElement = "ORIGINAL_ELEMENT_RETAINED", selectionCaptured = "SELECTION_CAPTURED"
         case formatted = "FORMATTED_TEXT_FINALIZED", clipboardAcquired = "CLIPBOARD_LEASE_ACQUIRED"
         case directDispatched = "DIRECT_UPDATE_DISPATCHED", pasteDispatched = "PASTE_DISPATCHED", typingDispatched = "TYPING_DISPATCHED"

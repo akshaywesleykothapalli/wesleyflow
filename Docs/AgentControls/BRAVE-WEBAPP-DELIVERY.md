@@ -1,0 +1,27 @@
+# Brave web-app capture and guarded paste — 45.0.18
+
+The user confirmed the Fn recording pill appears and moves in ChatGPT and Instagram. Their Instagram 45.0.17 diagnostics show successful capture/transcription, correct foreground binding, and TARGET_CAPTURE_RESULT=FAILED before any dispatch, readback or clipboard lease. The target is `com.brave.Browser.app.akpamiohjfcnimfljfndmaldlcfphjmp`, not the ordinary Brave bundle. Local installed-app metadata confirms this is Instagram's Brave app-mode wrapper, with CrBundleIdentifier=com.brave.Browser. The installed `/Applications/ChatGPT.app` reports com.openai.codex. No app AX tree was inspected or automated by verification.
+
+The user explicitly approved extending guarded paste to ChatGPT and the Instagram browser. A paste-route change alone cannot resolve a failure to capture any editor. The source audit also found a window-resolution restriction and missing Release trace assembly.
+
+## Capture
+
+The native capture code previously required the original application's focused-window attribute before attempting the focused-editor resolver. It now permits a missing window to be derived from the already verified focused editor's AXWindow attribute. The derived window must have AXWindow role and the exact original process owner. An explicitly denied/invalid application-window query stops resolution; an existing foreign/wrong-role window is not replaced by a fallback. Both insertion validation and later rewrite validation reacquire and compare this same window/editor pair. Existing process launch, foreground activation, focus epoch, secure-field, selection/context and expiry checks remain. No browser-host retargeting, guessed field, app/window activation or process-ownership relaxation was added.
+
+For approved guarded-paste apps, capture first queries the ordinary public AXRole attribute. Chromium's app-shim implementation uses its accessibilityRole getter to request basic accessibility support; this is an ordinary metadata read and may lazily initialize Chromium's basic support. It does not write AXManualAccessibility or AXEnhancedUserInterface or request complete screen-reader mode. The previous decision against those private activation writes remains in force. The read may help a lazy app expose existing focus metadata, but live editor availability is not established by source inspection. Primary reference: [Chromium AppShimApplication](https://raw.githubusercontent.com/chromium/chromium/main/chrome/app_shim/app_shim_application.mm); [Chromium app-shim host basic-mode handling](https://chromium.googlesource.com/chromium/src.git/+/475bc7f71357e600e0dd9f39aad8f217052070c3/chrome/browser/apps/app_shim/app_shim_host_mac.cc).
+
+The supplied diagnostics do not contain the individual failing AX attribute/code: Release was collecting those codes but discarding the assembled trace behind a Debug guard. Therefore the exact missing attribute in that attempt remains unknown. The focused-window fallback addresses a confirmed code restriction, not a claimed physical reproduction of the user's PWA.
+
+## Delivery
+
+Codex, ChatGPT's com.openai.chat identifier, ordinary Brave and Brave app-mode identifiers with the expected 32-character app ID select guarded paste before direct AX mutation or Unicode event delivery. App name alone grants no authority: a valid target and exact original readable text/selection are still required. Browser web apps retain their captured process identity. Notes and other existing app routes remain; Terminal remains manual-copy only.
+
+The existing clipboard service backs up supported contents before publishing, checks ownership/target again before one Cmd+V, verifies expected text, then restores only when ownership permits. Newer clipboard contents are preserved. Missing readback/snapshot refuses dispatch. Uncertain paste retains its backup for explicit recovery, with no resend or Unicode fallback. No Return, Send or submit action is generated. Browser multiline paste is tested as one paste, not synthetic Enter typing. Fn/audio/ASR and AI rewriting are unchanged.
+
+Capture/insertion and rewrite-verification trace assembly now runs in Release, retaining bounded fixed codes, API status, ranges/counts and timing. No field values, labels, clipboard data, dictated text or generated text enter these diagnostic traces.
+
+## Verification
+
+Actor-checked deterministic package checks passed. The final native Xcode Debug suite passed 1985 expanded cases across 893 declarations, zero failures. New fixtures cover owned direct/derived windows, foreign/missing/wrong-role/denied windows, exact app policy and malformed/unrelated identifiers, guarded-paste precedence over advertised direct writes, single/multiline delivery, clipboard restoration and new-copy races, and failed PWA capture exporting native codes while retaining the transcript privately. Existing uncertainty/no-retry, missing-readback, clipboard-backup, secure-field and cancellation cases remain. Repository/history checks, 15 CI tooling tests and 3 local-packaging tests passed.
+
+The arm64 Release build passed complete Swift concurrency checking. Installation results will be appended after launch verification. Physical ChatGPT/Instagram editor capture and paste are not verified by these fixtures; the user must click inside the intended input before a fresh Fn recording. If a browser still withholds the field, the new diagnostic trace should identify the capture stage. Do not claim capture success from recognition, or insertion success from dispatch.
