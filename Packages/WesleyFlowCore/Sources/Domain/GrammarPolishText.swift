@@ -4,13 +4,15 @@ public enum PolishStyle: String, Codable, CaseIterable, Sendable {
     case cleanup, grammar
     public var label:String { self == .grammar ? "Improve grammar and wording" : "Keep original wording" }
 }
-public struct GrammarPassageEdit: Sendable {
+public struct GrammarPassageEdit: Codable, Sendable {
     public let index:Int, text:String
     public init(index:Int,text:String) { self.index = index; self.text = text }
 }
 /// Rewrites editable passages while app-owned markers preserve fixed facts.
 public struct GrammarPolishText: Sendable {
     public let input:String
+    public let sourceContext:String
+    public var editablePassages:[String] { editable.map { passages[$0] } }
     private let passages:[String], markers:[String]
     private let editable:[Int]
     public var hasEditableText:Bool { !editable.isEmpty }
@@ -26,7 +28,7 @@ public struct GrammarPolishText: Sendable {
             markers.append(String(masked[range])); cursor = range.upperBound
         }
         let tail = String(masked[cursor...]); passages.append(tail); readable += tail
-        self.passages = passages; self.markers = markers
+        self.passages = passages; self.markers = markers; sourceContext = readable
         let editable = passages.indices.filter { passages[$0].unicodeScalars.contains(where:{ CharacterSet.letters.contains($0) }) }
         self.editable = editable
         let data = try JSONSerialization.data(withJSONObject:editable.enumerated().map { ["index":$0.offset,"text":passages[$0.element]] as [String:Any] },options:.sortedKeys)

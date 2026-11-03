@@ -863,7 +863,7 @@ private actor DiagnosticRewriteDriver: NativeRewriteGenerating {
     func generate(maskedText:String,localeIdentifier:String) async throws -> String { try await driver.generate(maskedText:maskedText,localeIdentifier:localeIdentifier) }
     func generate(maskedText:String,localeIdentifier:String,tone:OfflineRewriteTone,kind:OfflinePreviewKind,polishStyle:PolishStyle) async throws -> String {
         let output = try await driver.generate(maskedText:maskedText,localeIdentifier:localeIdentifier,tone:tone,kind:kind,polishStyle:polishStyle)
-        if kind == .polish && polishStyle == .grammar { candidate = output }
+        if kind == .promptEngineering || (kind == .polish && polishStyle == .grammar) { candidate = output }
         return output
     }
     func syntheticCandidate() -> String? { candidate }
@@ -926,12 +926,15 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
             return
         }
         if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_PROMPT_ONLY"] == "1" {
-            let request = OfflineRewriteRequest(id:UUID().uuidString,text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
+            let request = OfflineRewriteRequest(id:UUID().uuidString,text:"I want you to check the save button because it is not working.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
             let result = await provider.rewrite(request)
             print("AI_PROBE prompt=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
             print("AI_PROBE resources=\(await memory.summary())")
-            if result.status == .rewritten || result.status == .unchanged { try PromptEngineeringContract(request).validateRendered(result.text) }
+            if result.status == .rewritten || result.status == .unchanged { try PromptEngineeringContract(request,allowRewriting:true).validateRendered(result.text); print("AI_PROBE syntheticPromptOutput=\(result.text)") }
             else { #expect(result.text == request.text) }
+            print("AI_PROBE syntheticPromptCandidate=\(await diagnosticDriver.syntheticCandidate() ?? "notReturned")")
+            #expect(result.status == .rewritten)
+            if result.status == .rewritten { #expect(!result.text.contains("I want you to") && result.text.contains("Check") && result.text.contains("Keep the current layout.") && result.text.contains("not")) }
             return
         }
         let request = OfflineRewriteRequest(id:UUID().uuidString,text:"um please check the save button and tell me what you find",localeIdentifier:"en-IN")
@@ -942,7 +945,7 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
         let prompt = OfflineRewriteRequest(id:UUID().uuidString,text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
         let structured = await provider.rewrite(prompt)
         print("AI_PROBE prompt=\(structured.status.rawValue) reason=\(structured.reason) elapsedMs=\(structured.elapsedMilliseconds)")
-        if structured.status == .rewritten || structured.status == .unchanged { try PromptEngineeringContract(prompt).validateRendered(structured.text) }
+        if structured.status == .rewritten || structured.status == .unchanged { try PromptEngineeringContract(prompt,allowRewriting:true).validateRendered(structured.text) }
         else { #expect(structured.text == prompt.text) }
     }
 }
@@ -1065,14 +1068,12 @@ extension OfflineRewriteProviderTests {
 extension OfflineRewriteProviderTests {
     @Test func guidedPromptTransportRetainsAllContractChecks() throws {
         let request = OfflineRewriteRequest(id:"guided",text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
-        let contract = try PromptEngineeringContract(request)
-        let valid = NativePromptSections(objective:[0],context:[],requirements:[],constraints:[1],expectedOutput:[2])
+        let contract = try PromptEngineeringContract(request,allowRewriting:true)
+        let valid = NativePromptSections(edits:[])
         let output = try contract.render(valid.encoded())
         try contract.validateRendered(output)
         #expect(output == "## Objective\nCheck the save button.\n\n## Constraints\nKeep the current layout.\n\n## Expected output\nReturn a short report.")
-        for invalid in [NativePromptSections(objective:[0],context:[],requirements:[],constraints:[],expectedOutput:[2]),
-                        NativePromptSections(objective:[0],context:[],requirements:[],constraints:[1],expectedOutput:[1,2]),
-                        NativePromptSections(objective:[0],context:[],requirements:[2],constraints:[1],expectedOutput:[])] {
+        for invalid in [NativePromptSections(edits:[.init(index:999,text:"check")]), NativePromptSections(edits:[.init(index:0,text:"check"),.init(index:0,text:"check")]), NativePromptSections(edits:[.init(index:1,text:"Delete the current layout.")])] {
             #expect(throws:(any Error).self) { _ = try contract.render(invalid.encoded()) }
         }
     }
@@ -1231,5 +1232,31 @@ extension OfflineRewriteProviderTests {
         let fixed = try GrammarPolishText("WFSPANabcX0END.")
         #expect(!fixed.hasEditableText)
         #expect(try fixed.render([]) == "WFSPANabcX0END.")
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test func promptRewritesProseAndRetainsConstraintsWithoutNewRequirements() throws {
+        let request = OfflineRewriteRequest(id:"prompt-quality",text:"I want you to check the save button because it is not working.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
+        let contract = try PromptEngineeringContract(request,allowRewriting:true)
+        let plan = #"{"objective":[0],"context":[],"requirements":[],"constraints":[1],"expectedOutput":[2],"rewrites":[{"index":0,"edits":[{"index":0,"text":"why the save button is not working."}]}]}"#
+        let text = try contract.render(plan)
+        #expect(text == "## Objective\nCheck why the save button is not working.\n\n## Constraints\nKeep the current layout.\n\n## Expected output\nReturn a short report.")
+        try contract.validateRendered(text)
+        #expect(throws:(any Error).self) { _ = try PromptEngineeringContract(request).render(plan) }
+        #expect(throws:(any Error).self) { _ = try contract.render(plan.replacingOccurrences(of:"is not working",with:"is working")) }
+        #expect(throws:(any Error).self) { _ = try contract.render(plan.replacingOccurrences(of:"why",with:"Ask Maria why")) }
+        #expect(throws:(any Error).self) { _ = try contract.render(plan.replacingOccurrences(of:"\"index\":0,\"edits\"",with:"\"index\":9,\"edits\"")) }
+        #expect(throws:(any Error).self) { try contract.validateRendered(text + "\nAdd automated tests.") }
+    }
+    @Test func promptRewritesKeepFixedFactsOwnedByTheApp() throws {
+        let request = OfflineRewriteRequest(id:"fixed-prompt",text:"Please check WidgetID for 25 users.",localeIdentifier:"en-IN",vocabulary:["WidgetID"],kind:.promptEngineering)
+        let contract = try PromptEngineeringContract(request,allowRewriting:true)
+        let plan = #"{"objective":[0],"context":[],"requirements":[],"constraints":[],"expectedOutput":[],"rewrites":[{"index":0,"edits":[{"index":0,"text":"for"}]}]}"#
+        let output = try contract.render(plan)
+        #expect(output.contains("WidgetID") && output.contains("25") && output.contains("Check"))
+        try contract.validateRendered(output)
+        #expect(throws:(any Error).self) { _ = try contract.render(plan.replacingOccurrences(of:"for",with:"WFSPANinjectedX0END")) }
     }
 }

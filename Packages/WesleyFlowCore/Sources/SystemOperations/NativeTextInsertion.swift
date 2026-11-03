@@ -103,6 +103,7 @@ enum NativeEditorCapability {
     }
     /// Ordinary initial insertion retains its existing paste-only exception.
     /// A later exact selected-span rewrite is checked independently.
+    static func requiresGuardedPaste(_ bundleIdentifier:String?) -> Bool { bundleIdentifier == "com.openai.codex" }
     static func allowsDirectTextReplacement(_ bundleIdentifier: String?) -> Bool { bundleIdentifier != "com.openai.codex" }
     static func allowsAutomaticInsertion(_ bundleIdentifier: String?) -> Bool { bundleIdentifier != "com.apple.Terminal" }
     static func isConsole(_ bundleIdentifier: String?) -> Bool {
@@ -119,10 +120,8 @@ enum NativeEditorCapability {
     public private(set) var captureBundleIdentifier:String?
     public private(set) var captureDiagnostics:[InsertionVerificationDiagnostic] = []
     private func record(_ value:InsertionVerificationDiagnostic) {
-        #if DEBUG
         if captureDiagnostics.count == 24 { captureDiagnostics.removeFirst() }
         captureDiagnostics.append(value)
-        #endif
     }
     public private(set) var observedApplicationIdentity:DictationApplicationIdentity?
     public init() {}
@@ -165,10 +164,8 @@ enum NativeEditorCapability {
     private let created = ContinuousClock.now
     private(set) var insertionDiagnostics:[InsertionVerificationDiagnostic] = []
     private func recordInsertion(_ value:InsertionVerificationDiagnostic) {
-        #if DEBUG
         if insertionDiagnostics.count == 32 { insertionDiagnostics.remove(at:4) }
         insertionDiagnostics.append(value)
-        #endif
     }
     init(session: String, application:NSRunningApplication?, reportStage: (String) -> Void, reportDiagnostic:(InsertionVerificationDiagnostic)->Void) throws {
         reportStage("Accessibility access is required for insertion. Your transcript remains available for copy.")
@@ -386,6 +383,7 @@ enum NativeEditorCapability {
         guard AXValueGetType(value) == .cfRange, AXValueGetValue(value,.cfRange,&range),
               range.location == original.selection.location, range.length == original.selection.length else { throw TextTargetError.changed }
     }
+    var requiresGuardedPaste:Bool { NativeEditorCapability.requiresGuardedPaste(application.bundleIdentifier) }
     func supportsClipboardFreeText(_ text:String)->Bool {
         !NativeEditorCapability.isConsole(application.bundleIdentifier) && !text.isEmpty && text.utf8.count<=4096 && text.unicodeScalars.allSatisfy { ![Unicode.GeneralCategory.control,.lineSeparator,.paragraphSeparator].contains($0.properties.generalCategory) }
     }
@@ -403,10 +401,8 @@ enum NativeEditorCapability {
     }
     private(set) var rewriteVerificationDiagnostics: [DictationVerificationDiagnostic] = []
     private func recordRewrite(_ value:DictationVerificationDiagnostic) {
-        #if DEBUG
         if rewriteVerificationDiagnostics.count == 32 { rewriteVerificationDiagnostics.removeFirst() }
         rewriteVerificationDiagnostics.append(value)
-        #endif
     }
     func verifiedRewriteAnchor(insertedText: String) throws -> any DictationRewriteAnchor {
         do { try validateIdentity(); recordRewrite(.init(.target,.matched)) }
@@ -691,10 +687,8 @@ private final class NativeRewriteInputFence: @unchecked Sendable {
     }
     private(set) var verificationDiagnostics: [DictationVerificationDiagnostic] = []
     private func record(_ value:DictationVerificationDiagnostic) {
-        #if DEBUG
         if verificationDiagnostics.count == 32 { verificationDiagnostics.removeFirst() }
         verificationDiagnostics.append(value)
-        #endif
     }
     private static func digest(_ text:String) -> String { SHA256.hash(data:Data(text.utf8)).map { String(format:"%02x",$0) }.joined() }
     private func selection() -> TextSelection? {

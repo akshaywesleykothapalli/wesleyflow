@@ -3944,12 +3944,13 @@ private actor FortyOneBlockingResolver {
 
 @MainActor private final class ClipboardFreeFixture:ClipboardFreeInsertionTarget {
     let base=GTarget()
+    var requiresGuardedPaste = false
     var info:InsertionTargetInfo {base.info}
     var original:TargetTextState? {base.original}
     func validate() throws {try base.validate()}
     func canReplaceSelection()->Bool {false}
     func replaceSelection(_ text:String) throws {Issue.record("Unexpected direct mutation")}
-    func postPaste(whileClipboardOwned:()->Bool) throws {Issue.record("Unexpected paste")}
+    func postPaste(whileClipboardOwned:()->Bool) throws { try base.postPaste(whileClipboardOwned:whileClipboardOwned) }
     func observedText()->String? {base.observedText()}
     func readbackText() throws ->String {try base.readbackText()}
     func supportsClipboardFreeText(_ text:String)->Bool {!text.isEmpty && text.utf8.count<=4096 && text.unicodeScalars.allSatisfy { ![Unicode.GeneralCategory.control,.lineSeparator,.paragraphSeparator].contains($0.properties.generalCategory) }}
@@ -5106,5 +5107,72 @@ extension InPlaceRewriteTests {
         var object = try #require(JSONSerialization.jsonObject(with:JSONEncoder().encode(value)) as? [String:Any]); object.removeValue(forKey:"polishStyle")
         let legacy = try JSONDecoder().decode(DictationPreferences.self,from:JSONSerialization.data(withJSONObject:object))
         #expect(legacy.polishStyle == .cleanup)
+    }
+}
+
+
+extension PersonalAgent42Tests {
+    @Test func codexUsesGuardedPasteWithoutTryingUnicodeFirst() async {
+        #expect(NativeEditorCapability.requiresGuardedPaste("com.openai.codex"))
+        #expect(!NativeEditorCapability.requiresGuardedPaste("com.apple.Notes"))
+        #expect(!NativeEditorCapability.requiresGuardedPaste("com.openai.chat"))
+        let target=ClipboardFreeFixture(),clipboard=GClipboard()
+        target.requiresGuardedPaste=true;target.base.pasted="hello";target.base.unicodeSupported=true
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let receipt=await service.insert("hello",target:target,session:"s")
+        #expect(receipt.status == .insertedVerified)
+        #expect(target.base.pastes==1 && target.base.unicodePosts==0)
+        #expect(clipboard.installed==1 && clipboard.restores==1 && clipboard.text=="original")
+        #expect(!service.hasPendingClipboard)
+    }
+    @Test func codexCannotPasteWithoutExactOriginalOrClipboardBackup() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard()
+        target.requiresGuardedPaste=true;target.base.hasOriginalContext=false
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let receipt=await service.insert("hello",target:target,session:"s")
+        #expect(!receipt.attempted && target.base.pastes==0 && target.base.unicodePosts==0 && clipboard.installed==0)
+    }
+}
+
+extension PersonalAgent42Tests {
+    @Test func codexClipboardFailureDoesNotTryIgnoredUnicodeRoute() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard()
+        target.requiresGuardedPaste=true;target.base.unicodeSupported=true;clipboard.unsupported=true
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let result=await service.insert("hello",target:target,session:"s")
+        #expect(!result.attempted && target.base.pastes==0 && target.base.unicodePosts==0 && clipboard.installed==0)
+    }
+}
+
+private struct PromptWordingFixtureGenerator:NativeRewriteGenerating {
+    func readiness(localeIdentifier:String) -> NativeRewriteReadiness { .available }
+    func generate(maskedText:String,localeIdentifier:String) throws -> String { throw NativeRewriteDriverFailure.invalidOutput }
+    func generate(maskedText:String,localeIdentifier:String,tone:OfflineRewriteTone,kind:OfflinePreviewKind,polishStyle:PolishStyle) throws -> String {
+        #"{"objective":[0],"context":[],"requirements":[],"constraints":[],"expectedOutput":[],"rewrites":[{"index":0,"edits":[{"index":0,"text":"why the save button is not working."}]}]}"#
+    }
+}
+extension InPlaceRewriteTests {
+    @Test func optionTwoRewritesWordingAndReplacesOnlyTheDictatedSpan() async throws {
+        let provider=AppleTranscriptRewriter(memory:PolishFixtureMemory(),clock:GClock(),generator:PromptWordingFixtureGenerator())
+        let (c,target,clipboard)=try await prepare(provider,transcript:"I want you to check the save button because it is not working.")
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42);await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .success && c.lastAIShortcutFailure == nil)
+        #expect(target.value == "a## Objective\nCheck why the save button is not working.bc")
+        #expect(target.rewriteFixture?.replacements==1 && clipboard.installed==0 && !c.previewPresented)
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42);await c.waitForInPlaceRewrite()
+        #expect(target.rewriteFixture?.replacements==1)
+        c.close()
+    }
+}
+extension PersonalAgent42Tests {
+    @Test func uncertainCodexPasteRetainsBackupAndNeverTriesAnotherRoute() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard(),clock=GClock()
+        target.requiresGuardedPaste=true;target.base.acknowledgePaste=false;target.base.unicodeSupported=true
+        let service=TextInsertionService(clipboard:clipboard,clock:clock)
+        let task=Task {await service.insert("hello",target:target,session:"s")}
+        await clock.waitForSleep(1050);await clock.advance(2500);let receipt=await task.value
+        #expect(receipt.status == .dispatchedUnverified && service.hasPendingClipboard)
+        #expect(target.base.pastes==1 && target.base.unicodePosts==0 && clipboard.restores==0)
+        #expect(clipboard.installed==1)
     }
 }

@@ -242,7 +242,9 @@ public struct InsertionVerificationDiagnostic: Sendable, Equatable {
     }
 }
 
-/// Opt-in native target route: no clipboard publication, restoration or backup.
+/// Native clipboard-free route, with an explicit guarded-paste exception for a verified target.
 @MainActor public protocol ClipboardFreeInsertionTarget:InsertionTarget {
+    var requiresGuardedPaste:Bool { get }
     func supportsClipboardFreeText(_ text:String)->Bool
 }
+public extension ClipboardFreeInsertionTarget { var requiresGuardedPaste:Bool { false } }

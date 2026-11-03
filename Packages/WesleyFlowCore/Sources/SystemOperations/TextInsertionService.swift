@@ -9,10 +9,8 @@ import Foundation
     public private(set) var verificationSession:String?
     public private(set) var verificationDiagnostics:[InsertionVerificationDiagnostic] = []
     private func record(_ value:InsertionVerificationDiagnostic) {
-        #if DEBUG
         if verificationDiagnostics.count == 32 { verificationDiagnostics.remove(at:6) }
         verificationDiagnostics.append(value)
-        #endif
     }
     private func recordRestoration(_ result:ClipboardRestoration) {
         switch result {
@@ -85,7 +83,7 @@ import Foundation
             failureExplanation = "The app's direct text update could not be verified. " + Self.readbackExplanation(result.failure) + " Nothing was retried; check the field before trying again."
             return .init(.uncertain,result.failure == .cancelled ? .cancelled : .verificationUnavailable,attempted:true)
         }
-        if let native=target as? any ClipboardFreeInsertionTarget {
+        if let native=target as? any ClipboardFreeInsertionTarget, !native.requiresGuardedPaste {
             guard native.supportsClipboardFreeText(text) else {
                 failureExplanation="Clipboard-free delivery supports single-line text up to 4 KiB. This text was retained for manual copy; no clipboard was changed."
                 return .init(.unsupportedTarget,.clipboardUnsupported)
@@ -105,6 +103,10 @@ import Foundation
             failureExplanation="Text events were sent once to the captured editor. Delivery could not be verified; no clipboard was used and nothing was retried."
             return .init(.uncertain,.verificationUnavailable,attempted:true)
         }
+        if (target as? any ClipboardFreeInsertionTarget)?.requiresGuardedPaste == true, expectation == nil {
+            failureExplanation = "Codex paste requires readable text and selection so insertion can be verified. No paste was attempted; the transcript remains available for copy."
+            return .init(.unsupportedTarget,.unsupported)
+        }
         guard pending == nil else { return .init(.denied,.clipboardPending,clipboardPending:true) }
         let snapshot: ClipboardSnapshot, ownership: ClipboardOwnership
         do { snapshot = try clipboard.snapshot() }
@@ -118,7 +120,7 @@ import Foundation
                 failureExplanation = "This editor has no exact readback and the clipboard cannot be safely backed up. No insertion was attempted; review and copy the transcript explicitly."
                 return .init(.unsupportedTarget,.clipboardUnsupported)
             }
-            guard target.postText(text,budgetMilliseconds:deadline-now) else { return .init(.unsupportedTarget,.clipboardUnsupported) }
+            guard (target as? any ClipboardFreeInsertionTarget)?.requiresGuardedPaste != true, target.postText(text,budgetMilliseconds:deadline-now) else { return .init(.unsupportedTarget,.clipboardUnsupported) }
             failureExplanation = nil
             // No clipboard was cleared or published. Partial/unacknowledged input remains uncertain.
             record(.init(.dispatch,.typingDispatched,.success))

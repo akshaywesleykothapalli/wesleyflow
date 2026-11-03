@@ -541,7 +541,7 @@ import VoiceInput
             }
             do {
                 if kind == .polish { try ProtectedRewriteText(request).validateRestored(result.text) }
-                else { try PromptEngineeringContract(request).validateRendered(result.text) }
+                else { try PromptEngineeringContract(request,allowRewriting:true).validateRendered(result.text) }
             } catch {
                 self.generationStatus = .generationFailed; self.crossAppFailure = .generationFailed
                 self.traceRoute(kind,.outputRejected); self.message = "AI output failed preservation checks. Original retained."; self.inPlaceHUD = .error; self.showHUDFeedback(); return
