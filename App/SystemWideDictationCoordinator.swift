@@ -85,10 +85,9 @@ import VoiceInput
     @Published private(set) var speechFailureDiagnostics: DictationSpeechDiagnostics?
     @Published private(set) var speechRunDiagnostics: [String] = []
     var speechDiagnosticSummary: String {
-        let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown"
         let executable = Bundle.main.executableURL?.path ?? "unknown"
         let current = speechFailureDiagnostics ?? (input as? any DictationCaptureReporting)?.speechDiagnostics
-        return "45A-R3 / speech38L3R3 build=\(build) pid=\(ProcessInfo.processInfo.processIdentifier) executable=\(executable) hotkeyHeldObservedNow=\(shortcutHeld) · "
+        return "\(AppRelease.diagnosticHeader) pid=\(ProcessInfo.processInfo.processIdentifier) executable=\(executable) hotkeyHeldObservedNow=\(shortcutHeld) · "
             + "agentStartupMs=" + (agentStartupMilliseconds.map(String.init) ?? "unmeasured") + " · "
             + (current?.summary ?? "speechTelemetry=unavailable")
             + "\nCapture: " + ((input as? any DictationCaptureReporting)?.captureDiagnosticSummary ?? "unavailable")
@@ -332,14 +331,13 @@ import VoiceInput
     var shortcutModeDescription: String {
         if preferences.formattingShortcutAction == .nextRecording { return "Press Option+1 for local Smart Polish or Option+2 for a local structured prompt, then hold Fn to record. The text is transformed before insertion." }
         return preferences.inPlaceAIRewrite
-            ? "38L3R3 · Option+1/2 request in-place AI only. A new verified dictation and supported unchanged editor are required. No preview opens on failure. Nothing is submitted."
-            : "38L3R3 · Option+1/2 show only the pill while this switch is OFF. Enable before a new verified dictation. Manual preview is available only through Settings."
+            ? "After dictating, press Option+1 to polish or Option+2 to create a prompt. The original editor must still support verified replacement."
+            : "Enable replacement before dictating to use Option+1 and Option+2 in the original text field."
     }
     @Published private var verificationDetail = "No verification requested"
     var combinedDictationDiagnostics:String { speechDiagnosticSummary + "\n\nAI shortcut diagnostics:\n" + verificationDiagnosticSummary }
     var verificationDiagnosticSummary: String {
-        let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown"
-        return "45A-R3 / speech38L3R3 build=" + build + " lifecycle=" + (closed ? "closed" : phase.rawValue)
+        return AppRelease.diagnosticHeader + " lifecycle=" + (closed ? "closed" : phase.rawValue)
             + " formattingShortcutAction=" + preferences.formattingShortcutAction.rawValue + " polishStyle=" + preferences.polishStyle.rawValue
             + " outcome=" + latestInsertionOutcome + " verifiedReceipt=" + String(verifiedReceiptCreated)
             + " eligibleReceipt=" + String(eligibleReceiptPresent) + " reason=" + provenanceReason.rawValue
@@ -1217,7 +1215,7 @@ import VoiceInput
         #endif
     }
     @Published private(set) var previewOriginProcessIdentifier: Int32?
-    @Published private(set) var previewShortcutStatus = "Preview shortcuts are disabled."
+    @Published private(set) var previewShortcutStatus = "Formatting shortcuts are off."
     @Published var previewInputText = "" { didSet { if oldValue != previewInputText { cancelRewritePreview() } } }
     @Published var previewUseSaved = false { didSet { if oldValue != previewUseSaved { cancelRewritePreview() } } }
     @Published var selectedPreviewEntryID: String? { didSet { if oldValue != selectedPreviewEntryID { cancelRewritePreview() } } }
@@ -1355,14 +1353,14 @@ import VoiceInput
         guard !closed, preferences.previewShortcutsEnabled, let previewRegistrar else {
             recordPreviewDiagnostic(.disabled)
             cancelInPlaceRewrite(); cancelTextCapture()
-            self.previewRegistrar?.disable(); registeredPreviewKinds = []; if previewPresented { dismissShortcutPreview() }; previewShortcutStatus = "Preview shortcuts are disabled."; return
+            self.previewRegistrar?.disable(); registeredPreviewKinds = []; if previewPresented { dismissShortcutPreview() }; previewShortcutStatus = "Formatting shortcuts are off."; return
         }
         guard !(preferences.activationKey == .rightOption && preferences.holdFnEnabled) else {
             previewRegistrar.disable(); registeredPreviewKinds = []; previewShortcutStatus = "Conflict with right-Option hold-to-talk. Choose Fn or right Command first."; return
         }
         var kinds = Set<OfflinePreviewKind>()
         if preferences.offlineAIRewriting { kinds.insert(.polish) }; if preferences.promptEngineeringEnabled { kinds.insert(.promptEngineering) }
-        guard !kinds.isEmpty else { previewRegistrar.disable(); registeredPreviewKinds = []; previewShortcutStatus = "Enable a preview feature before registering its shortcut."; return }
+        guard !kinds.isEmpty else { previewRegistrar.disable(); registeredPreviewKinds = []; previewShortcutStatus = "Enable Smart Polish or prompt formatting to use its shortcut."; return }
         if kinds == registeredPreviewKinds { return }
         recordPreviewDiagnostic(.registrationRequested)
         do {
@@ -1371,24 +1369,24 @@ import VoiceInput
                 switch signal {
                 case .invoke(let kind): self.recordPreviewDiagnostic(.activated); self.invokeAIShortcut(kind)
                 case .invokeFrom(let kind, let process): self.recordPreviewDiagnostic(.activated); self.invokeAIShortcut(kind,originProcessIdentifier:process)
-                case .suspended: self.cancelInPlaceRewrite(); self.cancelTextCapture(); self.cancelRewritePreview(); self.previewShortcutStatus = "Mac sleeping: pending preview cancelled; shortcuts suspended."
-                case .resumed: self.previewShortcutStatus = "Shortcuts re-registered after wake. Physical delivery remains unverified."
-                case .secureInput: self.cancelInPlaceRewrite(); self.cancelTextCapture(); self.cancelRewritePreview(); self.previewShortcutStatus = "Secure Input active: preview gesture ignored."
+                case .suspended: self.cancelInPlaceRewrite(); self.cancelTextCapture(); self.cancelRewritePreview(); self.previewShortcutStatus = "Shortcuts are paused while the Mac sleeps."
+                case .resumed: self.previewShortcutStatus = "Formatting shortcuts are registered after wake."
+                case .secureInput: self.cancelInPlaceRewrite(); self.cancelTextCapture(); self.cancelRewritePreview(); self.previewShortcutStatus = "Formatting shortcuts are unavailable in secure text fields."
                 case .unavailable: self.cancelInPlaceRewrite(); self.cancelTextCapture(); self.cancelRewritePreview(); self.registeredPreviewKinds = []; self.previewShortcutStatus = "Shortcut delivery or keyboard layout became unavailable. Disable and re-enable to retry."
                 }
             }
             recordPreviewDiagnostic(.registered)
             registeredPreviewKinds = kinds
-            previewShortcutStatus = "Registered: " + kinds.sorted(by:{$0.rawValue < $1.rawValue}).map { $0 == .polish ? "Option+1" : "Option+2" }.joined(separator:", ") + ". Physical cross-app delivery remains unverified."
+            previewShortcutStatus = "Registered: " + kinds.sorted(by:{$0.rawValue < $1.rawValue}).map { $0 == .polish ? "Option+1" : "Option+2" }.joined(separator:", ") + "."
         } catch {
             recordPreviewDiagnostic(.registrationFailed)
             registeredPreviewKinds = []
             switch error {
-            case PreviewShortcutFailure.systemConflict: previewShortcutStatus = "Conflict with an enabled macOS system shortcut. Use the preview buttons."
-            case PreviewShortcutFailure.layoutUnsupported: previewShortcutStatus = "Current keyboard layout does not map these physical keys to 1 and 2. Use the preview buttons."
+            case PreviewShortcutFailure.systemConflict: previewShortcutStatus = "A macOS shortcut is using these keys. Adjust it in System Settings."
+            case PreviewShortcutFailure.layoutUnsupported: previewShortcutStatus = "Choose a keyboard layout that supports Option+1 and Option+2."
             case PreviewShortcutFailure.secureInput: previewShortcutStatus = "Secure Input is active; registration was not attempted."
-            case PreviewShortcutFailure.registration(let code): previewShortcutStatus = "Native shortcut registration failed (\(code)); another exclusive owner or OS restriction may apply. Use the preview buttons."
-            default: previewShortcutStatus = "Preview shortcut registration unavailable. Use the preview buttons."
+            case PreviewShortcutFailure.registration(let code): previewShortcutStatus = "Native shortcut registration failed (\(code)); check conflicting shortcuts and retry."
+            default: previewShortcutStatus = "Formatting shortcuts are unavailable. Retry registration."
             }
         }
     }

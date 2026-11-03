@@ -699,7 +699,7 @@
       "buildSettings" = {
         "GENERATE_INFOPLIST_FILE" = "YES";
         "ENABLE_HARDENED_RUNTIME" = "YES";
-        "MARKETING_VERSION" = "0.1.0";
+        "MARKETING_VERSION" = "1.0.0";
         "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
         "INFOPLIST_KEY_NSHumanReadableCopyright" = "Copyright © 2026 KOTHAPALLI AKSHAY WESLEY";
         "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone only when you start dictation.";
@@ -714,7 +714,7 @@
         "ENABLE_APP_SANDBOX" = "NO";
         "INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
         "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks";
-        "CURRENT_PROJECT_VERSION" = "45.0.19";
+        "CURRENT_PROJECT_VERSION" = "46";
         "PRODUCT_NAME" = "Wesley Flow";
       };
       "name" = "Release";
@@ -890,7 +890,7 @@
       "buildSettings" = {
         "GENERATE_INFOPLIST_FILE" = "YES";
         "ENABLE_HARDENED_RUNTIME" = "YES";
-        "MARKETING_VERSION" = "0.1.0";
+        "MARKETING_VERSION" = "1.0.0";
         "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
         "INFOPLIST_KEY_NSHumanReadableCopyright" = "Copyright © 2026 KOTHAPALLI AKSHAY WESLEY";
         "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone only when you start dictation.";
@@ -905,7 +905,7 @@
         "ENABLE_APP_SANDBOX" = "NO";
         "INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
         "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/../Frameworks";
-        "CURRENT_PROJECT_VERSION" = "45.0.19";
+        "CURRENT_PROJECT_VERSION" = "46";
         "PRODUCT_NAME" = "Wesley Flow";
       };
       "name" = "Debug";

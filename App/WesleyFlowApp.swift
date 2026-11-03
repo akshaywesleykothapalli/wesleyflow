@@ -78,7 +78,7 @@ struct WesleyFlowApp: App {
     private func makePanel(coordinator:SystemWideDictationCoordinator) -> Panel {
         if let panel { return panel }
         let panel = Panel(contentRect:NSRect(x:0,y:0,width:480,height:380),styleMask:[.titled,.closable,.nonactivatingPanel],backing:.buffered,defer:false)
-        panel.title = "Wesley Flow · AI Preview · 37"; panel.isReleasedWhenClosed = false
+        panel.title = "Wesley Flow · Text Preview"; panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false; panel.becomesKeyOnlyIfNeeded = true
         panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
         panel.contentView = NSHostingView(rootView:ShortcutPreviewContents(coordinator:coordinator,beginEditing:{ [weak self] in self?.beginEditing() }))

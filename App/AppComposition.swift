@@ -8,6 +8,13 @@ import SystemOperations
 import VoiceInput
 import ModelProviders
 
+enum AppRelease {
+    static let name = "Wesley Flow"
+    static var version:String { Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unknown" }
+    static var build:String { Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown" }
+    static var diagnosticHeader:String { "\(name) version=\(version) build=\(build)" }
+}
+
 struct FoundationStatus: Equatable, Sendable {
     let title: String
     let phase: String
@@ -24,8 +31,8 @@ struct NativeFoundationStatus: FoundationStatusProviding {
     func status() -> FoundationStatus {
         FoundationStatus(
             title: "Wesley Flow",
-            phase: "Phase 1A · Task foundation",
-            message: "Durable task services are available to approved integrations. Feature workflows belong to separately approved phases."
+            phase: "Ready",
+            message: "On-device dictation, text formatting and voice commands."
         )
     }
 }
@@ -41,23 +48,17 @@ struct AppComposition {
     func makeShellState() -> FoundationStatus { statusProvider.status() }
     func makeRootView(dictation: DictationModel? = nil) -> FoundationView { FoundationView(state: makeShellState(), dictation: dictation ?? makeDictationModel()) }
     func makeDictationModel(input: any DictationInput = AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership)) -> DictationModel {
-        guard let endpoint = try? OllamaEndpoint() else { return DictationModel(input: input) }
-        let provider = OllamaProvider(endpoint:endpoint,transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
-        return DictationModel(input:input,rewriter:LocalPromptRewriter(provider:provider,clock:SystemTaskClock()))
+        DictationModel(input:input)
     }
     func makeSystemWideCoordinator() -> SystemWideDictationCoordinator {
         let clock = SystemTaskClock()
         let storeURL = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("WesleyFlow/Dictation",isDirectory:true).appendingPathComponent("dictations.store")
-        let inspector: @Sendable () async throws -> [ModelDescriptor] = {
-            let provider = try OllamaProvider(endpoint:OllamaEndpoint(),transport:LocalOllamaHTTPTransport(),memory:SystemInferenceMemory(),clock:SystemTaskClock())
-            return try await provider.discover() // Metadata only; no generate/cancel/unload call.
-        }
         let speech = LanguageDictationInput(english:AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership),
             telugu:TeluguDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership))
         return SystemWideDictationCoordinator(input:speech,targets:NativeInsertionTargetCapture(),
             insertion:TextInsertionService(clipboard:NativeDictationPasteboard(),clock:clock),shortcut:NativeDictationShortcut(),clock:clock,
-            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },personalPlanner:ApplePersonalPlanner(memory:SystemInferenceMemory(),clock:clock),personalMessageResolution:{plan in try await NativeAgentResolution.resolve(plan)},modelInspector:inspector,offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250)
+            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },personalPlanner:ApplePersonalPlanner(memory:SystemInferenceMemory(),clock:clock),personalMessageResolution:{plan in try await NativeAgentResolution.resolve(plan)},offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250)
     }
 
 }

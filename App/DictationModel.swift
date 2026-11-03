@@ -153,7 +153,7 @@ import SystemOperations
         case .invalidRequest: "This request does not fit the local model's bounded context. Shorten it to at most 1,800 UTF-8 bytes."
         case .timeout: "The local AI rewrite timed out. Your previous prompt is unchanged."
         case .cancelled: "AI rewrite cancelled. Your previous prompt is unchanged."
-        default: "The local AI rewrite was unavailable or returned an invalid response. Your text is unchanged. Check that your local Ollama service is available."
+        default: "The text rewrite was unavailable or returned an invalid response. Your original text was kept."
         }
     }
     private func receive(_ event: DictationEvent, generation token: Int) {

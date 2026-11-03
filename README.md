@@ -1,83 +1,63 @@
 # Wesley Flow
 
-A native, local-first voice dictation and personal-agent app for Apple Silicon Macs, built with SwiftUI, AppKit and Swift 6.
+Native voice dictation and text formatting for Apple Silicon Macs. Hold Fn to dictate into a supported text field, then use Option+1 to polish the wording or Option+2 to turn it into a clear prompt.
 
-## Current capabilities
+## Features
 
-- Global hold-to-talk dictation using a configured Fn/Globe or supported right-modifier key, with a small floating recording pill.
-- Installed Apple on-device Speech/Dictation engines; no configured cloud transcription fallback or automatic speech-asset downloads.
-- [Offline Romanised Telugu](Docs/Telugu/RECOGNITION-QUALITY-FIX.md): selectable local Telugu-specialist/English Small routing, deterministic romanisation and loanword/user replacements. Public Telugu and English audio passed local inference tests; live microphone and code-switch acceptance remain pending.
-- Dictionary, protected vocabulary, phrase replacements and deterministic formatting options.
-- Local dictation history, copy/delete controls, activity Insights and calendar heatmap.
-- Permission-aware insertion into supported editable fields, with original-target validation, observed-result verification and clipboard recovery safeguards.
-- Optional Smart Polish and structured-prompt organization using Apple's on-device FoundationModels provider. Explicit manual previews support review and Copy. Separately enabled in-place shortcuts require a fresh verified dictation receipt, unchanged exact context and a supported editor; nothing is submitted.
+- English dictation using installed Apple on-device speech engines.
+- Offline Romanised Telugu with Telugu-only and automatic Telugu/English recognition modes.
+- A compact recording pill, configurable dictation and Agent keys, and language switching.
+- English Smart Polish and prompt formatting through Apple's on-device AI, with local formatting for protected sentences.
+- A personal dictionary, phrase replacements, punctuation and text cleanup controls.
+- Local history, activity insights, appearance and launch-at-login preferences.
+- Command Mode for supported dictation controls and Mac actions, with review for sensitive actions.
 
-## Agent commands — build 45.0.4
+## Get started
 
-A separate configurable hold-to-talk Agent shortcut routes spoken requests directly to a closed native planner/executor. Fn dictation remains independent. Agent commands do not paste their transcripts or submit conversations.
+1. Build and open Wesley Flow on an Apple Silicon Mac running macOS 26 or later.
+2. In General, choose English or Telugu (Romanised), review the requested microphone, speech and Accessibility permissions, and enable hold-to-talk.
+3. Click inside a supported text field, hold Fn, speak and release.
+4. In Smart Formatting, enable formatting shortcuts. Enable Smart Polish or prompt formatting as desired, then press Option+1 or Option+2 after dictating. On-device AI features require Apple Intelligence to be available on the Mac.
+5. For Command Mode, configure the separate Agent key in General. Supported commands are listed in the app. Agent requests are not pasted into your text field.
 
-The 100-command expansion adds window tiling, scoped file operations, Notes edits/export, reminder and calendar management, browser/media controls, reviewed email, contact/chat lookup, local scheduled drafts and saved routines. Native availability and permissions apply. Existing private-item changes and communications require exact review. Spotify album search and Safari bookmarking require native selection/confirmation; scheduled messages require fresh review when due. Unsupported requests fail transparently; this is not unrestricted computer control.
+No chat message or prompt is submitted automatically. Formatting replacement requires an unchanged, verified last dictation and editor support. Unsupported or unverified delivery retains the transcript for review.
 
-- [Normal quit verification and result-pill correction](Docs/Agents/MILESTONE45A-R3-QUIT-VERIFICATION.md)
-- [Natural local website/app requests](Docs/Agents/MILESTONE45A-R2-NATURAL-NAVIGATION.md)
-- [Website routing correction](Docs/Agents/MILESTONE45A-R1-WEBSITE-ROUTING.md)
-- [100-command implementation and acceptance](Docs/Agents/MILESTONE45A-100-COMMANDS.md)
-- [All 100 commands and actual limits](Docs/Agents/COMMAND-GUIDE-100.md)
-- [Previous Mac/app controls and examples](Docs/Agents/MILESTONE44A-MAC-APP-CONTROLS.md)
-- [Folder and browser search commands](Docs/Agents/MILESTONE43A-FOLDERS-BROWSERS-COMMANDS.md)
-- [Original 100-command roadmap](Docs/Agents/COMMAND-ROADMAP-100.md) — retained requirements; current scope is in the guide
-- [Current source publication checkpoint](Docs/Agents/BUILD45-PUBLICATION-CHECKPOINT.md)
+## Telugu setup
 
-## Important limits
-
-A dispatched native insertion is not proof that text appeared. Current supported native dictation uses verified direct editing or bounded clipboard-free Unicode events; an unreadable target remains unverified, and unsupported text is retained for manual copy. Legacy clipboard routes retain ownership-bound recovery safeguards; an existing backup is never discarded to quit or update. Changed or unsafe targets fail closed. The user has reported the later app/dictation/Agent builds working, while the newly added 45A command paths still require physical acceptance. Apple Terminal remains manual-copy only. No accessibility-tree activation is enabled.
-
-Option+1/Option+2 request in-place Smart Polish/Prompt Engineering and show only pill status; they never open a preview editor. Physical AI shortcut delivery and replacement remain unverified. Automatic replacement in the affected ChatGPT/WhatsApp editors remains unsupported; use the explicit manual preview and Copy workflow. Distinct tone quality and real structured-prompt output remain unverified after the latest native generation was blocked by the unchanged 4 GiB host-memory floor. The preservation gate permits only conservative copyediting; Prompt Engineering organizes supplied lines without inventing requirements. No cloud AI fallback, coding-agent execution, automatic source modification or custom model training is enabled.
-
-## Requirements and permissions
-
-- Apple Silicon; deployment target macOS 26.0 or later.
-- Recorded verification host: M4 MacBook Air, 16 GiB unified memory, macOS 27.2.
-- Recorded build lane: Xcode 27.0 beta (27A5237l), Swift 6.4, macOS 27 SDK; Swift language mode 6, package tools 6.2. Actual macOS 26 runtime and Command Line Tools Swift 6.2.3 compatibility remain unverified.
-- Apple dictation requests Microphone and Speech access for user-initiated capture. The Telugu branch requests Microphone access only and uses separately installed local Small weights. Global input/insertion requires the relevant native Accessibility/Input Monitoring access. Secure fields are excluded.
-- History is stored locally when enabled. The app does not save audio recordings. Apple system services and third-party clipboard managers have their own retention behavior.
-
-Use the General/Privacy controls to review permissions and preferences. The app-owned network-blocking option covers its HTTP paths, including loopback; it is not a system firewall and does not control Apple's system services.
-
-## Build and test
-
-Open `WesleyFlow.xcodeproj`, select the shared **WesleyFlow** scheme and **My Mac**. Choose a full compatible Xcode installation explicitly. Local builds use ad-hoc signing; no signing certificates, provisioning profiles or notarized distribution are supplied. The development app is not App Sandboxed; its approval and clipboard safeguards are application-level controls, not OS containment.
-
-From a clean checkout:
+Telugu uses local Small model files verified by size and SHA-256. Telugu-only needs the specialist model; automatic language recognition also needs multilingual Small. Acquisition is explicit and separate from inference:
 
 ```sh
-# Change this to your full Xcode installation if necessary.
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-mkdir -p Evidence
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Debug build
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Release build
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Debug -resultBundlePath Evidence/local-tests.xcresult test
-xcodebuild -project WesleyFlow.xcodeproj -scheme WesleyFlow -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData/Local -configuration Release SWIFT_STRICT_CONCURRENCY=complete build
+python3 Tools/Telugu/install_model.py --model both
 ```
 
-Choose a fresh result-bundle path per test run. For `test-without-building`, run immediately after `test` or `build-for-testing`; an ordinary app build may remove the hosted test bundle. Tests use disposable fixtures; they do not record microphone audio, post native insertion keys, run coding agents or infer real-app delivery success.
+This downloads approximately 752 MB of pinned model files. To install an already acquired model without networking, use `--model telugu --source /path/to/model` or `--model multilingual --source /path/to/model`. Models are stored in the user's Application Support directory and are not included in Git. See [setup and model provenance](Docs/Telugu/RECOGNITION-QUALITY-FIX.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
-Xcode references the local package under `Packages/WesleyFlowCore`; keep that directory and its fixtures in the checkout. VoiceInput also uses a checksum-pinned whisper.cpp 1.8.2 XCFramework fetched at build time. Runtime inference uses separately installed, checksum-verified Telugu-specialist Small weights and, for Auto mode, multilingual Small weights; see the [Telugu setup and verification guide](Docs/Telugu/RECOGNITION-QUALITY-FIX.md). Optional [Model Lab](ModelLab/README.md) Python dependencies are separate and are not required to build the app. Model weights, virtual environments, private screenshots, raw evidence and generated artifacts are deliberately excluded. The synthetic datasets and pinned provenance/licensing are retained; preparation is not proof of training or inference feasibility.
+## Build and verify
 
-## Continuous integration
+The currently verified lane uses Xcode 27, Swift 6.4 and the macOS 27 SDK on Apple Silicon. The deployment target is macOS 26; runtime acceptance on macOS 26 is still pending. Open `WesleyFlow.xcodeproj`, select the WesleyFlow scheme and My Mac. No Ollama server or separate coding model is required.
 
-See the [CI baseline and contribution guide](Docs/Engineering/CI-BASELINE.md) for local checks, hosted test selection, manual verification gates and safe branch/review practices. Milestone 32 hosted push and PR runs passed at the earlier checkpoint; see [hosted evidence](Docs/Engineering/MILESTONE32-HOSTED-CI.md). The [37R2 publication review](Docs/Engineering/MILESTONE37-PUBLICATION-REVIEW.md) records fresh local verification and remaining physical gates. Hosted results must be checked for the exact proposed revision.
+```sh
+export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+python3 Tools/CI/run_checks.py test --output Evidence/ReleaseCheck
+python3 Tools/CI/run_checks.py concurrency --output Evidence/ReleaseCheck
+```
 
-## Engineering records
+Choose an existing full Xcode path on your Mac. The package uses a checksum-pinned whisper.cpp XCFramework fetched at build time. Tests use fixtures and do not record audio or type into your applications. See [contributing](CONTRIBUTING.md) for additional checks and [release notes](RELEASE-NOTES.md) for the current checkpoint.
 
-- [Core voice reliability and user-operated acceptance checklist](Docs/Phase1E/CORE-VOICE-RELIABILITY.md)
-- [Preview functionality and live resource limitations](Docs/Phase1D/FUNCTIONAL-COMPLETION.md)
-- [Proposal-only architecture](Docs/Phase1B/ARCHITECTURE.md)
-- [Security boundaries](Docs/Phase1B/SECURITY-BOUNDARIES.md)
-- [Original architecture packet](Docs/WesleyFlow-Phase0/README.md)
+## Privacy and delivery
 
-Phase reports are historical snapshots, not statements that every planned feature is active. Current documentation has been sanitized for publication; original machine-local evidence and captures are not published. Historical Git commits are preserved, including their original author metadata and development paths. Consult the current source and latest report for present behavior.
+Once the necessary resources are installed, speech recognition runs on-device with no configured cloud transcription fallback. Wesley Flow does not save microphone audio. Optional dictation history is local plaintext protected by your user account and can appear in backups; manage it in General.
+
+Supported browser editors use guarded clipboard paste. Successful verified delivery restores the previous clipboard when ownership permits. If delivery is uncertain, the app preserves the backup for explicit recovery and never retries the old text. After recovery, return to the field for a fresh Fn recording. Newer clipboard contents are preserved. Password/secure fields are excluded; Apple Terminal is manual-copy only.
+
+The app's network switch governs its own HTTP connections, not macOS services or other apps. English/AI assets are managed by macOS. No private accessibility activation flags, background microphone capture or automatic message sending are enabled.
+
+## Release status
+
+Version 1.0.0 is a source and product-interface checkpoint of the current working app. The repository does not contain a Developer ID-signed/notarized distribution or an App Store release. Local ad-hoc development signing is supported; production distribution requires your own signing identity and notarization. Editor compatibility depends on the application's exposed accessibility data and requires physical acceptance on the target Mac.
+
+CI configuration is included. Hosted results must be checked for the exact pushed revision; local checks are not a claim that a future GitHub run has passed. Private history, weights, recordings, build outputs and raw verification evidence are excluded from Git.
 
 ## License
 
-Original Wesley Flow code and documentation: [MIT](LICENSE), copyright 2026 KOTHAPALLI AKSHAY WESLEY. Separately licensed upstream contracts, research source snapshots and model metadata retain their original notices; see [Third-party notices](THIRD_PARTY_NOTICES.md). Mentioning a supported application or development tool does not assign ownership or imply endorsement.
+[MIT](LICENSE). Third-party code and models retain their own licenses: [third-party notices](THIRD_PARTY_NOTICES.md). [Engineering records](Docs/Engineering/DEVELOPMENT-HISTORY.md) preserve historical work separately from the current product instructions.

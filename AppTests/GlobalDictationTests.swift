@@ -994,7 +994,9 @@ private actor GHistory: DictationHistoryStore {
         #expect(capture.target?.pastes == 1); #expect(coordinator.clipboardPending); coordinator.close()
     }
     @Test func nativePagesInstantiateInBothAppearancesWithoutStartingSpeech() async throws {
-        let input = GInput(), coordinator = world(input:input)
+        let input = GInput(),clock=GClock()
+        let coordinator=SystemWideDictationCoordinator(input:input,targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:clock),shortcut:GShortcut(),clock:clock,preferenceStore:preferences(),previewRegistrar:GPreviewRegistrar())
+        coordinator.preferences.inPlaceAIRewrite = true
         coordinator.preferences.formattingShortcutAction = .lastInsertion
         coordinator.preferences.polishStyle = .grammar
         coordinator.preferences.previewShortcutsEnabled = true
@@ -1021,8 +1023,8 @@ private actor GHistory: DictationHistoryStore {
                 let data = try #require(bitmap.representation(using:.png,properties:[:]))
                 #expect(bitmap.pixelsWide >= 800); #expect(bitmap.pixelsHigh >= 520); #expect(data.count > 1000)
                 try data.write(to:root.appendingPathComponent("\(page.rawValue)-\(appearance.rawValue).png"))
-                if appearance == .dark, [.commands,.dictation,.smartFormatting].contains(page) {
-                    try data.write(to:URL(fileURLWithPath:"/private/tmp/wesley-compatible-" + page.rawValue + ".png"))
+                if [.commands,.dictation,.smartFormatting,.general,.privacy].contains(page) {
+                    try data.write(to:URL(fileURLWithPath:"/private/tmp/wesley-product-" + page.rawValue + "-" + appearance.rawValue + ".png"))
                 }
                 window.close()
             }
@@ -1678,7 +1680,7 @@ struct HandDrawnInsightsTests {
         let registrar = GPreviewRegistrar(); registrar.failure = .systemConflict
         let coordinator = SystemWideDictationCoordinator(input:GInput(),targets:GCapture(),insertion:TextInsertionService(clipboard:GClipboard(),clock:GClock()),shortcut:GShortcut(),preferenceStore:preferences(),offlineRewriter:driver,previewRegistrar:registrar)
         coordinator.preferences.offlineAIRewriting = true; coordinator.preferences.previewShortcutsEnabled = true
-        #expect(coordinator.previewShortcutStatus.contains("Conflict")); #expect(registrar.registrations == 0)
+        #expect(coordinator.previewShortcutStatus.contains("using these keys")); #expect(registrar.registrations == 0)
         registrar.failure = nil; coordinator.configurePreviewShortcuts(); #expect(registrar.kinds == [.polish])
         coordinator.previewInputText = "Check the button"
         coordinator.openExplicitPreview(.polish); coordinator.generateShortcutPreview(); await driver.waitForStart(); #expect(coordinator.isPreviewingRewrite)
@@ -1884,10 +1886,10 @@ struct HandDrawnInsightsTests {
         coordinator.openExplicitPreview(.polish,originProcessIdentifier:42); coordinator.generateShortcutPreview(); await driver.waitForStart()
         for _ in 0..<10 { registrar.receive?(.invokeFrom(.promptEngineering,processIdentifier:99)) }
         #expect(await driver.calls == 1); #expect(!coordinator.previewPresented && !coordinator.isPreviewingRewrite)
-        registrar.receive?(.suspended); #expect(!coordinator.isPreviewingRewrite && coordinator.previewShortcutStatus.contains("sleeping"))
+        registrar.receive?(.suspended); #expect(!coordinator.isPreviewingRewrite && coordinator.previewShortcutStatus.contains("paused"))
         coordinator.dismissShortcutPreview(); await driver.release()
         #expect(coordinator.rewritePreview == nil && coordinator.promptPreview == nil)
-        registrar.receive?(.resumed); #expect(coordinator.previewShortcutStatus.contains("re-registered"))
+        registrar.receive?(.resumed); #expect(coordinator.previewShortcutStatus.contains("registered after wake"))
         coordinator.close()
     }
     @Test func nativePanelNeverBecomesKeyOrMain() {
@@ -5334,5 +5336,18 @@ extension BrowserInsertionTests {
         let service=TextInsertionService(clipboard:clipboard,clock:GClock())
         let result=await service.insert("hello",target:target,session:"s")
         #expect(result.outcome == .cancelled && !result.attempted && clipboard.installed==0 && target.base.pastes==0)
+    }
+}
+
+extension GlobalCoordinatorTests {
+    @Test func releaseIdentityAndDiagnosticsContainNoDevelopmentAliases() {
+        #expect(AppRelease.name == "Wesley Flow")
+        #expect(AppRelease.version.range(of:#"^[0-9]+\.[0-9]+\.[0-9]+$"#,options:.regularExpression) != nil)
+        #expect(AppRelease.build.range(of:#"^[0-9]+$"#,options:.regularExpression) != nil)
+        let c=world()
+        for text in [c.speechDiagnosticSummary,c.verificationDiagnosticSummary,c.shortcutModeDescription] {
+            #expect(!text.contains("45A") && !text.contains("38L3") && !text.contains("Phase 1"))
+        }
+        c.close()
     }
 }

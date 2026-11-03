@@ -14,8 +14,8 @@ struct CompositionTests {
         let composition = AppComposition()
         let state = composition.makeShellState()
         #expect(state.title == "Wesley Flow")
-        #expect(state.phase == "Phase 1A · Task foundation")
-        #expect(state.message.contains("separately approved phases"))
+        #expect(state.phase == "Ready")
+        #expect(state.message.contains("On-device dictation"))
         #expect(composition.makeRootView().state == state)
     }
 

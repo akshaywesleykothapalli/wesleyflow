@@ -71,7 +71,7 @@ import VoiceInput
                     Spacer()
                     if page == .history { Button("Back to Dictation") { page = .dictation } }
                     if page == .dictation || page == .history { HistoryHeaderSearch(text:$coordinator.search) }
-                }.padding(.horizontal,22).frame(minHeight:56)
+                }.padding(.horizontal,22).frame(minHeight:56).layoutPriority(1)
                 if page == .dictation || page == .history || page == .dictionary { Divider().overlay(FlowSurface.border) }
                 Group {
                     switch page {
@@ -84,7 +84,7 @@ import VoiceInput
                     case .privacy: privacyPage
                     case .general: generalPage
                     }
-                }.frame(maxWidth:.infinity,maxHeight:.infinity).id(page).transition(.opacity)
+                }.frame(maxWidth:.infinity,minHeight:0,maxHeight:.infinity).id(page).transition(.opacity)
             }.frame(maxWidth:.infinity,maxHeight:.infinity).background(FlowSurface.canvas)
         }
         .foregroundStyle(FlowSurface.text)
@@ -468,116 +468,60 @@ import VoiceInput
     }
     private var formattingPage: some View {
         FlowPage {
-            FlowSettingsGroup("Option+1 · Smart Polish / Option+2 · Prompt Engineering") {
-                FlowSettingsRow("Enable formatting shortcuts",description:coordinator.previewShortcutStatus) { Toggle("Enable formatting shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
-                FlowSettingsRow("Shortcut behavior",description:coordinator.shortcutModeDescription) {
-                    Picker("Shortcut behavior",selection:$coordinator.preferences.formattingShortcutAction) {
-                        ForEach(FormattingShortcutAction.allCases,id:\.self) { Text($0.label).tag($0) }
-                    }.pickerStyle(.menu).disabled(coordinator.busy || coordinator.inPlaceRunning)
+            FlowSettingsGroup("Formatting shortcuts") {
+                Text("Dictate with Fn, then use Option+1 to polish your text or Option+2 to turn it into a prompt. Nothing is submitted.").font(.callout).foregroundStyle(.secondary).padding(14)
+                FlowSettingsRow("Enable formatting shortcuts",description:"Allow Option+1 and Option+2 to update the last dictation in its original text field.") {
+                    Toggle("Enable formatting shortcuts",isOn:Binding(get:{ coordinator.preferences.previewShortcutsEnabled && (coordinator.preferences.inPlaceAIRewrite || coordinator.preferences.formattingShortcutAction == .nextRecording) },set:{ enabled in
+                        var value = coordinator.preferences
+                        value.previewShortcutsEnabled = enabled; value.inPlaceAIRewrite = enabled
+                        coordinator.preferences = value
+                    }))
                 }
-                FlowSettingsRow(coordinator.preferences.formattingShortcutAction == .nextRecording ? "Recording readiness" : "Replacement readiness",description:coordinator.inPlaceReadinessDescription) { Text(coordinator.preferences.formattingShortcutAction == .nextRecording ? "Before insertion" : "In-place only").foregroundStyle(.secondary) }
-                if let failure = coordinator.lastAIShortcutFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(14) }
                 if coordinator.preferences.formattingShortcutAction == .nextRecording {
-                    FlowSettingsRow("Formatter",description:"English formatting with local rules. No model load or generated requirements.") { Text("Local formatting").foregroundStyle(.secondary) }
+                    FlowSettingsRow("Shortcut behavior",description:"Your saved setting formats the next recording. Use the current workflow to change the last dictation instead.") {
+                        Button("Use last dictation") { coordinator.preferences.formattingShortcutAction = .lastInsertion }.disabled(coordinator.busy || coordinator.inPlaceRunning)
+                    }
                 }
-                if coordinator.preferences.formattingShortcutAction == .lastInsertion {
-                FlowSettingsRow("Local AI readiness",description:coordinator.rewriteReadinessNotice) {
-                    Button(coordinator.checkingRewriteReadiness ? "Checking…" : "Check") { Task { await coordinator.inspectRewriteReadiness() } }.disabled(coordinator.busy || coordinator.inPlaceRunning || coordinator.isPreviewingRewrite || coordinator.checkingRewriteReadiness)
-                }
-                }
-                FlowSettingsRow("Shortcut diagnostics",description:"Metadata only. No shortcut falls back to a preview or copies text automatically.") {
-                    Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.verificationDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
-                }
-            }
-            FlowSettingsGroup("Smart formatting & spelling") {
-                FlowSettingsRow("Clean up spacing",description:"Whitespace only. Enable the transformations below separately; they apply to the next completed dictation.") { Toggle("Clean up spacing",isOn:$coordinator.preferences.spacingCleanup) }
-                FlowSettingsRow("Fix spelling and common typos",description:"Suggestions may be wrong. Protected terms are excluded.") { Toggle("Fix spelling and common typos",isOn:$coordinator.preferences.formatting.correctSpelling) }
-                FlowSettingsRow("Spelling engine") { Text("Apple NSSpellChecker").foregroundStyle(.secondary) }
-                FlowSettingsRow("Smart typography",description:"Spoken ‘open quote’, ‘close quote’, and ‘em dash’. Existing punctuation is preserved.") { Toggle("Smart typography",isOn:$coordinator.preferences.formatting.smartTypography) }
-                FlowSettingsRow("Spoken punctuation") { Toggle("Spoken punctuation",isOn:$coordinator.preferences.formatting.spokenPunctuation) }
-                FlowSettingsRow("Capitalize sentence starts") { Toggle("Capitalize sentence starts",isOn:$coordinator.preferences.formatting.sentenceCapitalization) }
-            }
-            FlowSettingsGroup("Speech cleaner") {
-                FlowSettingsRow("Remove filler words",description:"Only um, uh and erm; never conjunctions.") { Toggle("Remove filler words",isOn:$coordinator.preferences.formatting.removeFillers) }
-                FlowSettingsRow("Collapse repeated fillers",description:"Ordinary repeated words remain intact, including emphasis.") { Toggle("Collapse repeated fillers",isOn:$coordinator.preferences.formatting.removeRepeatedFillers).disabled(coordinator.preferences.formatting.removeFillers) }
-                FlowSettingsRow("Handle explicit self corrections",description:"Only ‘Red. Scratch that. Blue.’ within one unprotected utterance. Ambiguous cues are preserved.") { Toggle("Handle explicit self corrections",isOn:$coordinator.preferences.formatting.handleSelfCorrections) }
-            }
-            FlowSettingsGroup("Smart polish") {
-                FlowSettingsRow("Enable Smart Polish",description:"Next recording uses local rules. Last-insertion AI and manual AI previews remain separate guarded actions.") { Toggle("Enable Smart Polish preview",isOn:$coordinator.preferences.offlineAIRewriting) }
-                FlowSettingsRow("Polish style",description:"Grammar improves phrasing while checking protected facts and negation. Cleanup keeps the original words.") {
+                FlowSettingsRow("Smart Polish · Option+1",description:"Improve English grammar and wording while preserving your intended meaning.") { Toggle("Enable Smart Polish",isOn:$coordinator.preferences.offlineAIRewriting) }
+                FlowSettingsRow("Create a prompt · Option+2",description:"Clarify and structure an English request while retaining supplied constraints.") { Toggle("Enable Prompt Engineering",isOn:$coordinator.preferences.promptEngineeringEnabled) }
+                FlowSettingsRow("Polish style") {
                     Picker("Polish style",selection:$coordinator.preferences.polishStyle) { ForEach(PolishStyle.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy || coordinator.inPlaceRunning)
                 }
-                FlowSettingsRow("Tone",description:"Used by the selected polish style.") {
-                    Picker("Tone",selection:$coordinator.preferences.polishTone) { ForEach(OfflineRewriteTone.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu).disabled(!coordinator.preferences.offlineAIRewriting || coordinator.isPreviewingRewrite)
+                FlowSettingsRow("Tone") {
+                    Picker("Tone",selection:$coordinator.preferences.polishTone) { ForEach(OfflineRewriteTone.allCases,id:\.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.menu).disabled(!coordinator.preferences.offlineAIRewriting || coordinator.busy || coordinator.inPlaceRunning)
                 }
+                if let failure = coordinator.lastAIShortcutFailure { Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(14) }
             }
-            FlowSettingsGroup("In-place AI") {
-                FlowSettingsRow("In-place AI rewrite",description:coordinator.shortcutModeDescription) { Toggle("In-place AI rewrite",isOn:$coordinator.preferences.inPlaceAIRewrite) }
+            FlowSettingsGroup("Text cleanup") {
+                FlowSettingsRow("Clean up spacing") { Toggle("Clean up spacing",isOn:$coordinator.preferences.spacingCleanup) }
+                FlowSettingsRow("Fix spelling and common typos",description:"Protected dictionary terms are preserved.") { Toggle("Fix spelling and common typos",isOn:$coordinator.preferences.formatting.correctSpelling) }
+                FlowSettingsRow("Smart typography",description:"Recognize spoken quotes and em dashes.") { Toggle("Smart typography",isOn:$coordinator.preferences.formatting.smartTypography) }
+                FlowSettingsRow("Spoken punctuation") { Toggle("Spoken punctuation",isOn:$coordinator.preferences.formatting.spokenPunctuation) }
+                FlowSettingsRow("Capitalize sentence starts") { Toggle("Capitalize sentence starts",isOn:$coordinator.preferences.formatting.sentenceCapitalization) }
+                FlowSettingsRow("Remove filler words",description:"Removes isolated um, uh and erm.") { Toggle("Remove filler words",isOn:$coordinator.preferences.formatting.removeFillers) }
+                FlowSettingsRow("Collapse repeated fillers") { Toggle("Collapse repeated fillers",isOn:$coordinator.preferences.formatting.removeRepeatedFillers).disabled(coordinator.preferences.formatting.removeFillers) }
+                FlowSettingsRow("Explicit self corrections",description:"Recognize phrases such as ‘scratch that’; ambiguous wording is preserved.") { Toggle("Handle explicit self corrections",isOn:$coordinator.preferences.formatting.handleSelfCorrections) }
             }
-            FlowSettingsGroup("Shortcut text access") {
-                FlowSettingsRow("Use focused text when nothing is selected",description:"Applies only to explicit editor-preview capture, never Option+1/2. No background reading, clipboard capture or source changes.") { Toggle("Use focused text when nothing is selected",isOn:$coordinator.preferences.useFocusedTextWhenUnselected) }
+            DisclosureGroup("Troubleshooting") {
+                FlowSettingsRow("Shortcut registration",description:coordinator.previewShortcutStatus) { Button("Retry") { coordinator.configurePreviewShortcuts() }.disabled(!coordinator.preferences.previewShortcutsEnabled) }
+                FlowSettingsRow("Diagnostics",description:"Copies status and error codes without your dictated text or audio.") { Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed) }
             }
-            FlowSettingsGroup("Preview input") {
-                FlowSettingsRow("Source",description:"Manual previews use supplied text or a selected dictation. Option+1/2 use only the last eligible verified dictation and never open an input editor.") {
-                    Picker("Preview input source",selection:$coordinator.previewUseSaved) { Text("Supplied text").tag(false); Text("Saved dictation").tag(true) }.pickerStyle(.menu)
-                }
-                if coordinator.previewUseSaved {
-                    Picker("Completed dictation",selection:$coordinator.selectedPreviewEntryID) {
-                        Text("Select a dictation").tag(nil as String?)
-                        ForEach(coordinator.previewHistoryCandidates,id:\.id) { entry in Text(String(entry.cleaned.prefix(70))).tag(Optional(entry.id)) }
-                    }.pickerStyle(.menu).accessibilityLabel("Completed dictation for preview")
-                } else {
-                    TextEditor(text:$coordinator.previewInputText).frame(minHeight:70,maxHeight:120).accessibilityLabel("Explicit preview input")
-                    Text("\(coordinator.previewInputText.utf8.count) / 2,048 bytes · kept only in this window session").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            HStack {
-                Button("Open manual Smart Polish preview") { coordinator.openExplicitPreview(.polish) }.disabled(!coordinator.preferences.offlineAIRewriting || coordinator.busy || coordinator.inPlaceRunning)
-                Button("Open manual Prompt Engineering preview") { coordinator.openExplicitPreview(.promptEngineering) }.disabled(!coordinator.preferences.promptEngineeringEnabled || coordinator.busy || coordinator.inPlaceRunning)
-            }
-            HStack {
-                Button("Preview Smart Polish") { coordinator.startSuppliedPreview(.polish) }.disabled(!coordinator.canPreviewSupplied(.polish))
-                Button("Preview latest dictation") { coordinator.startRewritePreview() }.disabled(!coordinator.canPreviewRewrite)
-            }
-            FlowSettingsGroup("Prompt engineering") {
-                FlowSettingsRow("Enable structured prompts",description:"Organize source sentences under relevant headings. Local formatting preserves the supplied words and never invents requirements.") { Toggle("Enable Prompt Engineering preview",isOn:$coordinator.preferences.promptEngineeringEnabled) }
-            }
-            Button("Preview structured prompt") { coordinator.startSuppliedPreview(.promptEngineering) }.disabled(!coordinator.canPreviewSupplied(.promptEngineering))
-            if coordinator.isPreviewingRewrite { Button("Cancel preview") { coordinator.cancelRewritePreview() } }
-            Text(coordinator.previewNotice).font(.caption).foregroundStyle(.secondary)
-            Text(coordinator.rewritePreviewMessage).font(.caption).foregroundStyle(.secondary)
-            if !coordinator.previewOriginalText.isEmpty {
-                Text("Original").font(.caption); Text(coordinator.previewOriginalText).textSelection(.enabled)
-            }
-            if let result = coordinator.previewKind == .polish ? coordinator.rewritePreview : coordinator.promptPreview {
-                Text(result.status == .rewritten ? "Suggested preview" : "Retained original").font(.caption)
-                Text(result.text).textSelection(.enabled)
-                Button("Copy reviewed preview") { _ = coordinator.copyReviewedText(result.text) }.disabled(!coordinator.historyCopyAllowed)
-                Button("Reject preview") { coordinator.rejectRewritePreview() }
-            }
-            Text("Review every preview. Tone requests never override preservation checks or memory admission. Preview controls do not insert. In-place shortcuts require separate opt-in. Nothing is submitted.").font(.caption).foregroundStyle(.secondary)
         }
     }
     private var privacyPage: some View {
         FlowPage {
-            FlowSettingsGroup("Speech processing") {
-                FlowSettingsRow("Speech recognition") { Text(coordinator.engine?.engine ?? "Apple Speech · not used this session").foregroundStyle(.secondary) }
-                FlowSettingsRow("Processing location",description:"Installed Apple speech engines only; no cloud speech fallback is configured.") { Text(coordinator.engine == nil ? "Not yet observed" : "On-device capture").foregroundStyle(.secondary) }
-                FlowSettingsRow("Speech permissions") { Text(coordinator.speechStatus).foregroundStyle(.secondary) }
+            FlowSettingsGroup("On-device processing") {
+                Text("Speech recognition uses installed on-device engines. Telugu uses local model files. No cloud transcription fallback is configured.").font(.callout).foregroundStyle(.secondary).padding(14)
+                FlowSettingsRow("Text formatting",description:"Smart Polish and prompt rewriting use Apple's on-device AI when available. Protected sentences can be formatted locally.") { Text("On this Mac").foregroundStyle(.secondary) }
+                FlowSettingsRow("Audio recordings",description:"Wesley Flow does not save your microphone recordings.") { Text("Not saved").foregroundStyle(.secondary) }
             }
-            FlowSettingsGroup("Network control") {
-                FlowSettingsRow("Block network requests",description:"Blocks app-owned HTTP, including localhost Ollama. Does not control Apple framework or other-app traffic.") { Toggle("Block network requests",isOn:$coordinator.preferences.blockNetworkRequests) }
-                FlowSettingsRow("Requests this process session") { Text("\(coordinator.networkSnapshot.attempts)").monospacedDigit() }
-                FlowSettingsRow("Allowed / blocked attempts") { Text("\(coordinator.networkSnapshot.allowed) / \(coordinator.networkSnapshot.denied)").monospacedDigit() }
-                FlowSettingsRow("Last attempt") { Text(coordinator.networkSnapshot.lastTime?.formatted(date:.omitted,time:.standard) ?? "None").foregroundStyle(.secondary) }
-                FlowSettingsRow("Destination category") { Text(coordinator.networkSnapshot.lastDestination ?? "None").foregroundStyle(.secondary) }
+            FlowSettingsGroup("Network access") {
+                FlowSettingsRow("Block app network requests",description:"Blocks connections made directly by Wesley Flow. macOS manages its speech and AI services separately.") { Toggle("Block app network requests",isOn:$coordinator.preferences.blockNetworkRequests) }
             }
-            FlowSettingsGroup("Privacy dashboard",headingColor:.red) {
-                FlowSettingsRow("Application HTTP policy") { Text(coordinator.networkSnapshot.blocked ? "Blocked, including loopback" : "App requests allowed").foregroundStyle(.secondary) }
-                FlowSettingsRow("On-device availability") { Text(coordinator.speechConfiguration == nil ? "Inspect in General" : (coordinator.speechConfiguration?.legacyOnDeviceAvailable == true ? "Legacy fallback available" : "See installed asset status in General")).foregroundStyle(.secondary) }
+            FlowSettingsGroup("History and clipboard") {
+                Text("Dictation history stays on this Mac when enabled. You can manage it in General. Saved history is protected by your user account and may appear in backups.").font(.callout).foregroundStyle(.secondary).padding(14)
+                Text("Supported editors can use clipboard paste. Wesley Flow preserves the existing clipboard and checks delivery. If delivery is uncertain, review clipboard recovery before recording again.").font(.callout).foregroundStyle(.secondary).padding(14)
             }
-            Text("Counters describe admission attempts, not packet totals or successful responses. Policy changes cancel active app-owned HTTP sessions. Apple Speech, FoundationModels, NSSpellChecker and OS-managed asset checks are not instrumented or firewalled here; their internal traffic cannot be proven by this toggle. Model downloads and remote providers are not implemented in the app. No bodies, tokens, transcripts, hostnames or query strings are logged.").font(.caption).foregroundStyle(.secondary)
-            Text("History is local plaintext protected by your account and may appear in backups. No raw audio or target-field contents are saved. Retention controls are in General.").font(.caption).foregroundStyle(.secondary)
         }
     }
     private var languageSettings: some View {
@@ -622,68 +566,40 @@ import VoiceInput
                 FlowSettingsRow("Save dictation history on this Mac") { Toggle("Save dictation history on this Mac",isOn:$coordinator.preferences.keepHistory) }
                 FlowSettingsRow("Saved dictations",description:"Raw/cleaned text, app name, duration and outcome. Up to 2,000 entries /100 MiB; disabling does not delete saved entries.") { Button("Clear all history…",role:.destructive) { confirmClear = true }.disabled(coordinator.busy || coordinator.entries.isEmpty) }
             }
-            DisclosureGroup("Advanced settings") {
-                VStack(alignment:.leading,spacing:18) {
-                    advancedSpeechSettings
-                    FlowSettingsGroup("Command & AI shortcuts") {
-                FlowSettingsRow("Agent hold-to-talk",description:coordinator.agentShortcutStatus) {
-                    Toggle("Enable Agent shortcut",isOn:Binding(get:{ coordinator.preferences.agentHotkeyEnabled },set:{ if $0 { coordinator.enableAgentShortcut() } else { coordinator.disableAgentShortcut() } })).disabled(coordinator.busy)
-                }
-                FlowSettingsRow("Agent key delivery",description:"Live key counts only; no typed text or audio is recorded here.") { Text(coordinator.agentShortcutDiagnostics).font(.caption).textSelection(.enabled) }
-                FlowSettingsRow("Agent key",description:"Separate from dictation. Chords cancel. Check other apps for custom modifier bindings.") {
+            FlowSettingsGroup("Command Mode") {
+                FlowSettingsRow("Enable Agent shortcut",description:coordinator.agentShortcutStatus) { Toggle("Enable Agent shortcut",isOn:Binding(get:{ coordinator.preferences.agentHotkeyEnabled },set:{ if $0 { coordinator.enableAgentShortcut() } else { coordinator.disableAgentShortcut() } })).disabled(coordinator.busy) }
+                FlowSettingsRow("Agent key",description:"Separate from the dictation key.") {
                     Picker("Agent key",selection:Binding(get:{ coordinator.preferences.agentKey },set:{ coordinator.changeAgentKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
                 }
-                FlowSettingsRow("Preview shortcuts",description:"Option+1 requests in-place Smart Polish; Option+2 requests in-place Prompt Engineering. Both show only the pill, including errors and disabled in-place mode. No editor opens. May override application shortcuts.") { Toggle("Enable preview shortcuts",isOn:$coordinator.preferences.previewShortcutsEnabled) }
-                FlowSettingsRow("Registration",description:coordinator.previewShortcutStatus) { Button("Retry") { coordinator.configurePreviewShortcuts() }.disabled(!coordinator.preferences.previewShortcutsEnabled) }
-                #if DEBUG
-                Text(coordinator.verificationDiagnosticSummary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).accessibilityLabel("Text verification diagnostics; metadata only")
-                #endif
-                    }
-                    Text("Fn can conflict with macOS emoji/Dictation. Set Keyboard → Press Globe key to → Do Nothing if needed.").font(.caption).foregroundStyle(.secondary)
-                }.padding(.top,12)
+            }
+            DisclosureGroup("Troubleshooting") { advancedSpeechSettings.padding(.top,12) }
+            FlowSettingsGroup("About") {
+                FlowSettingsRow("Wesley Flow") { Text(AppRelease.version).foregroundStyle(.secondary) }
+                FlowSettingsRow("Source code") { Link("View on GitHub",destination:URL(string:"https://github.com/akshaywesleykothapalli/wesleyflow")!) }
             }
             if let error = coordinator.settingsError { Text(error).foregroundStyle(.orange) }
         }.onAppear { loginItem.refresh(); coordinator.refreshPermissions() }
     }
     private var advancedSpeechSettings: some View {
-        FlowSettingsGroup("Speech details") {
+        FlowSettingsGroup("Dictation support") {
             if coordinator.preferences.languageMode == .teluguRomanised {
-                FlowSettingsRow("Offline Telugu model",description:"Auto also needs multilingual Small. Files are verified before use.") {
-                    Text(FileManager.default.fileExists(atPath:WhisperTeluguSmallModel.installedURL.path) ? "Installed" : "Not installed").foregroundStyle(.secondary)
+                FlowSettingsRow("Offline Telugu files",description:"Setup instructions are included in the GitHub documentation.") { Text(FileManager.default.fileExists(atPath:WhisperTeluguSmallModel.installedURL.path) ? "Installed" : "Setup required").foregroundStyle(.secondary) }
+            } else {
+                FlowSettingsRow("English speech setup",description:coordinator.speechResourceStatus) {
+                    Button("Check availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking)
+                }
+                if coordinator.speechConfiguration?.installCandidate != nil {
+                    FlowSettingsRow("Speech resources",description:"Install the on-device English resources supplied by macOS.") { Button("Set up English dictation") { coordinator.installSpeechResources() }.disabled(!coordinator.canInstallSpeechResources) }
                 }
             }
-                FlowSettingsRow("Recognition engine",description:coordinator.preferences.languageMode == .teluguRomanised ? "Local Small models; Telugu speech uses the Telugu specialist." : "Installed modern engines are preferred. Legacy compatibility can stop at about one minute; continuous long dictation requires modern resources.") { Text(coordinator.busy ? (coordinator.engine?.engine ?? "Preparing capture") : (coordinator.preferences.languageMode == .teluguRomanised ? "Local Telugu Small pipeline" : (coordinator.speechConfiguration?.recommendedEngineLabel ?? "Inspect availability"))).foregroundStyle(.secondary) }
-                if let actual = coordinator.engine { FlowSettingsRow("Last capture engine",description:"Actual engine: \(actual.engine). Actual recognition language: \(actual.localeIdentifier).") { Text(actual.localeIdentifier).foregroundStyle(.secondary) } }
-            if coordinator.preferences.languageMode == .english {
-                FlowSettingsRow("Language") { Text(Locale.current.localizedString(forIdentifier:coordinator.localeIdentifier) ?? coordinator.localeIdentifier).foregroundStyle(.secondary) }
-                FlowSettingsRow("Installed speech assets",description:"Inspection never downloads. Install explicitly requests Apple language resources; macOS may continue or retry that request in the background.") { Button("Inspect availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking) }
-                if let speech = coordinator.speechConfiguration {
-                    FlowSettingsRow("SpeechTranscriber") { Text(speech.speechAssets).foregroundStyle(.secondary) }
-                    FlowSettingsRow("DictationTranscriber") { Text(speech.dictationAssets).foregroundStyle(.secondary) }
-                    FlowSettingsRow("App reserved locales") { Text(speech.reservedLocales.isEmpty ? "None reported" : speech.reservedLocales.joined(separator:", ")).foregroundStyle(.secondary) }
-                    FlowSettingsRow("Legacy on-device support") { Text(speech.legacyOnDeviceAvailable ? "Compatibility only · about one minute" : "Unavailable").foregroundStyle(.secondary) }
-                    if let candidate = speech.installCandidate {
-                        FlowSettingsRow("Modern speech resources",description:coordinator.preferences.blockNetworkRequests ? "Apple resource downloads are disabled by Block network requests. Your setting is preserved." : "Requested language: \(coordinator.localeIdentifier). Apple resolves this to \(speech.resources(for:candidate).resolvedLocale ?? "unsupported"). Language preference stays unchanged.") {
-                            Button("Install Apple speech resources") { coordinator.installSpeechResources() }.disabled(!coordinator.canInstallSpeechResources)
-                        }
-                    }
-                    if speech.readyModernEngine != nil {
-                        FlowSettingsRow("Modern engine preparation",description:"Checks the real on-device analyzer without starting the microphone. Capture prepares the same configuration again on the next hold.") {
-                            Button("Prepare modern engine") { coordinator.prepareModernSpeech() }.disabled(!coordinator.canPrepareModernSpeech)
-                        }
-                    }
+            if coordinator.speechResourceWorking {
+                FlowSettingsRow("Setup progress") {
+                    if let fraction = coordinator.speechDownloadProgress?.fraction { ProgressView(value:fraction).frame(width:90) } else { ProgressView().controlSize(.small) }
+                    Button("Stop waiting") { coordinator.stopWaitingForSpeechResources() }
                 }
             }
-                FlowSettingsRow("Speech diagnostics",description:coordinator.speechFailureDiagnostics?.failureDescription ?? "Metadata only: provider, locale, capture timing, native error codes and delivery counters. No text or audio.") {
-                    Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
-                }
-                FlowSettingsRow("Speech readiness",description:coordinator.speechResourceStatus) {
-                    if coordinator.speechResourceWorking {
-                        if let fraction = coordinator.speechDownloadProgress?.fraction { ProgressView(value:fraction).frame(width:90) }
-                        else { ProgressView().controlSize(.small) }
-                        Button("Stop waiting") { coordinator.stopWaitingForSpeechResources() }
-                    }
-                }
+            FlowSettingsRow("Diagnostics",description:"Status and error codes only; no dictated text or audio.") { Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed) }
+            Text("If Fn opens macOS emoji or Dictation, set Keyboard → Press Globe key to → Do Nothing.").font(.caption).foregroundStyle(.secondary).padding(14)
         }
     }
     private func openPrivacy(_ pane: String) { if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?"+pane) { NSWorkspace.shared.open(url) } }
@@ -706,7 +622,7 @@ import VoiceInput
             TextEditor(text:$edited).scrollIndicators(.hidden).font(.body).frame(minHeight:160)
             HStack { Button(feedback.copied.contains(entry.id) ? "Copied" : "Copy edited text") { if copyText(edited) { feedback.show(id:entry.id) } }.disabled(!canCopy); Toggle("Compare raw",isOn:$rawVisible).toggleStyle(.switch); Spacer(); Text("\(entry.wordCount) words · \(entry.characterCount) characters").foregroundStyle(.secondary) }
             if rawVisible { ScrollView { Text(entry.raw).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading) }.scrollIndicators(.hidden).frame(height:110) }
-            Text("Edits are a local review draft; they do not change the saved entry or submit a prompt. AI previews are available separately under Smart Formatting; this draft is unchanged.").font(.caption).foregroundStyle(.secondary)
+            Text("Edits are a local review draft. Copy your edited text here; the saved history entry stays unchanged.").font(.caption).foregroundStyle(.secondary)
         }.padding(24).frame(width:640).onAppear { edited = entry.cleaned }
     }
 }
