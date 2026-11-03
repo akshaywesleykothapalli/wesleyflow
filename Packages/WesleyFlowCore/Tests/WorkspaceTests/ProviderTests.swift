@@ -891,6 +891,24 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
 @Suite("Opt-in guarded native AI shortcut diagnostic",.serialized) struct NativeAIShortcutDiagnosticTests {
     @Test(.enabled(if:ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_DIAGNOSTIC"] == "1"))
     func inspectThenConditionallyGenerateSyntheticTextOnly() async throws {
+        if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_GRAMMAR_BENCHMARK"] == "1" {
+            // ABBA order includes both colder and warmer observations. Small-sample evidence only.
+            for (index,compact) in [false,true,true,false].enumerated() {
+                let memory = NativeRewriteProbeMemory()
+                let provider = AppleTranscriptRewriter(memory:memory,clock:SystemTaskClock(),generator:AppleRewriteGenerator(compactGrammar:compact))
+                let request = OfflineRewriteRequest(id:UUID().uuidString,text:"This is a checkup if it's working or not.",localeIdentifier:"en-IN",kind:.polish,polishStyle:.grammar)
+                let result = await provider.rewrite(request)
+                print("GRAMMAR_BENCH trial=\(index) route=\(compact ? "compact" : "guided") status=\(result.status.rawValue) elapsedMs=\(result.elapsedMilliseconds) reason=\(result.reason)")
+                print("GRAMMAR_BENCH resources=\(await memory.summary())")
+                if result.status == .rewritten || result.status == .unchanged {
+                    try ProtectedRewriteText(request).validateRestored(result.text)
+                    print("GRAMMAR_BENCH syntheticOutput=\(result.text)")
+                }
+                #expect(result.status == .rewritten && result.text != request.text)
+                if result.status != .rewritten { break }
+            }
+            return
+        }
         let memory = NativeRewriteProbeMemory()
         let observation = try await memory.sample()
         print("AI_PROBE pressure=\(observation.pressureLevel.rawValue) availableBytes=\(observation.conservativeAvailableBytes) swapBytes=\(observation.swapUsedBytes)")
@@ -1293,5 +1311,17 @@ extension OfflineRewriteProviderTests {
         #expect(result.status == .rewritten && result.reason == "prompt-structure-only")
         #expect(result.text == "## Objective\nAdd an animated UI button for this application.")
         #expect(await driver.calls == 0)
+    }
+}
+
+extension OfflineRewriteProviderTests {
+    @Test func compactGrammarOnlyAppliesToShortUnprotectedSentences() throws {
+        let plain=try GrammarPolishText("This is a checkup if it's working or not.")
+        #expect(plain.canUseCompactGrammarResponse)
+        for text in ["WFSPANabcX0END is ready.","This is one line.\nThis is another.",String(repeating:"word ",count:110),"   "] {
+            #expect(try !GrammarPolishText(text).canUseCompactGrammarResponse)
+        }
+        let request=OfflineRewriteRequest(id:"speed-vocabulary",text:"Please check Wesley today.",localeIdentifier:"en-IN",vocabulary:["Wesley"],polishStyle:.grammar)
+        #expect(try !GrammarPolishText(ProtectedRewriteText(request).masked).canUseCompactGrammarResponse)
     }
 }

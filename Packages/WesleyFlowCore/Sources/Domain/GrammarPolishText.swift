@@ -16,6 +16,7 @@ public struct GrammarPolishText: Sendable {
     private let passages:[String], markers:[String]
     private let editable:[Int]
     public var hasEditableText:Bool { !editable.isEmpty }
+    public var canUseCompactGrammarResponse:Bool { markers.isEmpty && editable.count == 1 && sourceContext.utf8.count <= 512 && !sourceContext.contains("\n") && !sourceContext.contains("\r") }
     public var hasInteriorFixedSpan:Bool { markers.count > 1 || (!markers.isEmpty && !passages[0].trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) }
     public init(_ masked:String) throws {
         let regex = try NSRegularExpression(pattern:#"WFSPAN[A-Za-z0-9]+?X[0-9]+END"#)
