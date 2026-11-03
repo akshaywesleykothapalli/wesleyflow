@@ -219,6 +219,7 @@ public struct InsertionVerificationDiagnostic: Sendable, Equatable {
         case captureFailed = "TARGET_CAPTURE_FAILED", roleSupported = "EDITABLE_ROLE_SUPPORTED", subroleKnown = "SUBROLE_EXPOSED"
         case selectedTextWritable = "SELECTED_TEXT_WRITABLE", selectionWritable = "SELECTION_RANGE_WRITABLE"
         case replacementCapability = "PRECISE_REPLACEMENT_CAPABILITY"
+        case editorFocusWritable = "EDITOR_FOCUS_WRITABLE", editorFocusRequested = "EDITOR_FOCUS_REQUESTED", editorFocusConfirmed = "EDITOR_FOCUS_CONFIRMED"
         case applicationRole = "APPLICATION_ROLE", windowFromEditor = "WINDOW_FROM_FOCUSED_EDITOR"
         case targetAcquired = "TARGET_ACQUIRED", originalElement = "ORIGINAL_ELEMENT_RETAINED", selectionCaptured = "SELECTION_CAPTURED"
         case formatted = "FORMATTED_TEXT_FINALIZED", clipboardAcquired = "CLIPBOARD_LEASE_ACQUIRED"
@@ -247,5 +248,9 @@ public struct InsertionVerificationDiagnostic: Sendable, Equatable {
 @MainActor public protocol ClipboardFreeInsertionTarget:InsertionTarget {
     var requiresGuardedPaste:Bool { get }
     func supportsClipboardFreeText(_ text:String)->Bool
+    func prepareForGuardedPaste() throws
 }
-public extension ClipboardFreeInsertionTarget { var requiresGuardedPaste:Bool { false } }
+public extension ClipboardFreeInsertionTarget {
+    var requiresGuardedPaste:Bool { false }
+    func prepareForGuardedPaste() throws { try validate() }
+}

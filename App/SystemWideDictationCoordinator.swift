@@ -1921,7 +1921,7 @@ import VoiceInput
         guard let expectedRecoveryID else { message = "That recovery request is no longer available. No clipboard was changed."; return }
         let result = insertion.restoreAfterUserConfirmation(expectedRecoveryID:expectedRecoveryID); clipboardPending = insertion.hasPendingClipboard
         pasteboardLeaseResult = result == .restored ? .restored : (result == .preservedNewer ? .preservedNewer : .recoveryPending)
-        message = result == .restored ? "Previous clipboard restored." : result == .preservedNewer ? "Your newer clipboard was preserved." : "Clipboard restoration is still unavailable."
+        message = result == .restored ? "Previous clipboard restored. Return to the text field and hold Fn for a fresh recording. The previous dictation was not retried; it remains in History." : result == .preservedNewer ? "Your newer clipboard was preserved. Return to the text field and hold Fn for a fresh recording. The previous dictation was not retried." : "Clipboard restoration is still unavailable."
     }
     static func insertionExplanation(_ receipt: TextInsertionReceipt) -> String {
         switch receipt.reason {

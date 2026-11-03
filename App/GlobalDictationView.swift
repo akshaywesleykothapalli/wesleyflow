@@ -124,7 +124,7 @@ import VoiceInput
         .confirmationDialog("Have you confirmed the pending paste has completed?",isPresented:$confirmRestore) {
             let expectedRecoveryID = recoveryID
             Button("I confirmed it — restore saved clipboard") { coordinator.restoreClipboardAfterConfirmation(expectedRecoveryID:expectedRecoveryID) }
-        } message: { Text("The app could not verify paste completion. Restoration is attempted only while this app still owns the clipboard; newer clipboard contents are preserved.") }
+        } message: { Text("The app could not verify paste completion. Restoration is attempted only while this app still owns the clipboard; newer clipboard contents are preserved. Restoring the clipboard does not paste or retry this dictation. Your recording remains in History; use a fresh Fn recording to try again.") }
         .onReceive(Timer.publish(every:2,on:.main,in:.common).autoconnect()) { _ in
             if NSClassFromString("XCTestCase") == nil { coordinator.refreshPermissions() }
         }

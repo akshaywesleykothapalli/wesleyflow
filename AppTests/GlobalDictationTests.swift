@@ -670,7 +670,13 @@ private actor GHistory: DictationHistoryStore {
         #expect(!coordinator.canTerminateSafely()); #expect(service.hasPendingClipboard)
         coordinator.restoreClipboardAfterConfirmation(expectedRecoveryID:coordinator.clipboardRecoveryID); #expect(!coordinator.clipboardPending)
         #expect(coordinator.canTerminateSafely())
-        #expect(clipboard.text == "original"); coordinator.close()
+        #expect(clipboard.text == "original")
+        #expect(coordinator.message.contains("not retried") && coordinator.message.contains("fresh recording"))
+        shortcut.receive?(.pressed);await coordinator.waitUntilRecording()
+        input.receive?(.transcript("fresh recording words"));shortcut.receive?(.released);input.receive?(.finished);await waitForTerminal(coordinator)
+        #expect(input.starts==1 && target.pastes==1)
+        #expect(coordinator.latest?.insertion.status == .insertedVerified && capture.target?.value == "afresh recording wordsbc")
+        coordinator.close()
     }
     @Test func shortHoldCancelsBeforeMicrophoneAndHeldGestureStartsOnce() async {
         let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), history = GHistory()
@@ -3948,6 +3954,9 @@ private actor FortyOneBlockingResolver {
     let base=GTarget()
     var requiresGuardedPaste = false
     var exposesDirectWrite = false
+    var preparations = 0
+    var beforePreparation:(()throws->Void)?
+    func prepareForGuardedPaste() throws { preparations += 1; try validate(); try beforePreparation?() }
     var info:InsertionTargetInfo {base.info}
     var original:TargetTextState? {base.original}
     func validate() throws {try base.validate()}
@@ -5258,5 +5267,72 @@ extension GlobalCoordinatorTests {
         #expect(!diagnostic.contains("retained private fixture words"))
         #expect(c.latest?.cleaned=="retained private fixture words" && c.latest?.insertion.attempted==false)
         c.close()
+    }
+}
+
+extension BrowserInsertionTests {
+    @Test func emptyEditorFocusPreparationRevalidatesBeforePaste() throws {
+        var events:[String]=[],focused=false
+        try NativeEmptyEditorPreparation.prepare(required:true,validate:{events.append("validate")},focus:{events.append("focus");focused=true},isFocused:{events.append("confirmed");return focused})
+        #expect(events==["validate","focus","validate","confirmed"])
+        events=[]
+        try NativeEmptyEditorPreparation.prepare(required:false,validate:{events.append("validate")},focus:{Issue.record("Nonempty field must not be refocused")},isFocused:{Issue.record("No focus change needed");return false})
+        #expect(events==["validate"])
+    }
+    @Test func focusCannotProceedAfterTargetChangeOrDenial() {
+        var writes=0,validations=0
+        #expect(throws:TextTargetError.denied) {try NativeEmptyEditorPreparation.prepare(required:true,validate:{throw TextTargetError.denied},focus:{writes+=1},isFocused:{true})}
+        #expect(writes==0)
+        #expect(throws:TextTargetError.changed) {try NativeEmptyEditorPreparation.prepare(required:true,validate:{validations+=1;if validations==2 {throw TextTargetError.changed}},focus:{writes+=1},isFocused:{true})}
+        #expect(writes==1)
+        #expect(throws:TextTargetError.changed) {try NativeEmptyEditorPreparation.prepare(required:true,validate:{},focus:{},isFocused:{false})}
+    }
+    @Test func emptyValueCannotHideTextReportedByCharacterCount() {
+        #expect(NativeFieldTextReader.read(maximumBytes:64,value:{""},characterCount:{5},range:{_ in "hello"})=="hello")
+        #expect(NativeFieldTextReader.read(maximumBytes:64,value:{""},characterCount:{2},range:{_ in nil},attributedRange:{_ in "😀"})=="😀")
+        #expect(NativeFieldTextReader.read(maximumBytes:64,value:{""},characterCount:{5},range:{_ in "bad"})==nil)
+        #expect(NativeFieldTextReader.read(maximumBytes:64,value:{""},characterCount:{5},range:{_ in nil})==nil)
+        #expect(NativeFieldTextReader.read(maximumBytes:64,value:{""},characterCount:{0},range:{_ in Issue.record("Zero count needs no range");return nil})=="")
+        #expect(NativeFieldTextReader.read(maximumBytes:64,value:{""},characterCount:{nil},range:{_ in nil})=="")
+    }
+    @Test func focusPreparationFinishesBeforeClipboardPublication() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard();var prepared=false
+        target.requiresGuardedPaste=true;target.base.pasted="hello";target.beforePreparation={prepared=true}
+        clipboard.beforeSnapshot={#expect(prepared)}
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let result=await service.insert("hello",target:target,session:"s")
+        #expect(result.status == .insertedVerified && target.preparations==1 && target.base.pastes==1)
+    }
+    @Test func focusFailureLeavesClipboardAndFieldUntouched() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard();var snapshots=0
+        target.requiresGuardedPaste=true;target.beforePreparation={throw TextTargetError.changed};clipboard.beforeSnapshot={snapshots+=1}
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let result=await service.insert("hello",target:target,session:"s")
+        #expect(!result.attempted && snapshots==0 && clipboard.installed==0 && target.base.pastes==0 && target.base.unicodePosts==0)
+        #expect(service.failureExplanation?.contains("keyboard focus")==true)
+    }
+    @Test func clipboardRecoveryAllowsANewGestureButNeverReplaysOldDictation() async throws {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard(),clock=GClock()
+        target.requiresGuardedPaste=true;target.base.acknowledgePaste=false
+        let service=TextInsertionService(clipboard:clipboard,clock:clock)
+        let first=Task {await service.insert("old",target:target,session:"s")}
+        await clock.waitForSleep(1050);await clock.advance(2500);let uncertain=await first.value
+        #expect(uncertain.status == .dispatchedUnverified && target.base.pastes==1)
+        let recovery=try #require(service.pendingClipboardRecovery)
+        #expect(service.restoreAfterUserConfirmation(expectedRecoveryID:recovery.id) == .restored)
+        #expect(!service.hasPendingClipboard && target.base.pastes==1 && clipboard.text=="original")
+        target.base.acknowledgePaste=true;target.base.pasted="fresh"
+        let next=await service.insert("fresh",target:target,session:"s")
+        #expect(next.status == .insertedVerified && target.base.pastes==2 && target.base.unicodePosts==0 && !service.hasPendingClipboard)
+    }
+}
+
+extension BrowserInsertionTests {
+    @Test func cancelledFocusPreparationCannotPublishOrPaste() async {
+        let target=ClipboardFreeFixture(),clipboard=GClipboard()
+        target.requiresGuardedPaste=true;target.beforePreparation={throw CancellationError()}
+        let service=TextInsertionService(clipboard:clipboard,clock:GClock())
+        let result=await service.insert("hello",target:target,session:"s")
+        #expect(result.outcome == .cancelled && !result.attempted && clipboard.installed==0 && target.base.pastes==0)
     }
 }

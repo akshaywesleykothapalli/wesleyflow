@@ -108,6 +108,16 @@ import Foundation
             return .init(.unsupportedTarget,.unsupported)
         }
         guard pending == nil else { return .init(.denied,.clipboardPending,clipboardPending:true) }
+        if let native = target as? any ClipboardFreeInsertionTarget, native.requiresGuardedPaste {
+            do { try native.prepareForGuardedPaste() }
+            catch is CancellationError { return .init(.cancelled,.cancelled) }
+            catch {
+                failureExplanation = "The editor could not confirm keyboard focus. Click inside the intended text field and try a fresh Fn recording. This dictation remains in History; no paste was sent."
+                return Self.failure(error)
+            }
+            guard !Task.isCancelled else { return .init(.cancelled,.cancelled) }
+            guard await clock.now() < deadline else { return .init(.timedOut,.deadline) }
+        }
         let snapshot: ClipboardSnapshot, ownership: ClipboardOwnership
         do { snapshot = try clipboard.snapshot() }
         catch {

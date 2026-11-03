@@ -59,15 +59,33 @@ import Synchronization
     }
 }
 
+/// Establish focus only on the already bound editor, before touching the clipboard.
+@MainActor enum NativeEmptyEditorPreparation {
+    static func prepare(required:Bool,validate:()throws->Void,focus:()throws->Void,isFocused:()->Bool) throws {
+        try Task.checkCancellation()
+        try validate()
+        guard required else { return }
+        try Task.checkCancellation()
+        try focus()
+        try Task.checkCancellation()
+        try validate()
+        guard isFocused() else { throw TextTargetError.changed }
+    }
+}
+
 /// Alternate read-only text representations; never substitute a partial/truncated field.
 @MainActor enum NativeFieldTextReader {
     static func read(maximumBytes: Int, value: () -> String?, characterCount: () -> Int?, range: (Int) -> String?, attributedRange: (Int) -> String? = { _ in nil }, failure: (String) -> Void = { _ in }) -> String? {
         func reject(_ message: String) -> String? { failure(message); return nil }
         guard maximumBytes >= 0 else { return reject("Text inspection has an invalid size limit. No paste was attempted.") }
-        if let text = value() {
-            return text.utf8.count <= maximumBytes ? text : reject("The editor's text exceeds the supported size limit. No paste was attempted.")
+        let direct = value()
+        if let text = direct {
+            guard text.utf8.count <= maximumBytes else { return reject("The editor's text exceeds the supported size limit. No paste was attempted.") }
+            if !text.isEmpty { return text }
         }
-        guard let count = characterCount() else { return reject("The editor exposes neither a readable text value nor its character count. No paste was attempted. Copy from History.") }
+        let observedCount = characterCount()
+        if direct == "", observedCount == nil { return "" }
+        guard let count = observedCount else { return reject("The editor exposes neither a readable text value nor its character count. No paste was attempted. Copy from History.") }
         guard count >= 0, count <= maximumBytes else { return reject("The editor reports an invalid or oversized character count. No paste was attempted.") }
         // A successfully reported zero character count proves emptiness. Missing data does not.
         if count == 0 { return "" }
@@ -421,6 +439,21 @@ enum NativeEditorCapability {
         var range = CFRange(); let value = unsafeDowncast(raw,to:AXValue.self)
         guard AXValueGetType(value) == .cfRange, AXValueGetValue(value,.cfRange,&range),
               range.location == original.selection.location, range.length == original.selection.length else { throw TextTargetError.changed }
+    }
+    func prepareForGuardedPaste() throws {
+        try NativeEmptyEditorPreparation.prepare(required:requiresGuardedPaste && original?.text.isEmpty == true,validate:{ try self.validate() },focus:{
+            var writable = DarwinBoolean(false)
+            let status = AXUIElementIsAttributeSettable(self.element,kAXFocusedAttribute as CFString,&writable)
+            self.recordInsertion(.init(.target,.editorFocusWritable,status == .success && writable.boolValue ? .success : .unsupported,axError:status.rawValue))
+            guard status == .success, writable.boolValue else { throw TextTargetError.unsupported }
+            let result = AXUIElementSetAttributeValue(self.element,kAXFocusedAttribute as CFString,kCFBooleanTrue)
+            self.recordInsertion(.init(.target,.editorFocusRequested,result == .success ? .success : .failure,axError:result.rawValue))
+            guard result == .success else { throw TextTargetError.unsupported }
+        },isFocused:{
+            let focused = Self.attribute(self.element,kAXFocusedAttribute) as? Bool == true
+            self.recordInsertion(.init(.target,.editorFocusConfirmed,focused ? .success : .failure))
+            return focused
+        })
     }
     var requiresGuardedPaste:Bool { NativeEditorCapability.requiresGuardedPaste(application.bundleIdentifier) }
     func supportsClipboardFreeText(_ text:String)->Bool {
