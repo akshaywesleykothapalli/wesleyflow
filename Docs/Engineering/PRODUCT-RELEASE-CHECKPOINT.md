@@ -28,4 +28,10 @@ Origin was fetched successfully. At that snapshot main was 38 commits ahead and 
 
 A verification iteration failed only because two existing tests matched previous status wording (Conflict/sleeping/re-registered). Expectations were updated to the new product labels; their cancellation/no-late-result behavior assertions remain. The final full rerun passed. An initial read-only xcresult summary attempt needed permission for its database migration; the approved result read confirmed positive graphical-test counts. Earlier failed logs are preserved locally and are not counted as passing results.
 
-The tracked-file/history publication scan passed: 426 tracked files, 1370 history objects, zero issue categories. Installed handoff will be recorded after launch verification.
+The tracked-file/history publication scan passed: 426 tracked files, 1370 history objects, zero issue categories.
+
+## Installed handoff and push state
+
+Source checkpoint `4d0a1ab`. The first install stopped when the old app declined normal Quit; no force termination or overwrite was used. After the user reported closing it, installation resumed using the same verified prepared copy. Installed marketing version 1.0.0 / build 46 at `/Applications/Wesley Flow.app`; Info.plist verification, strict/deep signature verification and the 15-second launch observation passed. All saved preference values were preserved. Temporary signing/build app copies and the previous app backup were removed after successful launch; test reports remain under ignored local evidence. No real microphone, target editor or clipboard contents were automated/inspected during verification.
+
+The source and documentation are committed locally on main. No push, tag, release upload or hosted CI invocation was performed. The user can push the reviewed branch normally; Git protects against a non-fast-forward if origin changes after the earlier fetch. Historical test/engineering phase references remain intentionally separate from product-facing UI. Developer ID signing and notarization are still required for a public downloadable binary.
