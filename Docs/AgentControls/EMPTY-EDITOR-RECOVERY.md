@@ -20,4 +20,8 @@ The actor-checked package gate passed. The full native Xcode Debug suite passed 
 
 Tests cover focus/validation ordering, nonempty fields skipping refocus, denial/change/cancellation preventing publication, alternate range/attributed text for stale empty AXValue, malformed/partial/empty observations, and preparation before snapshot/install. A service regression proves recovery does not replay a failed paste and a later explicit insertion can succeed. The coordinator regression follows Fn refusal during pending recovery, explicit restoration, a new Fn recording, and verified delivery of only the new text. No microphone or external editor was automated; the user's reported Fn success refers to 45.0.18, not physical verification of this update.
 
-Installation results will be appended after launch verification.
+
+
+## Installed handoff
+
+Source commit `1fc06d2`. The initial installation stopped when the running app declined normal Quit; no overwrite or force termination was used. After the user reported closing it, installation resumed from the existing verified prepared copy. Installed 45.0.19 at `/Applications/Wesley Flow.app` with the existing explicit ad-hoc signing helper. Strict/deep signature verification and the 15-second launch observation passed. All preferences were preserved. Temporary signing/build/package copies and the previous app backup were removed after successful launch. No microphone or external editor was automated, and no real clipboard contents were inspected or modified by verification. Empty-field behavior on the actual sites remains physical user acceptance; use a fresh Fn recording after returning focus to the intended field.
