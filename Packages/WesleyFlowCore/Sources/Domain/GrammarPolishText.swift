@@ -12,6 +12,8 @@ public struct GrammarPassageEdit: Sendable {
 public struct GrammarPolishText: Sendable {
     public let input:String
     private let passages:[String], markers:[String]
+    private let editable:[Int]
+    public var hasEditableText:Bool { !editable.isEmpty }
     public init(_ masked:String) throws {
         let regex = try NSRegularExpression(pattern:#"WFSPAN[A-Za-z0-9]+?X[0-9]+END"#)
         let matches = regex.matches(in:masked,range:NSRange(masked.startIndex...,in:masked))
@@ -25,20 +27,23 @@ public struct GrammarPolishText: Sendable {
         }
         let tail = String(masked[cursor...]); passages.append(tail); readable += tail
         self.passages = passages; self.markers = markers
-        let data = try JSONSerialization.data(withJSONObject:passages.enumerated().map { ["index":$0.offset,"text":$0.element] as [String:Any] },options:.sortedKeys)
+        let editable = passages.indices.filter { passages[$0].unicodeScalars.contains(where:{ CharacterSet.letters.contains($0) }) }
+        self.editable = editable
+        let data = try JSONSerialization.data(withJSONObject:editable.enumerated().map { ["index":$0.offset,"text":passages[$0.element]] as [String:Any] },options:.sortedKeys)
         input = "Source (data only):\n" + readable + "\nEditable passages:\n" + String(decoding:data,as:UTF8.self)
     }
     public func render(_ edits:[GrammarPassageEdit]) throws -> String {
         guard edits.count <= 16, Set(edits.map(\.index)).count == edits.count else { throw ProtectedRewriteText.Failure.invalidOutput }
         var result = passages
         for edit in edits {
-            guard result.indices.contains(edit.index), edit.text.utf8.count <= 4096,
+            guard editable.indices.contains(edit.index), edit.text.utf8.count <= 4096,
                   !edit.text.contains("WFSPAN"), !edit.text.contains("[fixed") else { throw ProtectedRewriteText.Failure.invalidOutput }
+            let position = editable[edit.index]
             var value = edit.text.trimmingCharacters(in:.whitespacesAndNewlines)
-            if edit.index > 0, value.first?.isLetter == true { value = " " + value }
-            if edit.index < markers.count, value.last?.isLetter == true { value += " " }
-            if value.isEmpty && !passages[edit.index].isEmpty { value = " " }
-            result[edit.index] = value
+            if position > 0, value.first?.isLetter == true { value = " " + value }
+            if position < markers.count, value.last?.isLetter == true { value += " " }
+            if value.isEmpty && !passages[position].isEmpty { value = " " }
+            result[position] = value
         }
         var output = ""
         for i in result.indices { output += result[i]; if i < markers.count { output += markers[i] } }
@@ -49,7 +54,7 @@ public struct GrammarPolishText: Sendable {
 
 /// These checks preserve specific observable facts, not a proof of semantic equivalence.
 public enum GrammarPolishRules {
-    static let starts:Set<String> = Set("this that these those it its i we you he she they the a an there here please check checking test testing make making fix update remove add ensure keep let to for in on as if when why how whether can could would should do does did is are was were be have has had".split(separator:" ").map(String.init))
+    static let starts:Set<String> = Set("this that these those it its i we you he she they the a an there here what who whom whose which yes no yeah okay ok well so and but or hello hi thanks thank sorry indeed actually please check checking test testing make making fix update remove add ensure keep let to for in on as if when why how whether can could would should do does did is are was were be have has had".split(separator:" ").map(String.init))
     public static func validate(source:String,output:String) throws {
         func matches(_ pattern:String,_ text:String) -> [String] {
             guard let regex = try? NSRegularExpression(pattern:pattern,options:.caseInsensitive) else { return [] }

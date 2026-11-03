@@ -53,7 +53,7 @@ public extension NativeRewriteGenerating {
 
 @Generable struct NativeGrammarPassage { var index:Int; var text:String }
 @Generable struct NativeGrammarRewrite {
-    @Guide(description:"One or more whole rewritten passages, identified by editable passage index. At most one edit per index. For already clear text, return the same passage unchanged.", .minimumCount(1), .maximumCount(16))
+    @Guide(description:"Whole passages rewritten for clearer grammar and wording, identified by a supplied editable index. At most one edit per index. Keep text unchanged only when no faithful improvement is available.", .minimumCount(1), .maximumCount(16))
     var edits:[NativeGrammarPassage]
 }
 
@@ -74,16 +74,19 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
         guard kind == .polish && polishStyle == .grammar else { return try await generate(maskedText:maskedText,localeIdentifier:localeIdentifier,tone:tone,kind:kind) }
         guard SystemLanguageModel.default.isAvailable else { throw NativeRewriteDriverFailure.unavailable }
         let contract = try GrammarPolishText(maskedText)
+        guard contract.hasEditableText else { return maskedText }
         let lease = UUID(); try await FoundationGenerationLease.shared.claim(lease)
         do {
             try Task.checkCancellation()
             let instructions = """
             Improve spoken English grammar, clarity and wording in a \(tone.rawValue) tone. Rewrite sentences; do not merely copy-edit punctuation.
             Preserve every fact, name, number, code literal, speaker, intent, modality and negation. Do not invent details, actions or conclusions.
+            Preserve contrast expressed by but/however; do not silently change it into a temporal or causal relation.
             Preserve genuine negation (not, no, never, without and negative contractions), original tense and point of view.
             Redundant "or not" in an if/whether question may be omitted when the same question is preserved.
             Fixed placeholders are immutable. Rewrite only editable passages; never include fixed labels in replacement text.
-            Return edits by passage index, not token index. Supply the whole replacement passage for each index you edit. Leave unchanged passages out.
+            Consider every supplied prose passage for clearer grammar and wording. Return edits by passage index, not token index.
+            Supply the whole replacement passage for each index you edit. Prefer a faithful rephrasing over copying when wording can be clearer.
             Use natural sentences with correct punctuation. Do not add headings, explanations, greetings or new requirements.
             Awkward grammar is not a reason to abstain. Preserve ambiguous words and correct the surrounding syntax without guessing their meaning.
             Return at least one whole rewritten passage. If a passage cannot be improved faithfully, return that passage unchanged.

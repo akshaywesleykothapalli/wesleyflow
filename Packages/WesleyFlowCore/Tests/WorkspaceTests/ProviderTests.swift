@@ -900,7 +900,8 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
         print("AI_PROBE readiness=\(readiness.status.rawValue) explanation=\(readiness.explanation)")
         guard readiness.status == .ready else { print("AI_PROBE generation=notAttempted"); return }
         if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_GRAMMAR_ONLY"] == "1" {
-            let request = OfflineRewriteRequest(id:UUID().uuidString,text:"This is a checkup if it's working or not.",localeIdentifier:"en-IN",kind:.polish,polishStyle:.grammar)
+            let source = ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_GRAMMAR_GREETING"] == "1" ? "What happened? Yes, I'm checking in, but smoking." : "This is a checkup if it's working or not."
+            let request = OfflineRewriteRequest(id:UUID().uuidString,text:source,localeIdentifier:"en-IN",kind:.polish,polishStyle:.grammar)
             let result = await provider.rewrite(request)
             print("AI_PROBE grammar=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
             print("AI_PROBE syntheticCandidate=\(await diagnosticDriver.syntheticCandidate() ?? "notReturned")")
@@ -1205,5 +1206,30 @@ extension OfflineRewriteProviderTests {
         for pair in [("Do this or not.","Do this."),("If it works, do not delete it.","If it works, delete it."),("Check if it's working or not.","Check if it's not working."),("I don't know if it works or not.","I know if it works.")] {
             #expect(throws:(any Error).self) { try GrammarPolishRules.validate(source:pair.0,output:pair.1) }
         }
+    }
+}
+
+
+extension OfflineRewriteProviderTests {
+    @Test(arguments:["'","’"]) func grammarDoesNotLockCommonQuestionsAndResponsesAsNames(_ apostrophe:String) throws {
+        let source = "What happened? Yes, I\(apostrophe)m checking in, but smoking."
+        let protected = try ProtectedRewriteText(.init(id:"greeting",text:source,localeIdentifier:"en-IN",polishStyle:.grammar))
+        #expect(!protected.masked.contains("WFSPAN"))
+        let target = "What happened? Yes, I'm checking in, but I'm smoking."
+        try protected.validateRestored(target)
+        let literal = try ProtectedRewriteText(.init(id:"greeting-literal",text:source,localeIdentifier:"en-IN",vocabulary:["Yes"],polishStyle:.grammar))
+        #expect(literal.masked.contains("WFSPAN") && !literal.masked.contains("Yes"))
+    }
+    @Test func grammarIndexesOnlyNonemptyProseAndPreservesFixedBoundaries() throws {
+        let contract = try GrammarPolishText("WFSPANabcX0END needs to go WFSPANabcX1END.")
+        #expect(contract.hasEditableText)
+        let json = try #require(contract.input.components(separatedBy:"Editable passages:\n").last)
+        let rows = try #require(JSONSerialization.jsonObject(with:Data(json.utf8)) as? [[String:Any]])
+        #expect(rows.count == 1 && rows[0]["index"] as? Int == 0 && rows[0]["text"] as? String == " needs to go ")
+        #expect(try contract.render([.init(index:0,text:" must go ")]) == "WFSPANabcX0END must go WFSPANabcX1END.")
+        #expect(throws:(any Error).self) { _ = try contract.render([.init(index:1,text:"x")]) }
+        let fixed = try GrammarPolishText("WFSPANabcX0END.")
+        #expect(!fixed.hasEditableText)
+        #expect(try fixed.render([]) == "WFSPANabcX0END.")
     }
 }
