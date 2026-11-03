@@ -9,6 +9,7 @@ public struct PromptEngineeringContract: Sendable {
     private let rewriteSources:[ProtectedRewriteText]
     private let rewritePassages:[GrammarPolishText]
     private let rewriteMap:[(unit:Int,passage:Int)]
+    public var hasEditableProse:Bool { !rewriteMap.isEmpty }
     private struct UnitRewrite:Decodable { let index:Int; let edits:[GrammarPassageEdit] }
     private struct Plan: Decodable {
         let rewrites:[UnitRewrite]
@@ -46,7 +47,7 @@ public struct PromptEngineeringContract: Sendable {
         if allowRewriting {
             rewriteSources = try original.enumerated().map { index,text in
                 // Strip only an explicit request preamble, never an asserted fact or negation.
-                var prose = text.replacingOccurrences(of:#"(?i)^(?:I want (?:you )?to |I would like (?:you )?to |I'd like (?:you )?to |Please )"#,with:"",options:.regularExpression)
+                var prose = text.replacingOccurrences(of:#"(?i)^(?:I (?:want|wanted) (?:you )?to |I would like (?:you )?to |I'd like (?:you )?to |Please )"#,with:"",options:.regularExpression)
                 if let first = prose.first { prose = String(first).uppercased()+prose.dropFirst() }
                 let action = prose.split(whereSeparator:{ !$0.isLetter }).first.map(String.init) ?? ""
                 let actions:Set<String> = Set("check fix create implement build investigate inspect review compare summarize explain write add remove update return provide deliver report ensure keep preserve help".split(separator:" ").map(String.init))
@@ -55,7 +56,7 @@ public struct PromptEngineeringContract: Sendable {
             }
             rewritePassages = try rewriteSources.map { try GrammarPolishText($0.masked) }
             var mapping:[(unit:Int,passage:Int)] = [], editable:[[String:Any]] = []
-            for (unit,contract) in rewritePassages.enumerated() where !immutableUnits.contains(unit) {
+            for (unit,contract) in rewritePassages.enumerated() where !immutableUnits.contains(unit) && !contract.hasInteriorFixedSpan {
                 for (passage,text) in contract.editablePassages.enumerated() {
                     editable.append(["index":mapping.count,"text":text]); mapping.append((unit,passage))
                 }
@@ -103,7 +104,28 @@ public struct PromptEngineeringContract: Sendable {
         }
         guard section >= 0, body.count == lines.count else { throw ProtectedRewriteText.Failure.invalidOutput }
         if rewriteSources.isEmpty { guard body == lines else { throw ProtectedRewriteText.Failure.invalidOutput } }
-        else { for i in lines.indices where body[i] != lines[i] { guard !immutableUnits.contains(i) else { throw ProtectedRewriteText.Failure.invalidOutput }; try rewriteSources[i].validateRestored(body[i]) } }
+        else {
+            for i in lines.indices where body[i] != lines[i] {
+                guard !immutableUnits.contains(i) else { throw ProtectedRewriteText.Failure.invalidOutput }
+                if rewritePassages[i].hasInteriorFixedSpan {
+                    let normalized = try rewriteSources[i].restoreAndValidate(rewriteSources[i].masked)
+                    guard body[i] == normalized else { throw ProtectedRewriteText.Failure.invalidOutput }
+                }
+                try rewriteSources[i].validateRestored(body[i])
+                try Self.validateNoNewRepeatedPhrase(source:lines[i],output:body[i])
+            }
+        }
+    }
+    private static func validateNoNewRepeatedPhrase(source:String,output:String) throws {
+        func phrases(_ text:String) throws -> [String:Int] {
+            let regex = try NSRegularExpression(pattern:#"[\p{L}\p{N}]+"#)
+            let words = regex.matches(in:text,range:NSRange(text.startIndex...,in:text)).map { (text as NSString).substring(with:$0.range).lowercased() }
+            var counts:[String:Int] = [:]
+            if words.count >= 4 { for i in 0...(words.count-4) { counts[words[i..<i+4].joined(separator:" "),default:0] += 1 } }
+            return counts
+        }
+        let original = try phrases(source), rewritten = try phrases(output)
+        guard rewritten.allSatisfy({ $0.value <= max(1,original[$0.key,default:0]) }) else { throw ProtectedRewriteText.Failure.invalidOutput }
     }
     public func render(_ output:String) throws -> String {
         guard output.utf8.count <= 4096, !output.contains("\\") else { throw ProtectedRewriteText.Failure.invalidOutput }
@@ -134,12 +156,17 @@ public struct PromptEngineeringContract: Sendable {
         let plan = try JSONDecoder().decode(Plan.self,from:Data(output.utf8))
         guard plan.rewrites.count <= 16, Set(plan.rewrites.map(\.index)).count == plan.rewrites.count else { throw ProtectedRewriteText.Failure.invalidOutput }
         var prose = lines
+        for i in rewriteSources.indices where !immutableUnits.contains(i) {
+            prose[i] = try rewriteSources[i].restoreAndValidate(rewriteSources[i].masked)
+        }
         for rewrite in plan.rewrites {
             guard rewritePassages.indices.contains(rewrite.index) else { throw ProtectedRewriteText.Failure.invalidOutput }
-            let candidate = try rewritePassages[rewrite.index].render(rewrite.edits)
+            guard !rewritePassages[rewrite.index].hasInteriorFixedSpan || rewrite.edits.isEmpty else { throw ProtectedRewriteText.Failure.invalidOutput }
+            let candidate = try rewritePassages[rewrite.index].render(rewrite.edits,allowNewSentenceBoundary:false)
             let restored = try rewriteSources[rewrite.index].restoreAndValidate(candidate)
             guard !restored.contains("\n"), !restored.contains("\r") else { throw ProtectedRewriteText.Failure.invalidOutput }
             guard !immutableUnits.contains(rewrite.index) || restored == lines[rewrite.index] else { throw ProtectedRewriteText.Failure.invalidOutput }
+            try Self.validateNoNewRepeatedPhrase(source:lines[rewrite.index],output:restored)
             prose[rewrite.index] = restored
         }
         let sections = [("Objective",plan.objective),("Context",plan.context),("Requirements",plan.requirements),("Constraints",plan.constraints),("Expected output",plan.expectedOutput)]

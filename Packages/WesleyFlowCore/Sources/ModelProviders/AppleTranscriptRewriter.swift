@@ -104,7 +104,7 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
             The app owns source order, requested action verbs, explicit constraints and section headings. Keep the request actionable; do not turn it into a statement of the problem. Return edits only for the supplied editablePassages, using their global indices. Supply the whole replacement passage, not a partial phrase.
             Improve grammar, remove conversational request phrasing and clarify what is being requested. Preserve every supplied fact, name, number, constraint, negation, modality, tense and ambiguity.
             Do not invent requirements, solutions, technologies, commands or deliverables. Do not answer the request. Do not add generic testing, best-practice or explanation requirements unless supplied.
-            Never include fixed labels, headings, newlines or extra commentary in edits. Fixed placeholders are immutable and reconstructed by the app. Leave already clear passages out.
+            Edit only the words in the selected passage. Do not copy the whole source sentence, another passage, or words on the other side of a fixed placeholder. Do not end a sentence immediately before a fixed placeholder. Never include fixed labels, headings, newlines or extra commentary in edits. Fixed placeholders are immutable and reconstructed by the app. Leave already clear passages out.
             """
         } else { instructions = """
         \(tone.instruction)
@@ -184,6 +184,15 @@ public actor AppleTranscriptRewriter: OfflineTranscriptRewriting, OfflineRewrite
         catch { active = nil; return .init(error is ProtectedRewriteText.Failure && (error as? ProtectedRewriteText.Failure) == .unsupportedLanguage ? .modelUnavailable : .invalidOutput,text:request.text,reason:"input-or-language") }
         guard request.localeIdentifier.lowercased().replacingOccurrences(of:"_",with:"-").split(separator:"-").first == "en" else {
             active = nil; return .init(.modelUnavailable,text:request.text,reason:"unsupported-language")
+        }
+        if let prompt, !prompt.hasEditableProse {
+            active = nil
+            guard !Task.isCancelled else { return .init(.cancelled,text:request.text) }
+            do {
+                let text = try prompt.render(#"{"edits":[]}"#)
+                try prompt.validateRendered(text)
+                return .init(text == request.text ? .unchanged : .rewritten,text:text,reason:"prompt-structure-only")
+            } catch { return .init(.invalidOutput,text:request.text,reason:"output-contract") }
         }
         let readiness = await generator.readiness(localeIdentifier:request.localeIdentifier)
         guard !cancelled, !Task.isCancelled else { active = nil; return .init(.cancelled,text:request.text) }

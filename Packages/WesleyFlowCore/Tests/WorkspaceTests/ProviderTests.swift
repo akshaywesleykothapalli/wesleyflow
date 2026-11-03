@@ -926,7 +926,7 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
             return
         }
         if ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_PROMPT_ONLY"] == "1" {
-            let request = OfflineRewriteRequest(id:UUID().uuidString,text:"I want you to check the save button because it is not working.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
+            let request = OfflineRewriteRequest(id:UUID().uuidString,text:ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_PROMPT_ANIMATED"] == "1" ? "I wanted to add an animated UI button for this application." : "I want you to check the save button because it is not working.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
             let result = await provider.rewrite(request)
             print("AI_PROBE prompt=\(result.status.rawValue) reason=\(result.reason) elapsedMs=\(result.elapsedMilliseconds)")
             print("AI_PROBE resources=\(await memory.summary())")
@@ -934,7 +934,7 @@ private actor NativeRewriteProbeMemory: InferenceMemorySource {
             else { #expect(result.text == request.text) }
             print("AI_PROBE syntheticPromptCandidate=\(await diagnosticDriver.syntheticCandidate() ?? "notReturned")")
             #expect(result.status == .rewritten)
-            if result.status == .rewritten { #expect(!result.text.contains("I want you to") && result.text.contains("Check") && result.text.contains("Keep the current layout.") && result.text.contains("not")) }
+            if result.status == .rewritten && ProcessInfo.processInfo.environment["WESLEY_NATIVE_AI_PROMPT_ANIMATED"] != "1" { #expect(!result.text.contains("I want you to") && result.text.contains("Check") && result.text.contains("Keep the current layout.") && result.text.contains("not")) }
             return
         }
         let request = OfflineRewriteRequest(id:UUID().uuidString,text:"um please check the save button and tell me what you find",localeIdentifier:"en-IN")
@@ -1254,9 +1254,44 @@ extension OfflineRewriteProviderTests {
         let request = OfflineRewriteRequest(id:"fixed-prompt",text:"Please check WidgetID for 25 users.",localeIdentifier:"en-IN",vocabulary:["WidgetID"],kind:.promptEngineering)
         let contract = try PromptEngineeringContract(request,allowRewriting:true)
         let plan = #"{"objective":[0],"context":[],"requirements":[],"constraints":[],"expectedOutput":[],"rewrites":[{"index":0,"edits":[{"index":0,"text":"for"}]}]}"#
-        let output = try contract.render(plan)
+        #expect(!contract.hasEditableProse)
+        let output = try contract.render(#"{"edits":[]}"#)
         #expect(output.contains("WidgetID") && output.contains("25") && output.contains("Check"))
         try contract.validateRendered(output)
         #expect(throws:(any Error).self) { _ = try contract.render(plan.replacingOccurrences(of:"for",with:"WFSPANinjectedX0END")) }
+    }
+}
+
+extension OfflineRewriteProviderTests {
+    @Test func animatedPromptNormalizesRequestAndRetainsUIExactlyOnce() throws {
+        let source="I wanted to add an animated UI button for this application."
+        let contract=try PromptEngineeringContract(.init(id:"animated",text:source,localeIdentifier:"en-IN",kind:.promptEngineering),allowRewriting:true)
+        let output=try contract.render(#"{"edits":[]}"#)
+        #expect(!contract.hasEditableProse)
+        #expect(output == "## Objective\nAdd an animated UI button for this application.")
+        try contract.validateRendered(output)
+        #expect(throws:(any Error).self) { _ = try contract.render(#"{"edits":[{"index":0,"text":"an animated"}]}"#) }
+        #expect(throws:(any Error).self) { _ = try contract.render(#"{"edits":[{"index":0,"text":"an animated button for this application."}]}"#) }
+        #expect(throws:(any Error).self) { _ = try contract.render(#"{"edits":[{"index":0,"text":"an animated button for this application"}]}"#) }
+        #expect(throws:(any Error).self) { try contract.validateRendered("## Objective\nAdd an animated button for this application.UI button for this application.") }
+    }
+    @Test func promptRejectsNewRepeatedPhrasesButPreservesIntentionalSourceRepetition() throws {
+        let request=OfflineRewriteRequest(id:"repeat",text:"Check the save button for this application.",localeIdentifier:"en-IN",kind:.promptEngineering)
+        let c=try PromptEngineeringContract(request,allowRewriting:true)
+        #expect(throws:(any Error).self) { _ = try c.render(#"{"edits":[{"index":0,"text":"the save button for this application, the save button for this application."}]}"#) }
+        let repeated=try PromptEngineeringContract(.init(id:"intentional",text:"Check the save button again, check the save button again.",localeIdentifier:"en-IN",kind:.promptEngineering),allowRewriting:true)
+        try repeated.validateRendered(repeated.render(#"{"edits":[]}"#))
+    }
+}
+
+extension OfflineRewriteProviderTests {
+    @Test func protectedUIPromptIsStructuredWithoutInvokingAI() async {
+        let driver=RewriteTestGenerator()
+        await driver.configure(available:false)
+        let provider=AppleTranscriptRewriter(memory:UnavailableMemoryCounters(),clock:RewriteTestClock(),generator:driver)
+        let result=await provider.rewrite(.init(id:"no-fragment-model",text:"I wanted to add an animated UI button for this application.",localeIdentifier:"en-IN",kind:.promptEngineering))
+        #expect(result.status == .rewritten && result.reason == "prompt-structure-only")
+        #expect(result.text == "## Objective\nAdd an animated UI button for this application.")
+        #expect(await driver.calls == 0)
     }
 }

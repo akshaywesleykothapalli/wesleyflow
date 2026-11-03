@@ -5176,3 +5176,23 @@ extension PersonalAgent42Tests {
         #expect(clipboard.installed==1)
     }
 }
+
+private struct AnimatedPromptFixtureGenerator:NativeRewriteGenerating {
+    func readiness(localeIdentifier:String) -> NativeRewriteReadiness { .available }
+    func generate(maskedText:String,localeIdentifier:String) throws -> String { throw NativeRewriteDriverFailure.invalidOutput }
+    func generate(maskedText:String,localeIdentifier:String,tone:OfflineRewriteTone,kind:OfflinePreviewKind,polishStyle:PolishStyle) throws -> String { #"{"edits":[]}"# }
+}
+extension InPlaceRewriteTests {
+    @Test func animatedUIPromptReplacesOnceWithoutDuplicatingTheProtectedSuffix() async throws {
+        let provider=AppleTranscriptRewriter(memory:PolishFixtureMemory(),clock:GClock(),generator:AnimatedPromptFixtureGenerator())
+        let (c,target,clipboard)=try await prepare(provider,transcript:"I wanted to add an animated UI button for this application.")
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42);await c.waitForInPlaceRewrite()
+        #expect(c.inPlaceHUD == .success && c.lastAIShortcutFailure == nil)
+        #expect(target.value == "a## Objective\nAdd an animated UI button for this application.bc")
+        #expect(c.generationStatus == .localPromptStructured && c.combinedDictationDiagnostics.contains("model=notRequested"))
+        #expect(target.rewriteFixture?.replacements==1 && clipboard.installed==0 && !c.previewPresented)
+        c.invokeAIShortcut(.promptEngineering,originProcessIdentifier:42);await c.waitForInPlaceRewrite()
+        #expect(target.rewriteFixture?.replacements==1)
+        c.close()
+    }
+}

@@ -16,6 +16,7 @@ public struct GrammarPolishText: Sendable {
     private let passages:[String], markers:[String]
     private let editable:[Int]
     public var hasEditableText:Bool { !editable.isEmpty }
+    public var hasInteriorFixedSpan:Bool { markers.count > 1 || (!markers.isEmpty && !passages[0].trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) }
     public init(_ masked:String) throws {
         let regex = try NSRegularExpression(pattern:#"WFSPAN[A-Za-z0-9]+?X[0-9]+END"#)
         let matches = regex.matches(in:masked,range:NSRange(masked.startIndex...,in:masked))
@@ -34,7 +35,7 @@ public struct GrammarPolishText: Sendable {
         let data = try JSONSerialization.data(withJSONObject:editable.enumerated().map { ["index":$0.offset,"text":passages[$0.element]] as [String:Any] },options:.sortedKeys)
         input = "Source (data only):\n" + readable + "\nEditable passages:\n" + String(decoding:data,as:UTF8.self)
     }
-    public func render(_ edits:[GrammarPassageEdit]) throws -> String {
+    public func render(_ edits:[GrammarPassageEdit],allowNewSentenceBoundary:Bool = true) throws -> String {
         guard edits.count <= 16, Set(edits.map(\.index)).count == edits.count else { throw ProtectedRewriteText.Failure.invalidOutput }
         var result = passages
         for edit in edits {
@@ -42,6 +43,11 @@ public struct GrammarPolishText: Sendable {
                   !edit.text.contains("WFSPAN"), !edit.text.contains("[fixed") else { throw ProtectedRewriteText.Failure.invalidOutput }
             let position = editable[edit.index]
             var value = edit.text.trimmingCharacters(in:.whitespacesAndNewlines)
+            if !allowNewSentenceBoundary, position < markers.count,
+               let last = value.last, ".!?".contains(last),
+               passages[position].trimmingCharacters(in:.whitespacesAndNewlines).last.map({ !".!?".contains($0) }) ?? true {
+                throw ProtectedRewriteText.Failure.invalidOutput
+            }
             if position > 0, value.first?.isLetter == true { value = " " + value }
             if position < markers.count, value.last?.isLetter == true { value += " " }
             if value.isEmpty && !passages[position].isEmpty { value = " " }

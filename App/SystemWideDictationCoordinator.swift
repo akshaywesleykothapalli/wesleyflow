@@ -138,6 +138,7 @@ import VoiceInput
         case featureDisabled = "AI_FEATURE_DISABLED", settingsConflict = "SETTINGS_CONFLICT"
         case clipboardPending = "CLIPBOARD_RECOVERY_PENDING", inputRejected = "AI_INPUT_REJECTED"
         case generationCancelled = "GENERATION_CANCELLED"
+        case localPromptStructured = "LOCAL_PROMPT_STRUCTURED"
         case apiAdvertised = "REPLACEMENT_API_ADVERTISED", generationRequested = "GENERATION_REQUESTED", generationCompleted = "GENERATION_COMPLETED"
     }
     @Published private(set) var deliveryStatus:CrossAppStatus = .notRequested
@@ -523,9 +524,10 @@ import VoiceInput
                 self.rejectInPlace(kind,.sourceChanged,self.rewriteEligibility); return
             }
             self.traceRoute(kind,.generationReturned)
-            self.generationStatus = .generationCompleted
-            self.verificationModelState = result.status.rawValue
-            self.verificationDetail += " · model=" + result.status.rawValue
+            let structureOnly = result.reason == "prompt-structure-only"
+            self.generationStatus = structureOnly ? .localPromptStructured : .generationCompleted
+            self.verificationModelState = structureOnly ? "notRequested" : result.status.rawValue
+            self.verificationDetail += " · model=" + self.verificationModelState + (structureOnly ? " · prompt=LOCAL_STRUCTURE" : "")
             if let block = result.resourceBlock { self.verificationDetail += " · " + block.diagnostic }
             guard result.status == .rewritten || result.status == .unchanged else {
                 switch result.status {
