@@ -211,8 +211,13 @@ import VoiceInput
         FlowPage {
             Text("Hold \(coordinator.preferences.agentKey.label) for Agent commands; hold \(coordinator.preferences.activationKey.label) for dictation. Speak Agent commands in English. Language commands change your next dictation.").foregroundStyle(.secondary)
             FlowSettingsGroup("Command key") {
-                FlowSettingsRow(coordinator.preferences.agentKey.label,description:coordinator.agentShortcutStatus) {
+                FlowSettingsRow("Enable command key",description:coordinator.agentShortcutStatus) {
                     Toggle("Enable command key",isOn:Binding(get:{coordinator.preferences.agentHotkeyEnabled},set:{ if $0 {coordinator.enableAgentShortcut()} else {coordinator.disableAgentShortcut()} })).disabled(coordinator.busy)
+                }
+                FlowSettingsRow("Agent key",description:"Choose a key separate from dictation.") {
+                    Picker("Agent key",selection:Binding(get:{ coordinator.preferences.agentKey },set:{ coordinator.changeAgentKey($0) })) {
+                        ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) }
+                    }.pickerStyle(.menu).disabled(coordinator.busy)
                 }
             }
             Text(coordinator.agentNotice).font(.callout).foregroundStyle(coordinator.phase == .error ? .orange : .secondary)
@@ -227,9 +232,7 @@ import VoiceInput
                     FlowCommandHelpRow(command:example,explanation:Self.macCommandHelp[example] ?? "")
                 }
             }
-            Text("Hold the command key, say one command, then release. Commands are listed for reference; Mac actions use existing permissions.").font(.caption).foregroundStyle(.secondary)
             Text("Speak normally with the separate Agent key. Installed apps can be opened or normally quit. Google/YouTube searches open in your default browser. Music controls the existing player. Messages require a final recipient and text confirmation.").font(FlowTypography.secondary).foregroundStyle(.secondary)
-            Text(coordinator.agentShortcutStatus).font(.caption).foregroundStyle(.secondary)
             if let failure=coordinator.lastAgentFailure {
                 Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
                 Button("Copy command speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
@@ -470,17 +473,18 @@ import VoiceInput
             }
             FlowSettingsGroup("Text cleanup") {
                 FlowSettingsRow("Clean up spacing") { Toggle("Clean up spacing",isOn:$coordinator.preferences.spacingCleanup) }
-                FlowSettingsRow("Fix spelling and common typos",description:"Protected dictionary terms are preserved.") { Toggle("Fix spelling and common typos",isOn:$coordinator.preferences.formatting.correctSpelling) }
+                FlowSettingsRow("Fix spelling and common typos") { Toggle("Fix spelling and common typos",isOn:$coordinator.preferences.formatting.correctSpelling) }
                 FlowSettingsRow("Smart typography",description:"Recognize spoken quotes and em dashes.") { Toggle("Smart typography",isOn:$coordinator.preferences.formatting.smartTypography) }
                 FlowSettingsRow("Spoken punctuation") { Toggle("Spoken punctuation",isOn:$coordinator.preferences.formatting.spokenPunctuation) }
                 FlowSettingsRow("Capitalize sentence starts") { Toggle("Capitalize sentence starts",isOn:$coordinator.preferences.formatting.sentenceCapitalization) }
                 FlowSettingsRow("Remove filler words",description:"Removes isolated um, uh and erm.") { Toggle("Remove filler words",isOn:$coordinator.preferences.formatting.removeFillers) }
-                FlowSettingsRow("Collapse repeated fillers") { Toggle("Collapse repeated fillers",isOn:$coordinator.preferences.formatting.removeRepeatedFillers).disabled(coordinator.preferences.formatting.removeFillers) }
+                if !coordinator.preferences.formatting.removeFillers {
+                    FlowSettingsRow("Collapse repeated fillers") { Toggle("Collapse repeated fillers",isOn:$coordinator.preferences.formatting.removeRepeatedFillers) }
+                }
                 FlowSettingsRow("Explicit self corrections",description:"Recognize phrases such as ‘scratch that’; ambiguous wording is preserved.") { Toggle("Handle explicit self corrections",isOn:$coordinator.preferences.formatting.handleSelfCorrections) }
             }
             DisclosureGroup("Troubleshooting") {
                 FlowSettingsRow("Shortcut registration",description:coordinator.previewShortcutStatus) { Button("Retry") { coordinator.configurePreviewShortcuts() }.disabled(!coordinator.preferences.previewShortcutsEnabled) }
-                FlowSettingsRow("Diagnostics",description:"Copies status and error codes without your dictated text or audio.") { Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed) }
             }
         }
     }
@@ -515,7 +519,7 @@ import VoiceInput
                     }.pickerStyle(.menu).disabled(coordinator.busy)
                 }
             }
-                FlowSettingsRow("Hold to talk",description:"Native modifier choices; chords cancel rather than steal typing.") { Picker("Hold-to-talk key",selection:Binding(get:{ coordinator.preferences.activationKey },set:{ coordinator.changeActivationKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy) }
+                FlowSettingsRow("Hold to talk",description:"Choose the key to hold while dictating.") { Picker("Hold-to-talk key",selection:Binding(get:{ coordinator.preferences.activationKey },set:{ coordinator.changeActivationKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy) }
                 FlowSettingsRow("Hold-to-talk dictation") { Button(coordinator.shortcutEnabled ? "Disable" : "Enable") { if coordinator.shortcutEnabled { coordinator.disableShortcut() } else { coordinator.enableShortcut() } }.accessibilityLabel(coordinator.shortcutEnabled ? "Disable hold-to-talk dictation" : "Enable hold-to-talk dictation") }
         }.task(id:[coordinator.preferences.languageMode.rawValue,coordinator.preferences.teluguRecognitionLanguage.rawValue]) {
             await coordinator.prepareSelectedLanguage()
@@ -523,10 +527,10 @@ import VoiceInput
     }
     private var generalPage: some View {
         FlowPage {
+            languageSettings
             if let speakers = coordinator.speakers {
                 SpeakerSettingsView(settings:speakers,dictationBusy:coordinator.busy)
             }
-            languageSettings
             FlowSettingsGroup("Appearance & startup") {
                 FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
                 if loginItem.status == .requiresApproval { FlowSettingsRow("Login approval") { Button("Open Login Items") { loginItem.openSettings() } } }
@@ -543,13 +547,7 @@ import VoiceInput
             }
             FlowSettingsGroup("History") {
                 FlowSettingsRow("Save dictation history on this Mac") { Toggle("Save dictation history on this Mac",isOn:$coordinator.preferences.keepHistory) }
-                FlowSettingsRow("Saved dictations",description:"Raw/cleaned text, app name, duration and outcome. Up to 2,000 entries /100 MiB; disabling does not delete saved entries.") { Button("Clear all history…",role:.destructive) { confirmClear = true }.disabled(coordinator.busy || coordinator.entries.isEmpty) }
-            }
-            FlowSettingsGroup("Command Mode") {
-                FlowSettingsRow("Enable Agent shortcut",description:coordinator.agentShortcutStatus) { Toggle("Enable Agent shortcut",isOn:Binding(get:{ coordinator.preferences.agentHotkeyEnabled },set:{ if $0 { coordinator.enableAgentShortcut() } else { coordinator.disableAgentShortcut() } })).disabled(coordinator.busy) }
-                FlowSettingsRow("Agent key",description:"Separate from the dictation key.") {
-                    Picker("Agent key",selection:Binding(get:{ coordinator.preferences.agentKey },set:{ coordinator.changeAgentKey($0) })) { ForEach(DictationActivationKey.allCases,id:\.self) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(coordinator.busy)
-                }
+                FlowSettingsRow("Saved dictations",description:"Turning off history keeps existing entries.") { Button("Clear all history…",role:.destructive) { confirmClear = true }.disabled(coordinator.busy || coordinator.entries.isEmpty) }
             }
             DisclosureGroup("Troubleshooting") { advancedSpeechSettings.padding(.top,12) }
             FlowSettingsGroup("About") {
@@ -752,7 +750,7 @@ private enum FlowSurface {
                 Group(subviews:content) { rows in
                     ForEach(Array(rows.enumerated()),id:\.element.id) { index,row in
                         row
-                        if Self.hasSeparator(index:index,count:rows.count) { Divider().padding(.leading,14) }
+                        if Self.hasSeparator(index:index,count:rows.count) { Divider() }
                     }
                 }
             }.background(FlowSurface.card,in:RoundedRectangle(cornerRadius:12))
