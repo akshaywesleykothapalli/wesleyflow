@@ -217,6 +217,8 @@ final class AudioIngress: Sendable {
         self.uptime = uptime; self.exclusiveCapture = exclusiveCapture
     }
 
+    public weak var speakerCapture: SpeakerCapture?
+
     public func start(localeIdentifier: String, receive: @escaping @MainActor @Sendable (DictationEvent) -> Void) async throws -> DictationInfo {
         try await startSession(localeIdentifier:localeIdentifier,fastAgent:false,receive:receive)
     }
@@ -396,7 +398,7 @@ final class AudioIngress: Sendable {
         let format = audio.inputNode.outputFormat(forBus: 0)
         guard let ingress else { throw DictationFailure.audioUnavailable }
         let meter = AudioLevelMailbox(); self.meter = meter
-        audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format, block: NativeSpeechCallbacks.tap(ingress,meter:meter))
+        audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format, block: NativeSpeechCallbacks.tap(ingress,meter:meter,speaker:speakerCapture?.prepare(format:format)))
         tapInstalled = true
         let onConfiguration: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor [weak self] in self?.fail(.audioUnavailable, id:id,stage:.audioConfiguration) }

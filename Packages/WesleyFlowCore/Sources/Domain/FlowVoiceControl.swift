@@ -2,13 +2,13 @@ import Foundation
 
 /// Explicit app-local commands. Whole utterances only; never parsed from dictated text,
 /// pending message bodies, model-generated output or saved executable plans.
-public enum FlowControlDestination: String, Sendable { case settings, dictation, history, dictionary, formatting, commands }
+public enum FlowControlDestination: String, Sendable { case settings, dictation, history, formatting, commands }
 public enum FlowVoiceControl: Equatable, Sendable {
     case language(DictationLanguageMode, TeluguRecognitionLanguage?)
     case navigate(FlowControlDestination)
     case saveHistory(Bool)
     case spacing(Bool)
-    public static let examples = ["Switch dictation to English", "Switch dictation to Telugu only", "Use automatic Telugu and English", "Open dictation settings", "Show dictation history", "Open my dictionary", "Open smart formatting", "Stop saving dictation history", "Save dictation history", "Turn on spacing cleanup"]
+    public static let examples = ["Switch dictation to English", "Switch dictation to Telugu only", "Use automatic Telugu and English", "Open dictation settings", "Show dictation history", "Open smart formatting", "Stop saving dictation history", "Save dictation history", "Turn on spacing cleanup"]
     public static func parse(_ original:String) -> Self? {
         guard original.utf8.count <= 512, !original.contains("\n"), !original.contains("\r") else { return nil }
         let text = PersonalAgentDialogue.canonical(original).split(whereSeparator:{$0.isWhitespace}).joined(separator:" ").lowercased()
@@ -19,7 +19,6 @@ public enum FlowVoiceControl: Equatable, Sendable {
             (.navigate(.settings),["open dictation settings","show dictation settings","open language settings"]),
             (.navigate(.dictation),["show dictation","open dictation"]),
             (.navigate(.history),["show dictation history","open dictation history","show my dictation history"]),
-            (.navigate(.dictionary),["open my dictionary","open dictation dictionary","show my dictionary"]),
             (.navigate(.formatting),["open smart formatting","show smart formatting","open shortcut settings"]),
             (.navigate(.commands),["show agent commands","open command mode"]),
             (.saveHistory(false),["stop saving dictation history","disable dictation history","turn off dictation history"]),
@@ -37,7 +36,6 @@ public enum FlowVoiceControl: Equatable, Sendable {
         case .navigate(.settings): "Open language, microphone and key settings."
         case .navigate(.dictation): "Show the dictation page."
         case .navigate(.history): "Show saved dictations."
-        case .navigate(.dictionary): "Show your vocabulary and replacements."
         case .navigate(.formatting): "Show formatting shortcuts and their status."
         case .navigate(.commands): "Show this command reference."
         case .saveHistory(true): "Save future dictations on this Mac."
@@ -54,7 +52,6 @@ public enum FlowVoiceControl: Equatable, Sendable {
         case .navigate(.settings): "Opened dictation settings."
         case .navigate(.dictation): "Opened Dictation."
         case .navigate(.history): "Opened dictation history."
-        case .navigate(.dictionary): "Opened your dictionary."
         case .navigate(.formatting): "Opened Smart Formatting and shortcut status."
         case .navigate(.commands): "Opened Agent commands."
         case .saveHistory(true): "New dictations will be saved on this Mac."

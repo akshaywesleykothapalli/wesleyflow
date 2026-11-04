@@ -170,16 +170,18 @@ public struct DictationHistoryEntry: Identifiable, Codable, Equatable, Sendable 
     public let sourceApplication: String?
     public let durationMilliseconds: Int64
     public let insertion: TextInsertionReceipt
+    public let speaker: DictationSpeakerLabel?
     public var wordCount: Int { cleaned.split(whereSeparator: { $0.isWhitespace }).count }
     public var characterCount: Int { cleaned.count }
-    public init(id: String, timestamp: Date, raw: String, cleaned: String, sourceApplication: String?, durationMilliseconds: Int64, insertion: TextInsertionReceipt) {
+    public init(id: String, timestamp: Date, raw: String, cleaned: String, sourceApplication: String?, durationMilliseconds: Int64, insertion: TextInsertionReceipt, speaker: DictationSpeakerLabel? = nil) {
         self.id = id; self.timestamp = timestamp; self.raw = raw; self.cleaned = cleaned
-        self.sourceApplication = sourceApplication; self.durationMilliseconds = durationMilliseconds; self.insertion = insertion
+        self.sourceApplication = sourceApplication; self.durationMilliseconds = durationMilliseconds; self.insertion = insertion; self.speaker = speaker
     }
     public func validate() throws {
         guard UUID(uuidString:id) != nil, timestamp.timeIntervalSince1970.isFinite, raw.utf8.count <= DictationText.maximumBytes,
               cleaned.utf8.count <= DictationText.maximumBytes, (sourceApplication?.utf8.count ?? 0) <= 256,
               (0...DictationText.maximumDurationMilliseconds).contains(durationMilliseconds) else { throw DictationHistoryFailure.invalidEntry }
+        if let speaker, !SpeakerProfile.validName(speaker.name) { throw DictationHistoryFailure.invalidEntry }
         if insertion.outcome == .inserted && (!insertion.attempted || insertion.reason != .verified) { throw DictationHistoryFailure.invalidEntry }
     }
 }

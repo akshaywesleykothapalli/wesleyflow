@@ -62,29 +62,41 @@ final class TeluguAudioRing: @unchecked Sendable {
 struct TeluguUtteranceSegmenter {
     private var pending:[Float] = [], preroll:[Float] = [], utterance:[Float] = []
     private var voiced = 0, silence = 0
+    private var consumedFrames: Int64 = 0, utteranceStart: Int64 = 0
     private(set) var gatedSamples = 0
     mutating func append(_ samples: [Float], final: Bool = false) -> [[Float]] {
+        appendTimed(samples, final: final).map(\.samples)
+    }
+
+    mutating func appendTimed(_ samples: [Float], final: Bool = false) -> [SpeakerAudioSegment] {
         pending += samples
-        var output:[[Float]] = [], cursor = 0
+        var output: [SpeakerAudioSegment] = []
+        var cursor = 0
         while pending.count - cursor >= 320 || (final && cursor < pending.count) {
-            let end = min(cursor + 320,pending.count), frame = Array(pending[cursor..<end]); cursor = end
+            let end = min(cursor + 320,pending.count), frame = Array(pending[cursor..<end])
+            let frameStart = consumedFrames + Int64(cursor)
+            cursor = end
             let energy = frame.reduce(0.0) { $0 + Double($1)*Double($1) } / Double(frame.count)
             let speech = energy > 0.000025 // RMS > 0.005; tuning/real-device acceptance still required.
             if utterance.isEmpty {
-                if speech { utterance = preroll + frame; preroll = []; voiced = frame.count; silence = 0 }
+                if speech {
+                    utteranceStart = frameStart - Int64(preroll.count)
+                    utterance = preroll + frame; preroll = []; voiced = frame.count; silence = 0
+                }
                 else { preroll += frame; if preroll.count > 2560 { preroll.removeFirst(preroll.count - 2560) } }
             } else {
                 utterance += frame
                 if speech { voiced += frame.count; silence = 0 } else { silence += frame.count }
                 if silence >= 8000 || utterance.count >= 400_000 {
-                    if voiced >= 3200 { output.append(utterance); gatedSamples += utterance.count }
+                    if voiced >= 3200 { output.append(.init(startFrame: utteranceStart, samples: utterance)); gatedSamples += utterance.count }
                     utterance = []; voiced = 0; silence = 0
                 }
             }
         }
+        consumedFrames += Int64(cursor)
         pending.removeFirst(cursor)
         if final {
-            if voiced >= 3200 { output.append(utterance); gatedSamples += utterance.count }
+            if voiced >= 3200 { output.append(.init(startFrame: utteranceStart, samples: utterance)); gatedSamples += utterance.count }
             utterance = []; preroll = []; pending = []; voiced = 0; silence = 0
         }
         return output
@@ -92,7 +104,7 @@ struct TeluguUtteranceSegmenter {
 }
 
 /// Lives entirely in the producer task. AVAudioConverter never executes in the tap or main actor.
-private final class TeluguPCMConverter {
+final class TeluguPCMConverter {
     let source: AVAudioFormat, target: AVAudioFormat, converter: AVAudioConverter
     var received = 0, emitted = 0
     init(rate: Double) throws {
@@ -191,8 +203,8 @@ nonisolated func produceTeluguUtterances(ring: TeluguAudioRing, cancellation: Sp
 /// AVAudioNodeTapBlock is explicitly non-Sendable in the SDK and may run on an audio thread.
 /// Construct callbacks outside MainActor so Swift never inserts a main-executor assertion.
 enum TeluguNativeCallbacks {
-    nonisolated static func tap(ring: TeluguAudioRing, meter: AudioLevelMailbox) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
-        { buffer, time in meter.append(buffer); ring.append(buffer,at:time) }
+    nonisolated static func tap(ring: TeluguAudioRing, meter: AudioLevelMailbox, speaker: TeluguAudioRing? = nil) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { buffer, time in meter.append(buffer); ring.append(buffer,at:time); speaker?.append(buffer,at:time) }
     }
     nonisolated static func configurationChanged(deliver: @escaping @MainActor @Sendable () -> Void) -> @Sendable (Notification) -> Void {
         { _ in Task { @MainActor in deliver() } }

@@ -11,6 +11,7 @@ public extension TeluguLanguageConfiguring {
 }
 
 @MainActor public final class TeluguDictationInput: TeluguLanguageConfiguring, DictationAudioMetering, DictationCaptureReporting {
+    public weak var speakerCapture: SpeakerCapture?
     private let recognizer: any LocalPCMRecognizing
     private let exclusiveCapture: @MainActor () throws -> Void
     private let microphoneAccess: @MainActor () async -> Bool
@@ -72,7 +73,7 @@ public extension TeluguLanguageConfiguring {
             self.ring = ring; self.engine = engine; self.meter = meter
             sourceRate = format.sampleRate; sourceChannels = format.channelCount
             engine.inputNode.installTap(onBus:0,bufferSize:1024,format:format,
-                block:TeluguNativeCallbacks.tap(ring:ring,meter:meter))
+                block:TeluguNativeCallbacks.tap(ring:ring,meter:meter,speaker:speakerCapture?.prepare(format:format)))
             producer = Task.detached { [weak self] in
                 await produceTeluguUtterances(ring:ring,cancellation:cancellation,stream:continuation,statistics:statistics,onFailure:{ [weak self] error in
                     Task { @MainActor [weak self] in self?.fail(error,id:id) }

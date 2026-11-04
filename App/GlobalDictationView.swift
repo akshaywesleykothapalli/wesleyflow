@@ -8,10 +8,8 @@ import VoiceInput
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var page: DictationPage = .dictation
+    @State private var speakerFilter = "all"
     @State private var selectedEntry: DictationHistoryEntry?
-    @State private var vocabularyInput = ""
-    @State private var phraseInput = ""
-    @State private var replacementInput = ""
     @State private var confirmClear = false
     @State private var observedAgentSteps:Set<UUID>=[]
     @State private var commandLibraryExpanded = false
@@ -72,14 +70,13 @@ import VoiceInput
                     if page == .history { Button("Back to Dictation") { page = .dictation } }
                     if page == .dictation || page == .history { HistoryHeaderSearch(text:$coordinator.search) }
                 }.padding(.horizontal,22).frame(minHeight:56).layoutPriority(1)
-                if page == .dictation || page == .history || page == .dictionary { Divider().overlay(FlowSurface.border) }
+                if page == .dictation || page == .history { Divider().overlay(FlowSurface.border) }
                 Group {
                     switch page {
                     case .dictation: dictationPage
                     case .history: historyPage
                     case .commands: commandsPage
                     case .insights: insightsPage
-                    case .dictionary: dictionaryPage
                     case .smartFormatting: formattingPage
                     case .privacy: privacyPage
                     case .general: generalPage
@@ -132,35 +129,9 @@ import VoiceInput
     }
     private var dictationPage: some View {
         VStack(alignment:.leading,spacing:0) {
-            if coordinator.preferences.previewShortcutsEnabled && coordinator.preferences.formattingShortcutAction == .lastInsertion {
-                VStack(alignment:.leading,spacing:6) {
-                    Text("⌥1  Polish last dictation     ⌥2  Turn it into a prompt").font(.callout.weight(.semibold))
-                    Text("Hold Fn, speak and release. After your text appears, press Option+1 or Option+2 without moving the cursor. The result replaces that dictation in the same editor.").font(.caption).foregroundStyle(.secondary)
-                }.padding(.horizontal,22).padding(.vertical,12)
-            }
-            if coordinator.preferences.previewShortcutsEnabled && coordinator.preferences.formattingShortcutAction == .nextRecording {
-                VStack(alignment:.leading,spacing:6) {
-                    Text("⌥1  Smart Polish     ⌥2  Structured prompt").font(.callout.weight(.semibold))
-                    Text("Press a shortcut in your target app, then hold Fn and speak English. Local formatting happens before insertion.").font(.caption).foregroundStyle(.secondary)
-                    if !coordinator.beforeFormattingNotice.isEmpty { Text(coordinator.beforeFormattingNotice).font(.caption).textSelection(.enabled) }
-                    if coordinator.armedFormattingKind != nil { Button("Cancel armed shortcut") { coordinator.cancelArmedFormatting() } }
-                }.padding(.horizontal,22).padding(.vertical,12)
-            }
-            if let result = coordinator.lastAIShortcutResult, coordinator.lastAIShortcutFailure == nil, !coordinator.busy {
-                VStack(alignment:.leading,spacing:6) {
-                    Text("Last formatting result").font(.callout.weight(.semibold))
-                    Text(result).font(.callout).textSelection(.enabled)
-                    Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
-                }.padding(.horizontal,22).padding(.vertical,12)
-            }
-            if coordinator.busy || coordinator.phase == .error || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil || coordinator.lastAIShortcutFailure != nil {
+            if coordinator.busy || (coordinator.phase == .error && coordinator.lastAIShortcutFailure == nil) || coordinator.clipboardPending || coordinator.historyError != nil || copyError != nil {
                 VStack(alignment:.leading,spacing:8) {
                     if coordinator.busy { HStack { Text(coordinator.message).font(.callout); Spacer(); Button("Cancel dictation") { coordinator.cancel() } } }
-                    if let failure = coordinator.lastAIShortcutFailure, !coordinator.busy {
-                        Text(failure).font(.callout).foregroundStyle(.orange)
-                        Button("Shortcut status & requirements") { page = .smartFormatting }
-                        Button("Copy dictation & AI diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed)
-                    }
                     if coordinator.phase == .error && !coordinator.clipboardPending && coordinator.lastAIShortcutFailure == nil {
                         Text(coordinator.message).font(.callout).foregroundStyle(.orange)
                         HStack {
@@ -191,9 +162,20 @@ import VoiceInput
             if let latest = coordinator.latest, !coordinator.entries.contains(where:{ $0.id == latest.id }) {
                 Button(latest.insertion.reason == .speechFailed ? "Review partial recognized text" : "Review latest unsaved dictation") { selectedEntry = latest }.padding(.horizontal,22).padding(.vertical,8)
             }
+            if !speakerCategories.isEmpty {
+                Picker("Speaker", selection: $speakerFilter) {
+                    Text("All speakers").tag("all")
+                    ForEach(speakerCategories, id: \.key) { category in
+                        Text(category.name).tag(category.key)
+                    }
+                }.padding(.horizontal,22).padding(.vertical,8)
+                .onChange(of:speakerCategories.map(\.key)) { _,keys in
+                    if speakerFilter != "all", !keys.contains(speakerFilter) { speakerFilter = "all" }
+                }
+            }
             ScrollView {
                 LazyVStack(alignment:.leading,spacing:0,pinnedViews:[.sectionHeaders]) {
-                    ForEach(DictationHistoryQuery.groups(coordinator.filteredHistory,calendar:localCalendar),id:\.date) { group in
+                    ForEach(DictationHistoryQuery.groups(speakerFilteredHistory,calendar:localCalendar),id:\.date) { group in
                         Section {
                             ForEach(group.entries) { entry in
                                 historyRow(entry).transition(.opacity)
@@ -207,7 +189,7 @@ import VoiceInput
                                 .accessibilityAddTraits(.isHeader)
                         }
                     }
-                    if coordinator.filteredHistory.isEmpty { Text(coordinator.search.isEmpty ? "No saved dictations yet." : "No matching dictations.").foregroundStyle(.secondary).padding(22).frame(maxWidth:.infinity,alignment:.leading) }
+                    if speakerFilteredHistory.isEmpty { Text(coordinator.entries.isEmpty ? "No saved dictations yet." : "No matching dictations.").foregroundStyle(.secondary).padding(22).frame(maxWidth:.infinity,alignment:.leading) }
                 }.animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:coordinator.entries.map(\.id))
             }.scrollIndicators(.hidden)
 
@@ -370,11 +352,28 @@ import VoiceInput
         }
     }
     private var historyPage: some View { dictationPage }
+    private func speakerKey(_ entry: DictationHistoryEntry) -> String {
+        entry.speaker.map { $0.profileID?.uuidString ?? "unknown" } ?? "unlabeled"
+    }
+    private var speakerFilteredHistory: [DictationHistoryEntry] {
+        coordinator.filteredHistory.filter { speakerFilter == "all" || speakerKey($0) == speakerFilter }
+    }
+    private var speakerCategories: [(key: String, name: String)] {
+        guard coordinator.entries.contains(where: { $0.speaker != nil }) else { return [] }
+        var names: [String: String] = [:]
+        for entry in coordinator.entries where names[speakerKey(entry)] == nil {
+            names[speakerKey(entry)] = entry.speaker?.name ?? "Unlabeled"
+        }
+        return names.map { (key: $0.key, name: $0.value) }.sorted { ($0.name, $0.key) < ($1.name, $1.key) }
+    }
     private func historyRow(_ entry: DictationHistoryEntry) -> some View {
         HStack(alignment:.center,spacing:12) {
             Text(DictationHistoryPresentation.time(entry.timestamp,calendar:localCalendar)).font(.body.weight(.medium)).monospacedDigit().foregroundStyle(.secondary).frame(width:DictationHistoryPresentation.timeColumnWidth,alignment:.leading).fixedSize(horizontal:false,vertical:true)
             Button { selectedEntry = entry } label: {
-                Text(entry.cleaned).lineLimit(3).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+                VStack(alignment: .leading, spacing: 3) {
+                    if let speaker = entry.speaker { Text(speaker.name).font(.caption).foregroundStyle(.secondary) }
+                    Text(entry.cleaned).lineLimit(3)
+                }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
             }.buttonStyle(.plain).help("Review full dictation")
             Button {
                 if coordinator.copyHistory(id:entry.id) {
@@ -443,33 +442,23 @@ import VoiceInput
                 .accessibilityElement(children:.combine)
         }
     }
-    private var dictionaryPage: some View {
-        FlowPage {
-            FlowSection("Protected vocabulary") {
-                Text("These terms are preserved during local cleanup and spelling checks. They do not train the speech recognizer.").font(.caption)
-                HStack { TextField("Term or phrase",text:$vocabularyInput)
-                    Button("Add") { var options = coordinator.preferences.formatting; options.vocabulary.append(vocabularyInput); if options.isValid { coordinator.preferences.formatting = options; vocabularyInput = "" } }
-                        .disabled(vocabularyInput.isEmpty || vocabularyInput.utf8.count > 128 || vocabularyInput.contains(where:{ $0.isNewline }) || coordinator.preferences.formatting.vocabulary.count >= 128)
-                }
-                ForEach(Array(coordinator.preferences.formatting.vocabulary.enumerated()),id:\.offset) { item in
-                    HStack { Text(item.element); Spacer(); Button("Remove") { coordinator.preferences.formatting.vocabulary.remove(at:item.offset) } }
-                }
-            }
-            FlowSection("Exact phrase replacements") {
-                Text("Only explicit phrases are expanded. Protected technical spans take priority. Replacement output is not rewritten.").font(.caption)
-                TextField("Spoken phrase",text:$phraseInput); TextField("Replace with",text:$replacementInput)
-                Button("Add replacement") { var options = coordinator.preferences.formatting; options.replacements.append(.init(phrase:phraseInput,replacement:replacementInput)); if options.isValid { coordinator.preferences.formatting = options; phraseInput = ""; replacementInput = "" } }
-                    .disabled(phraseInput.isEmpty || phraseInput.utf8.count > 128 || replacementInput.utf8.count > 512 || coordinator.preferences.formatting.replacements.count >= 64)
-                ForEach(Array(coordinator.preferences.formatting.replacements.enumerated()),id:\.offset) { item in
-                    HStack { Text(item.element.phrase + " → " + item.element.replacement); Spacer(); Button("Remove") { coordinator.preferences.formatting.replacements.remove(at:item.offset) } }
-                }
-            }
-        }
-    }
     private var formattingPage: some View {
         FlowPage {
             FlowSettingsGroup("Formatting shortcuts") {
-                Text("Dictate with Fn, then use Option+1 to polish your text or Option+2 to turn it into a prompt. Nothing is submitted.").font(.callout).foregroundStyle(.secondary).padding(14)
+                if coordinator.preferences.formattingShortcutAction == .nextRecording {
+                    Text("Press Option+1 for Smart Polish or Option+2 for a structured prompt, then hold Fn and dictate in English.").font(.callout).foregroundStyle(.secondary).padding(14)
+                    if !coordinator.beforeFormattingNotice.isEmpty {
+                        Text(coordinator.beforeFormattingNotice).font(.caption).textSelection(.enabled).padding(14)
+                    }
+                    if coordinator.armedFormattingKind != nil {
+                        Button("Cancel armed shortcut") { coordinator.cancelArmedFormatting() }.padding(14)
+                    }
+                } else {
+                    Text("Dictate with Fn, then use Option+1 to polish your text or Option+2 to turn it into a prompt. Keep the cursor in the original field.").font(.callout).foregroundStyle(.secondary).padding(14)
+                }
+                if let result = coordinator.lastAIShortcutResult, coordinator.lastAIShortcutFailure == nil {
+                    FlowSettingsRow("Last formatting result",description:result) { EmptyView() }
+                }
                 FlowSettingsRow("Enable formatting shortcuts",description:"Allow Option+1 and Option+2 to update the last dictation in its original text field.") {
                     Toggle("Enable formatting shortcuts",isOn:Binding(get:{ coordinator.preferences.previewShortcutsEnabled && (coordinator.preferences.inPlaceAIRewrite || coordinator.preferences.formattingShortcutAction == .nextRecording) },set:{ enabled in
                         var value = coordinator.preferences
@@ -547,6 +536,9 @@ import VoiceInput
     }
     private var generalPage: some View {
         FlowPage {
+            if let speakers = coordinator.speakers {
+                SpeakerSettingsView(settings:speakers,dictationBusy:coordinator.busy)
+            }
             languageSettings
             FlowSettingsGroup("Appearance & startup") {
                 FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
@@ -655,20 +647,7 @@ private enum FlowSurface {
         }.scrollIndicators(.hidden).scrollContentBackground(.hidden)
     }
 }
-@MainActor private struct FlowSection<Content:View>: View {
-    let title: String
-    let content: Content
-    init(_ title:String,@ViewBuilder content:() -> Content) { self.title = title; self.content = content() }
-    var body: some View {
-        VStack(alignment:.leading,spacing:8) {
-            Text(title.uppercased()).font(.system(size:12,weight:.semibold)).tracking(0.6).foregroundStyle(.secondary).padding(.leading,4)
-            VStack(alignment:.leading,spacing:10) { content }
-                .frame(maxWidth:.infinity,alignment:.leading).padding(14)
-                .background(FlowSurface.card,in:RoundedRectangle(cornerRadius:12))
-                .overlay(RoundedRectangle(cornerRadius:12).strokeBorder(FlowSurface.border,lineWidth:1))
-        }
-    }
-}
+
 @MainActor private struct FlowSidebarStyle: ButtonStyle {
     let selected: Bool
     func makeBody(configuration:Configuration) -> some View { Row(configuration:configuration,selected:selected) }
@@ -836,5 +815,64 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
             Text(command).frame(maxWidth:.infinity,alignment:.leading)
             Text(explanation).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading)
         }.font(.callout).textSelection(.enabled).padding(14).accessibilityElement(children:.combine)
+    }
+}
+
+@MainActor private struct SpeakerSettingsView: View {
+    @ObservedObject var settings: SpeakerSettings
+    let dictationBusy: Bool
+    @State private var name = ""
+    @State private var consent = false
+    @State private var pendingDeletion: UUID?
+
+    var body: some View {
+        FlowSettingsGroup("Speaker profiles") {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Label saved dictations by voice", isOn: Binding(get: { settings.enabled }, set: settings.setEnabled))
+                    .disabled(dictationBusy || settings.enrolling || settings.working || settings.profiles.isEmpty)
+                Text("Read three samples for each person. Wesley Flow stores a local voice profile and discards the recordings. Uncertain matches appear as Unknown speaker.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if settings.enrolling {
+                    if settings.sample < SpeakerSettings.passages.count {
+                        Text("Sample \(settings.sample + 1) of \(SpeakerSettings.passages.count)").font(.headline)
+                        Text(SpeakerSettings.passages[settings.sample]).textSelection(.enabled)
+                        if settings.recording {
+                            Button("Finish sample") { Task { await settings.finishSample() } }
+                        } else {
+                            Button("Record sample") { Task { await settings.startSample() } }.disabled(settings.working)
+                        }
+                    } else {
+                        Button("Save voice profile") {
+                            Task {
+                                await settings.save()
+                                if !settings.enrolling { name = ""; consent = false }
+                            }
+                        }.disabled(settings.working)
+                    }
+                    Button("Cancel enrollment") { Task { await settings.cancel() } }.disabled(settings.working)
+                } else {
+                    TextField("Speaker name", text: $name)
+                    Toggle("I consent to storing this speaker’s voice profile on this Mac", isOn: $consent).toggleStyle(.checkbox)
+                    Button("Add speaker") { Task { await settings.begin(name: name) } }
+                        .disabled(!consent || !SpeakerProfile.validName(name) || dictationBusy || settings.working)
+                }
+                ForEach(settings.profiles, id: \.id) { profile in
+                    HStack {
+                        Text(profile.name)
+                        Spacer()
+                        Button("Delete profile…", role: .destructive) { pendingDeletion = profile.id }
+                            .disabled(dictationBusy || settings.working || settings.enrolling)
+                    }
+                }
+                Text(settings.status).font(.caption).foregroundStyle(.secondary)
+            }.padding(14)
+        }
+        .task { await settings.refresh() }
+        .onDisappear { if settings.enrolling, settings.recording || settings.working { Task { await settings.cancel() } } }
+        .confirmationDialog("Delete this voice profile?", isPresented: Binding(
+            get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }
+        ), presenting: pendingDeletion) { id in
+            Button("Delete voice profile", role: .destructive) { Task { await settings.delete(id: id) } }
+        } message: { _ in Text("Future dictations will no longer match this profile. Saved history keeps its labels.") }
     }
 }

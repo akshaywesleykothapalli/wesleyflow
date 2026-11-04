@@ -107,7 +107,7 @@ enum NativeSpeechCallbacks {
         }
         return .init(primary:.init(domain:root.domain,code:root.code),underlying:underlying)
     }
-    nonisolated static func tap(_ ingress: AudioIngress, meter: AudioLevelMailbox? = nil) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
-        { buffer, time in meter?.append(buffer); ingress.append(buffer,at:time) }
+    nonisolated static func tap(_ ingress: AudioIngress, meter: AudioLevelMailbox? = nil, speaker: TeluguAudioRing? = nil) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { buffer, time in meter?.append(buffer); speaker?.append(buffer,at:time); ingress.append(buffer,at:time) }
     }
 }

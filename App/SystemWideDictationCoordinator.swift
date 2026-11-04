@@ -696,7 +696,7 @@ import VoiceInput
             preferences = next
             if mode == .teluguRomanised { Task { [weak self] in await self?.prepareSelectedLanguage() } }
         case .navigate(let destination):
-            flowPageRequest = switch destination { case .settings:.general;case .dictation:.dictation;case .history:.history;case .dictionary:.dictionary;case .formatting:.smartFormatting;case .commands:.commands }
+            flowPageRequest = switch destination { case .settings:.general;case .dictation:.dictation;case .history:.history;case .formatting:.smartFormatting;case .commands:.commands }
             flowPageRequestID = UUID()
         case .saveHistory(let enabled): preferences.keepHistory = enabled
         case .spacing(let enabled): preferences.spacingCleanup = enabled
@@ -1457,6 +1457,7 @@ import VoiceInput
     var pillVisible: Bool { (preferences.showPill || commandSession || agentExecutingID != nil || agentPlan != nil || agentQuestion != nil || (agentHUD != nil && hudFeedbackVisible)) && ((preferences.idlePillEnabled && !closed) || (startedFromShortcut && busy) || ((agentPlan != nil || agentQuestion != nil) && agentHUD != nil) || hudFeedbackVisible || inPlaceHUD != .idle) }
     var keepsAppRunningAfterWindowClose: Bool { preferences.holdFnEnabled || preferences.agentHotkeyEnabled || preferences.idlePillEnabled || preferences.previewShortcutsEnabled || busy }
     var isPreparingTelugu: Bool { phase == .preparing && activeLanguageMode == .teluguRomanised }
+    let speakers: SpeakerSettings?
     var busy: Bool { [.preparing,.recording,.finalizing,.inserting].contains(phase) }
     var filteredHistory: [DictationHistoryEntry] { DictationHistoryQuery.filter(entries,search:search) }
     var groupedHistory: [(date:Date,entries:[DictationHistoryEntry])] { DictationHistoryQuery.groups(filteredHistory,calendar:.current) }
@@ -1484,7 +1485,9 @@ import VoiceInput
          localeIdentifier: String = Locale.preferredLanguages.first ?? Locale.current.identifier,
          speechResources: AppleSpeechResourceService = AppleSpeechResourceService(),
          minimumHoldMilliseconds: Int64 = 0,
+         speakers: SpeakerSettings? = nil,
          wallTime: @escaping @Sendable () -> Date = { Date() }) {
+        self.speakers = speakers
         self.networkPolicy = networkPolicy; self.networkSnapshot = networkPolicy.snapshot()
         self.focusedTextResolver = focusedTextResolver
         self.previewPresentationRequest = previewPresentationRequest
@@ -1565,6 +1568,9 @@ import VoiceInput
     }
     func startManual() { guard !busy, !closed else { return }; begin(manual:true) }
     private func begin(manual: Bool, fromShortcut: Bool = false, activation:DictationActivationContext?=nil, agent:Bool = false) {
+        guard speakers?.enrolling != true, speakers?.working != true else {
+            message = "Finish or cancel speaker enrollment before dictating."; return
+        }
         guard !speechResourceWorking else { message = "Speech resource setup is in progress. Finish or stop waiting before recording."; return }
         activeBeforeFormatting = nil
         commandSession = agent; agentHUD = agent ? "Starting mic…" : nil
@@ -1630,6 +1636,8 @@ import VoiceInput
         activeTeluguOverrides = preferences.formatting.replacements
         activeTeluguWhitespace = preferences.spacingCleanup
         if let routing = input as? LanguageDictationInput { routing.mode = activeLanguageMode; routing.recognitionLanguage = preferences.teluguRecognitionLanguage }
+        speakers?.capture.reset()
+        speakers?.capture.armed = !commandSession && preferences.keepHistory && speakers?.enabled == true
         session = id; timestamp = wallTime(); recordingBegan = nil; historyConsentAtStart = preferences.keepHistory
         raw = ""; cleaned = ""; engine = nil; phase = .preparing
         message = "Preparing on-device speech. Allow microphone and speech access if asked."
@@ -1663,6 +1671,7 @@ import VoiceInput
                 guard self.session == id, self.phase == .preparing else { return }
                 self.recordSpeechRun("startupFailure",failure:error as? DictationFailure ?? .recognitionFailed)
                 if self.commandSession { self.agentHUD = "Agent speech failed"; self.commandSession = false; self.showHUDFeedback() }
+                self.speakers?.capture.reset()
                 self.input.cancel(); self.session = nil; self.destination = nil; self.phase = .error
                 self.audioCaptureResult = Task.isCancelled ? .cancelled : .failed
                 self.transcriptionResult = Task.isCancelled ? .cancelled : .failed
@@ -1704,6 +1713,7 @@ import VoiceInput
         if phase == .finalizing { armTimer(activeLanguageMode == .teluguRomanised ? 60_000 : 8000,id:id,finishing:true) }
     }
     func cancel() {
+        if session != nil { speakers?.capture.reset() }
         if armedFormattingKind != nil { cancelArmedFormatting() }
         stopAudioVisualization(); cancelInPlaceRewrite()
         cancelRewritePreview()
@@ -1732,6 +1742,7 @@ import VoiceInput
     }
     private func finish(id: String,forced: TextInsertionReceipt? = nil) {
         guard session == id, phase != .inserting else { return }
+        if forced != nil { speakers?.capture.reset() }
         stopAudioVisualization()
         timer?.cancel(); timer = nil; startup = nil
         if !commandSession && activeLanguageMode == .teluguRomanised {
@@ -1740,6 +1751,7 @@ import VoiceInput
             cleaned = commandSession ? DictationText.cleaned(raw) : NativeDictationFormatting.format(raw,options:preferences.formatting,whitespace:preferences.spacingCleanup,locale:localeIdentifier)
         }
         if cleaned.utf8.count > DictationText.maximumBytes {
+            speakers?.capture.reset()
             input.cancel(); session = nil; destination = nil; phase = .error
             cleaned = ""; message = "Romanised text exceeds the 64 KiB limit. Raw text is retained; nothing inserted."; return
         }
@@ -1784,6 +1796,7 @@ import VoiceInput
             } else { beforeFormattingNotice = "No words recognised. The formatting shortcut was cancelled." }
         }
         guard !cleaned.isEmpty else {
+            speakers?.capture.reset()
             input.cancel(); session = nil; destination = nil; phase = forced?.outcome == .cancelled ? .idle : .error
             if forced?.outcome == .cancelled { message = "Cancelled. Nothing inserted." }
             else if forced?.reason == .deadline { message = DictationModel.description(.timedOut) }
@@ -1799,8 +1812,14 @@ import VoiceInput
         let completedFormattingLabel = formattedLabel
         let target = destination, source = target?.info.applicationName, raw = raw, text = cleaned
         let fallback = fallback, captureExplanation = captureExplanation, date = timestamp, began = recordingBegan, saveAtStart = historyConsentAtStart
+        let speakerAudio = forced == nil && saveAtStart && preferences.keepHistory ? speakers?.capture.take() : nil
+        speakers?.capture.reset()
         work = Task { [weak self] in
-            guard let self else { return }
+            guard let self else { speakerAudio?.cancel(); return }
+            let speaker = speakerAudio.flatMap { audio in
+                self.speakers.map { settings in Task<DictationSpeakerLabel, Never> { await settings.identify(audio) } }
+            }
+            defer { speaker?.cancel(); speakerAudio?.cancel() }
             let now = await self.clock.now()
             let receipt: TextInsertionReceipt
             if let forced { receipt = forced }
@@ -1857,7 +1876,10 @@ import VoiceInput
                 let delta = now.subtractingReportingOverflow(start)
                 return delta.overflow ? 0 : max(0,min(DictationText.maximumDurationMilliseconds,delta.partialValue))
             } ?? 0
-            let entry = DictationHistoryEntry(id:id,timestamp:date,raw:raw,cleaned:text,sourceApplication:source,durationMilliseconds:duration,insertion:receipt)
+            let label = await speaker?.value
+            let entry = DictationHistoryEntry(id:id,timestamp:date,raw:raw,cleaned:text,sourceApplication:source,
+                                             durationMilliseconds:duration,insertion:receipt,
+                                             speaker: self.session == id && !Task.isCancelled ? label : nil)
             self.latest = entry
             self.reliableFinalID = forced == nil ? entry.id : nil
             if saveAtStart && self.preferences.keepHistory {
@@ -2025,6 +2047,7 @@ import VoiceInput
     func canTerminateSafely() -> Bool {
         reconcileClipboard()
         if busy { message = "Finish or cancel dictation before quitting."; return false }
+        if speakers?.working == true || speakers?.enrolling == true { message = "Finish or cancel speaker enrollment before quitting."; return false }
         if speechResourceWorking { message = "Finish speech resource setup or choose Stop waiting before quitting."; return false }
         if insertion.hasPendingClipboard { clipboardPending = true; message = "Review clipboard restoration before quitting; the saved clipboard is held in memory."; return false }
         return true

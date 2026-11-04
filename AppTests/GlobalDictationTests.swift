@@ -1095,7 +1095,9 @@ private actor GHistory: DictationHistoryStore {
         #expect(!panel.canBecomeKey); #expect(!panel.canBecomeMain); #expect(panel.contentRect(forFrameRect:panel.frame).size == NSSize(width:84,height:32)); panel.close()
     }
     @Test func sidebarAndAppearanceSettingsPersistWithoutAIActivation() {
-        #expect(DictationPage.sidebar.map(\.rawValue) == ["Dictation","Insights","Dictionary","Command Mode","Smart Formatting","Privacy","General"])
+        #expect(DictationPage.sidebar.map(\.rawValue) == ["Dictation","Insights","Command Mode","Smart Formatting","Privacy","General"])
+        #expect(DictationPage.restoring("Dictionary") == .dictation)
+        #expect(FlowVoiceControl.parse("Open my dictionary") == nil)
         #expect(DictationPage.allCases.contains(.history)); #expect(!DictationPage.sidebar.contains(.history))
         let name = "WesleyFlow-Prefs-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName:name)!
@@ -1368,17 +1370,13 @@ struct GlobalHistoryTests {
     private func entry(_ stamp:String,id:String = UUID().uuidString,text:String = "one two",duration:Int64 = 1000,outcome:TextInsertionReceipt = .init(.unsupportedTarget,.manualOnly)) -> DictationHistoryEntry {
         .init(id:id,timestamp:date(stamp),raw:"raw different words here",cleaned:text,sourceApplication:nil,durationMilliseconds:duration,insertion:outcome)
     }
-    @Test(arguments:Array(1...31)) func englishOrdinals(day:Int) {
-        let expected = [1:"st",2:"nd",3:"rd",21:"st",22:"nd",23:"rd",31:"st"][day] ?? "th"
-        #expect(DictationHistoryPresentation.ordinal(day) == "\(day)\(expected)")
-    }
     @Test func localDateHeadersRespectLocaleAndGregorianBoundaries() {
-        let d = date("2026-10-22T12:00:00Z")
-        #expect(DictationHistoryPresentation.heading(d,calendar:calendar(),locale:Locale(identifier:"en_IN")) == "22nd October 2026")
+        let d = date("2026-11-03T12:00:00Z")
+        #expect(DictationHistoryPresentation.heading(d,calendar:calendar(),locale:Locale(identifier:"en_IN")) == "3 Nov 2026")
         let french = DictationHistoryPresentation.heading(d,calendar:calendar(),locale:Locale(identifier:"fr_FR"))
-        #expect(french.contains("octobre")); #expect(!french.contains("22nd"))
+        #expect(french.contains("nov")); #expect(!french.contains("3rd"))
         let midnight = date("2025-12-31T23:45:00Z")
-        #expect(DictationHistoryPresentation.heading(midnight,calendar:calendar("Asia/Kolkata"),locale:Locale(identifier:"en_US")).hasPrefix("1st January 2026"))
+        #expect(DictationHistoryPresentation.heading(midnight,calendar:calendar("Asia/Kolkata"),locale:Locale(identifier:"en_US")) == "1 Jan 2026")
     }
     @Test func groupingNewestDatesAndRowsUsesStableIDs() {
         let a = entry("2026-10-21T10:00:00Z",id:"a"), b = entry("2026-10-22T11:00:00Z",id:"b"), c = entry("2026-10-22T12:00:00Z",id:"c")

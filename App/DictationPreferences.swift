@@ -6,10 +6,10 @@ import SwiftUI
 import ServiceManagement
 
 enum DictationPage: String, CaseIterable, Identifiable {
-    case dictation = "Dictation", insights = "Insights", dictionary = "Dictionary"
+    case dictation = "Dictation", insights = "Insights"
     case commands = "Command Mode", smartFormatting = "Smart Formatting", privacy = "Privacy", general = "General"
     case history = "History"
-    static let sidebar: [Self] = [.dictation, .insights, .dictionary, .commands, .smartFormatting, .privacy, .general]
+    static let sidebar: [Self] = [.dictation, .insights, .commands, .smartFormatting, .privacy, .general]
     // The earlier UI had no disk-backed page selection. Accept legacy restoration
     // input here without retaining an obsolete Workspace case.
     static func restoring(_ rawValue: String?) -> Self { rawValue.flatMap(Self.init(rawValue:)) ?? .dictation }
@@ -24,7 +24,6 @@ enum DictationPage: String, CaseIterable, Identifiable {
         case .history: "clock"
         case .commands: "terminal"
         case .insights: "waveform.path.ecg"
-        case .dictionary: "text.book.closed"
         case .smartFormatting: "textformat"
         case .privacy: "shield"
         case .general: "slider.horizontal.3"
@@ -231,19 +230,13 @@ enum DictationRowPresentation {
 /// View-only calendar labels. The stored timestamp and history query are unchanged.
 enum DictationHistoryPresentation {
     static let timeColumnWidth: CGFloat = 78
-    static func ordinal(_ day:Int) -> String {
-        let suffix: String
-        if (11...13).contains(day % 100) { suffix = "th" }
-        else { switch day % 10 { case 1:suffix = "st"; case 2:suffix = "nd"; case 3:suffix = "rd"; default:suffix = "th" } }
-        return "\(day)\(suffix)"
-    }
     static func heading(_ date:Date, calendar:Calendar, locale:Locale = .autoupdatingCurrent) -> String {
         let formatter = DateFormatter(); formatter.calendar = calendar; formatter.timeZone = calendar.timeZone; formatter.locale = locale
         if locale.language.languageCode?.identifier == "en", calendar.identifier == .gregorian {
-            formatter.dateFormat = "MMMM y"
-            return ordinal(calendar.component(.day,from:date)) + " " + formatter.string(from:date)
+            formatter.dateFormat = "d MMM yyyy"
+            return formatter.string(from:date)
         }
-        formatter.dateStyle = .long; formatter.timeStyle = .none
+        formatter.dateStyle = .medium; formatter.timeStyle = .none
         return formatter.string(from:date)
     }
     static func time(_ date:Date, calendar:Calendar, locale:Locale = .autoupdatingCurrent) -> String {
