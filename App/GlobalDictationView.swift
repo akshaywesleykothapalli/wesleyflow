@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import AppKit
 import Domain
 import VoiceInput
@@ -413,21 +414,7 @@ import VoiceInput
                         }.scrollIndicators(.hidden)
                     }.padding(14).background(FlowSurface.card,in:RoundedRectangle(cornerRadius:12))
                         .overlay(RoundedRectangle(cornerRadius:12).strokeBorder(FlowSurface.border,lineWidth:1))
-                    Text("Where you write").font(.headline)
-                    VStack(alignment:.leading,spacing:12) {
-                        if summary.appUsage.isEmpty {
-                            Text("No verified inserted words with a saved application name yet.").foregroundStyle(.secondary)
-                        } else {
-                            ForEach(summary.appUsage) { app in
-                                VStack(alignment:.leading,spacing:5) {
-                                    HStack { Text(app.name); Spacer(); Text("\(app.words) words").foregroundStyle(.secondary) }
-                                    ProgressView(value:Double(app.words),total:Double(max(1,summary.appUsage.first?.words ?? 1)))
-                                        .accessibilityLabel("\(app.name), \(app.words) verified inserted words")
-                                }
-                            }
-                        }
-                        Text(summary.usageNote).font(.caption).foregroundStyle(.secondary)
-                    }
+                    AppWritingChart(entries:coordinator.entries,now:context.date,calendar:localCalendar)
                 }
             }
         }
@@ -874,5 +861,172 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
         ), presenting: pendingDeletion) { id in
             Button("Delete voice profile", role: .destructive) { Task { await settings.delete(id: id) } }
         } message: { _ in Text("Future dictations will no longer match this profile. Saved history keeps its labels.") }
+    }
+}
+
+@MainActor private struct AppWritingChart: View {
+    let entries: [DictationHistoryEntry]
+    let now: Date
+    let calendar: Calendar
+    @State private var period = AppWritingActivity.Period.week
+    @State private var selectedMetric = AppWritingActivity.Metric.time
+    private var metric: AppWritingActivity.Metric { period.hourly ? .time : selectedMetric }
+    @State private var focusedApp: String?
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var palette: [Color] {
+        colorScheme == .dark
+            ? [.blue, .mint, .orange, .purple, .pink]
+            : [.init(red: 0.16, green: 0.40, blue: 0.78), .init(red: 0.02, green: 0.47, blue: 0.39),
+               .init(red: 0.74, green: 0.33, blue: 0.05), .init(red: 0.49, green: 0.31, blue: 0.69),
+               .init(red: 0.70, green: 0.21, blue: 0.42)]
+    }
+
+    var body: some View {
+        let activity = AppWritingActivity(entries: entries, now: now, calendar: calendar, period: period, metric: metric)
+        let selected = activity.series.first { $0.id == focusedApp }
+        let colors = appColors(activity.series)
+        VStack(alignment: .leading, spacing: 14) {
+            ViewThatFits(in: .horizontal) {
+                HStack { title; Spacer(minLength: 16); controls }
+                VStack(alignment: .leading, spacing: 10) { title; controls }
+            }
+            if activity.series.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No app activity in this range").font(.callout.weight(.medium))
+                    Text(metric == .time && activity.missingDurations > 0
+                         ? "Saved dictations in this range have unavailable recording time."
+                         : "Verified insertions will appear here by app.").font(.caption).foregroundStyle(.secondary)
+                }.padding(.vertical, 10)
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(metric.label(selected?.amount ?? activity.total))
+                        .font(.title2.weight(.semibold)).monospacedDigit()
+                    Spacer()
+                    if let selected {
+                        Button("Show all apps") { focusedApp = nil }
+                            .buttonStyle(.borderless).help("Clear the \(selected.name) filter")
+                    }
+                }
+                Text((selected?.name ?? "All apps") + (period.hourly ? " · Hourly totals" : " · Daily totals"))
+                    .font(.caption).foregroundStyle(.secondary)
+                plot(activity, selected: selected, colors: colors)
+                Divider()
+                VStack(spacing: 1) {
+                    ForEach(activity.series) { app in
+                        appRow(app, total: activity.total, color: colors[app.id] ?? .secondary)
+                    }
+                }
+            }
+            Text(coverage(activity)).font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(FlowSurface.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(FlowSurface.border))
+        .onChange(of: period) { focusedApp = nil }
+        .onChange(of: selectedMetric) { focusedApp = nil }
+    }
+
+    private var title: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Where you write").font(.headline)
+            Text("Dictation activity by app").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            if !period.hourly {
+                Picker("Metric", selection: $selectedMetric) {
+                    ForEach(AppWritingActivity.Metric.allCases) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.menu).labelsHidden().accessibilityLabel("Metric")
+            }
+            Picker("Date range", selection: $period) {
+                ForEach(AppWritingActivity.Period.allCases) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("Date range").fixedSize()
+        }.fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func plot(_ activity: AppWritingActivity, selected: AppWritingActivity.Series?, colors: [String: Color]) -> some View {
+        let visible = activity.series.filter { selected == nil || $0.id == selected?.id }
+        let names = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, $0.name) })
+        let dates = period.hourly
+            ? activity.buckets.filter { calendar.component(.hour, from: $0).isMultiple(of: 4) }
+            : activity.buckets.enumerated().compactMap { index, day in index.isMultiple(of: period == .week ? 1 : 7) ? day : nil }
+        let hourFormat = Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).hour()
+        return Chart(activity.samples.filter { selected == nil || $0.id.series == selected?.id }) { sample in
+            BarMark(
+                x: .value(period.hourly ? "Hour" : "Day", sample.id.start, unit: period.hourly ? .hour : .day, calendar: calendar),
+                y: .value(metric.axisTitle, metric.chartValue(sample.amount))
+            )
+            .foregroundStyle(by: .value("App", sample.id.series))
+            .accessibilityLabel(names[sample.id.series] ?? "")
+            .accessibilityValue(metric.label(sample.amount))
+        }
+        .chartForegroundStyleScale(domain: visible.map(\.id), range: visible.map { colors[$0.id] ?? .secondary })
+        .chartLegend(.hidden)
+        .chartXScale(domain: (activity.buckets.first ?? now)...activity.end)
+        .chartXAxis {
+            AxisMarks(values: dates) {
+                AxisTick()
+                if period.hourly {
+                    AxisValueLabel(format: hourFormat)
+                } else {
+                    AxisValueLabel(format: .dateTime.day().month(.abbreviated), centered: true)
+                }
+            }
+        }
+        .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) }
+        .chartYAxisLabel(metric.axisTitle, position: .leading)
+        .environment(\.calendar, calendar)
+        .environment(\.timeZone, calendar.timeZone)
+        .frame(height: 172)
+        .accessibilityLabel("\(period.hourly ? "Hourly" : "Daily") \(metric.rawValue.lowercased()) by app")
+    }
+
+    private func appRow(_ app: AppWritingActivity.Series, total: Int, color: Color) -> some View {
+        let selected = focusedApp == app.id
+        return Button {
+            focusedApp = selected ? nil : app.id
+        } label: {
+            HStack(spacing: 9) {
+                RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
+                Text(app.name).lineLimit(1)
+                Spacer(minLength: 6)
+                Text(metric.label(app.amount)).monospacedDigit().foregroundStyle(.secondary)
+                Text((Double(app.amount) / Double(total)).formatted(.percent.precision(.fractionLength(0))))
+                    .monospacedDigit().foregroundStyle(.secondary).frame(minWidth: 40, alignment: .trailing)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? color : .secondary).imageScale(.small)
+                    .accessibilityHidden(true)
+            }
+            .font(.callout)
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(selected ? color.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .help(selected ? "Show all apps" : "Show only \(app.name) in the chart")
+    }
+
+    private func appColors(_ series: [AppWritingActivity.Series]) -> [String: Color] {
+        var result: [String: Color] = [AppWritingActivity.other: .gray]
+        var available = Set(palette.indices)
+        for app in series.filter({ $0.id != AppWritingActivity.other }).sorted(by: { $0.id < $1.id }) {
+            let seed = app.id.utf8.reduce(0) { ($0 * 31 + Int($1)) % palette.count }
+            if let index = (0..<palette.count).map({ (seed + $0) % palette.count }).first(where: available.contains) {
+                result[app.id] = palette[index]
+                available.remove(index)
+            }
+        }
+        return result
+    }
+
+    private func coverage(_ activity: AppWritingActivity) -> String {
+        var note = metric == .time ? "Time spent dictating for verified insertions, grouped by recording start."
+            : "Words from verified insertions."
+        if activity.missingNames > 0 { note += " Missing app name: \(activity.missingNames)." }
+        if activity.missingDurations > 0 { note += " Missing recording time: \(activity.missingDurations)." }
+        return note
     }
 }

@@ -1554,11 +1554,15 @@ private actor GOfflineRewrite: OfflineTranscriptRewriting {
 @Suite("Hand-drawn Insights and history presentation")
 struct HandDrawnInsightsTests {
     private func calendar(_ zone:String = "UTC") -> Calendar { var c = Calendar(identifier:.gregorian); c.timeZone = TimeZone(identifier:zone)!; return c }
-    private func entry(_ id:String,_ text:String = "one two",duration:Int64 = 1000,app:String? = "Fixture",receipt:TextInsertionReceipt = .init(.inserted,.verified,attempted:true)) -> DictationHistoryEntry {
-        .init(id:id,timestamp:Date(timeIntervalSince1970:1_700_000_000),raw:text,cleaned:text,sourceApplication:app,durationMilliseconds:duration,insertion:receipt)
+    private func entry(_ id:String,_ text:String = "one two",duration:Int64 = 1000,stamp:TimeInterval = 1_700_000_000,app:String? = "Fixture",receipt:TextInsertionReceipt = .init(.inserted,.verified,attempted:true)) -> DictationHistoryEntry {
+        .init(id:id,timestamp:Date(timeIntervalSince1970:stamp),raw:text,cleaned:text,sourceApplication:app,durationMilliseconds:duration,insertion:receipt)
     }
     private func summary(_ entries:[DictationHistoryEntry]) -> SketchInsightsSummary {
         .init(entries:entries,activity:.init(entries:entries,now:Date(timeIntervalSince1970:1_700_000_001),calendar:calendar()))
+    }
+    private func writing(_ entries: [DictationHistoryEntry], metric: AppWritingActivity.Metric = .words,
+                         now: TimeInterval = 1_700_000_001, zone: String = "UTC", period: AppWritingActivity.Period = .week) -> AppWritingActivity {
+        .init(entries: entries, now: Date(timeIntervalSince1970: now), calendar: calendar(zone), period: period, metric: metric)
     }
     @Test func exactlyFourMetricsAndWeightedWPM() {
         let s = summary([entry("a",duration:1000),entry("b","three four five",duration:2000)])
@@ -1573,24 +1577,79 @@ struct HandDrawnInsightsTests {
     }
     @Test func emptyAndDuplicateHistory() {
         #expect(summary([]).values[1].value == "Unavailable")
-        #expect(summary([]).appUsage.isEmpty)
+        #expect(writing([]).series.isEmpty)
         let e = entry("a"); let s = summary([e,e])
-        #expect(s.values[0].value == 2.formatted()); #expect(s.appUsage == [.init(name:"Fixture",words:2)])
+        #expect(s.values[0].value == 2.formatted()); #expect(writing([e,e]).total == 2)
     }
     @Test func verifiedApplicationWordsOnlyAndStableTies() {
-        let s = summary([
+        let s = writing([
             entry("a","one two three",app:"B"), entry("b",app:"A"),entry("c","one",app:"A"),
             entry("d",app:"Failed",receipt:.init(.unsupportedTarget,.unsupported)),
             entry("e",app:"Uncertain",receipt:.init(.uncertain,.verificationUnavailable,attempted:true)),
             entry("f",app:"Unattempted",receipt:.init(.inserted,.verified,attempted:false)),
             entry("g",app:nil),entry("h",app:"  ")])
-        #expect(s.appUsage == [.init(name:"A",words:3),.init(name:"B",words:3)])
-        #expect(s.usageNote.contains("2 verified entries lack"))
+        #expect(s.series.map(\.name) == ["A","B"])
+        #expect(s.series.map(\.amount) == [3,3])
+        #expect(s.missingNames == 2)
     }
     @Test func deletionUpdatesNewMetricsAndUsage() {
-        let e = entry("a"); #expect(summary([e]).appUsage.count == 1)
-        #expect(summary([]).appUsage.isEmpty); #expect(summary([]).values[0].value == 0.formatted())
+        let e = entry("a"); #expect(writing([e]).series.count == 1)
+        #expect(writing([]).series.isEmpty); #expect(summary([]).values[0].value == 0.formatted())
     }
+    @Test func recordingTimeUsesLocalDaysAndExcludesUnavailableTiming() {
+        let midnight = Date(timeIntervalSince1970: 1_700_000_000)
+        let localStart = calendar("Asia/Kolkata").startOfDay(for: midnight).timeIntervalSince1970
+        let model = writing([
+            entry("before",duration:15_000,stamp:localStart - 1),
+            entry("after",duration:30_000,stamp:localStart),
+            entry("untimed",duration:0,stamp:localStart),
+            entry("future",duration:45_000,stamp:localStart + 2)
+        ], metric: .time, now: localStart + 1, zone: "Asia/Kolkata", period: .today)
+        #expect(model.total == 30_000)
+        #expect(model.missingDurations == 1)
+        #expect(model.samples.map(\.id.start) == [Date(timeIntervalSince1970: localStart)])
+    }
+
+    @Test func todaySeparatesHoursAcrossTheRepeatedHour() {
+        let parser = ISO8601DateFormatter()
+        let first = parser.date(from: "2026-11-01T05:20:00Z")!
+        let second = parser.date(from: "2026-11-01T06:20:00Z")!
+        let zone = "America/New_York"
+        let model = writing([
+            entry("first", duration: 12_000, stamp: first.timeIntervalSince1970),
+            entry("second", duration: 18_000, stamp: second.timeIntervalSince1970)
+        ], metric: .time, now: second.timeIntervalSince1970, zone: zone, period: .today)
+        #expect(model.buckets.count == 25)
+        #expect(model.samples.map(\.amount) == [12_000, 18_000])
+        #expect(model.samples.map { calendar(zone).component(.hour, from: $0.id.start) } == [1, 1])
+        #expect(model.total == 30_000)
+    }
+
+    @Test func yesterdayUsesThePreviousLocalDayOnly() {
+        let zone = "Asia/Kolkata"
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let today = calendar(zone).startOfDay(for: now)
+        let yesterday = calendar(zone).date(byAdding: .day, value: -1, to: today)!
+        let start = yesterday.timeIntervalSince1970
+        let model = writing([
+            entry("previous", duration: 60_000, stamp: start - 1),
+            entry("midnight", duration: 15_000, stamp: start),
+            entry("late", duration: 35_000, stamp: today.timeIntervalSince1970 - 1),
+            entry("today", duration: 90_000, stamp: today.timeIntervalSince1970)
+        ], metric: .time, now: now.timeIntervalSince1970, zone: zone, period: .yesterday)
+        #expect(model.buckets.first == yesterday)
+        #expect(model.end == today)
+        #expect(model.samples.map(\.amount) == [15_000, 35_000])
+        #expect(model.total == 50_000)
+    }
+
+    @Test func otherAppsRetainDailyTotals() {
+        let model = writing((1...7).map { entry("\($0)", app: "App \($0)") })
+        #expect(model.series.count == 6)
+        #expect(model.series.last == .init(id: AppWritingActivity.other, name: "Other apps", amount: 4))
+        #expect(model.samples.reduce(0) { $0 + $1.amount } == 14)
+    }
+
     @Test func todayUsesActiveTimezoneAndOlderDateRules() {
         let now = Date(timeIntervalSince1970:1_700_006_400)
         let c = calendar("Asia/Kolkata"), yesterday = c.date(byAdding:.day,value:-1,to:now)!

@@ -283,15 +283,8 @@ struct DictationInsightsMetrics {
 
 /// Presentation only. The previous seven-metric contract remains available unchanged.
 struct SketchInsightsSummary {
-    struct Usage: Identifiable, Equatable {
-        let name: String
-        let words: Int
-        var id: String { name }
-    }
     let values: [DictationInsightsMetrics.Metric]
-    let appUsage: [Usage]
     let timingNote: String
-    let usageNote: String
     init(entries:[DictationHistoryEntry],activity:DictationActivity) {
         var seen = Set<String>()
         let saved = entries.filter { seen.insert($0.id).inserted }
@@ -307,13 +300,7 @@ struct SketchInsightsSummary {
             .init(title:"Current Streak",value:"\(activity.currentStreak) \(activity.currentStreak == 1 ? "day" : "days")"),
             .init(title:"Longest Streak",value:"\(activity.longestStreak) \(activity.longestStreak == 1 ? "day" : "days")")
         ]
-        var totals:[String:Int] = [:], missingNames = 0
-        for entry in saved where entry.insertion.outcome == .inserted && entry.insertion.reason == .verified && entry.insertion.attempted {
-            guard let name = entry.sourceApplication?.trimmingCharacters(in:.whitespacesAndNewlines), !name.isEmpty else { missingNames += 1; continue }
-            totals[name,default:0] += entry.wordCount
-        }
-        appUsage = totals.filter { $0.value > 0 }.map { Usage(name:$0.key,words:$0.value) }.sorted { $0.words == $1.words ? $0.name < $1.name : $0.words > $1.words }
-        usageNote = "Only verified insertion outcomes count, grouped by saved application name; failed and uncertain delivery are excluded." + (missingNames > 0 ? " \(missingNames) verified entries lack an application name." : "")
+
     }
 }
 
@@ -364,4 +351,134 @@ enum FlowTypography {
     static let section = Font.system(size:12,weight:.semibold)
     static let setting = Font.body.weight(.medium)
     static let secondary = Font.caption
+}
+
+struct AppWritingActivity {
+    enum Period: String, CaseIterable, Identifiable {
+        case today = "Today"
+        case yesterday = "Yesterday"
+        case week = "7 days"
+        case month = "30 days"
+
+        var id: Self { self }
+        var hourly: Bool { self == .today || self == .yesterday }
+        var dayCount: Int {
+            switch self {
+            case .today, .yesterday: 1
+            case .week: 7
+            case .month: 30
+            }
+        }
+    }
+
+    enum Metric: String, CaseIterable, Identifiable {
+        case words = "Words"
+        case time = "Recording time"
+
+        var id: Self { self }
+        var axisTitle: String { self == .words ? "Words" : "Minutes" }
+        func chartValue(_ amount: Int) -> Double {
+            self == .words ? Double(amount) : Double(amount) / 60_000
+        }
+        func label(_ amount: Int) -> String {
+            if self == .words { return "\(amount.formatted()) words" }
+            return Duration.milliseconds(amount).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 2))
+        }
+    }
+
+    struct Series: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let amount: Int
+    }
+
+    struct Sample: Identifiable, Equatable {
+        struct Key: Hashable { let start: Date; let series: String }
+        let id: Key
+        let amount: Int
+    }
+
+    static let other = "other"
+    let buckets: [Date]
+    let end: Date
+    let series: [Series]
+    let samples: [Sample]
+    let missingNames: Int
+    let missingDurations: Int
+    var total: Int { series.reduce(0) { $0 + $1.amount } }
+
+    init(entries: [DictationHistoryEntry], now: Date, calendar: Calendar, period: Period, metric: Metric) {
+        let today = calendar.startOfDay(for: now)
+        let lastDay = period == .yesterday ? (calendar.date(byAdding: .day, value: -1, to: today) ?? today) : today
+        let end = calendar.date(byAdding: .day, value: 1, to: lastDay) ?? lastDay
+        let buckets: [Date]
+        if period.hourly {
+            buckets = Array(sequence(first: lastDay) { hour in
+                guard let next = calendar.date(byAdding: .hour, value: 1, to: hour),
+                      next > hour, next < end else { return nil }
+                return next
+            })
+        } else {
+            buckets = (0..<period.dayCount).reversed().compactMap { calendar.date(byAdding: .day, value: -$0, to: lastDay) }
+        }
+        self.buckets = buckets
+        self.end = end
+        let start = buckets.first ?? lastDay
+        var seen: Set<String> = []
+        var counts: [String: [Date: Int]] = [:]
+        var missingNames = 0
+        var missingDurations = 0
+        for entry in entries where seen.insert(entry.id).inserted {
+            guard entry.timestamp >= start, entry.timestamp < end, entry.timestamp <= now, entry.insertion.status == .insertedVerified else { continue }
+            guard let name = entry.sourceApplication?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                missingNames += 1
+                continue
+            }
+            let amount: Int
+            switch metric {
+            case .words:
+                amount = entry.wordCount
+            case .time:
+                guard (1...DictationText.maximumDurationMilliseconds).contains(entry.durationMilliseconds) else {
+                    missingDurations += 1
+                    continue
+                }
+                amount = Int(entry.durationMilliseconds)
+            }
+            guard amount > 0 else { continue }
+            let bucket = period.hourly ? calendar.dateInterval(of: .hour, for: entry.timestamp)?.start : calendar.startOfDay(for: entry.timestamp)
+            guard let bucket else { continue }
+            counts[name, default: [:]][bucket, default: 0] += amount
+        }
+        self.missingNames = missingNames
+        self.missingDurations = missingDurations
+        var ranked: [Series] = []
+        for (name, daily) in counts {
+            let amount = daily.values.reduce(0, +)
+            ranked.append(Series(id: "app:" + name, name: name, amount: amount))
+        }
+        ranked.sort { first, second in
+            if first.amount == second.amount { return first.name < second.name }
+            return first.amount > second.amount
+        }
+
+        let visible = Array(ranked.prefix(5))
+        let remainder = ranked.dropFirst(5)
+        let otherAmount = remainder.reduce(0) { $0 + $1.amount }
+        var displayed = visible
+        if otherAmount > 0 { displayed.append(.init(id: Self.other, name: "Other apps", amount: otherAmount)) }
+        series = displayed
+        var amountsBySeries: [String: [Date: Int]] = [:]
+        for app in visible { amountsBySeries[app.id] = counts[app.name] }
+        for app in remainder {
+            for (day, amount) in counts[app.name] ?? [:] {
+                amountsBySeries[Self.other, default: [:]][day, default: 0] += amount
+            }
+        }
+        samples = buckets.flatMap { bucket in
+            displayed.compactMap { app in
+                amountsBySeries[app.id]?[bucket].map { Sample(id: .init(start: bucket, series: app.id), amount: $0) }
+            }
+        }
+    }
 }
