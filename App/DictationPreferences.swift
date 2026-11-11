@@ -9,7 +9,8 @@ enum DictationPage: String, CaseIterable, Identifiable {
     case dictation = "Dictation", insights = "Insights"
     case commands = "Command Mode", smartFormatting = "Smart Formatting", privacy = "Privacy", general = "General"
     case history = "History"
-    static let sidebar: [Self] = [.dictation, .insights, .commands, .smartFormatting, .privacy, .general]
+    case speechRecognition = "Speech Recognition"
+    static let sidebar: [Self] = [.dictation, .speechRecognition, .insights, .commands, .smartFormatting, .privacy, .general]
     // The earlier UI had no disk-backed page selection. Accept legacy restoration
     // input here without retaining an obsolete Workspace case.
     static func restoring(_ rawValue: String?) -> Self { rawValue.flatMap(Self.init(rawValue:)) ?? .dictation }
@@ -21,6 +22,7 @@ enum DictationPage: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var symbol: String { switch self {
         case .dictation: "mic"
+        case .speechRecognition: "waveform"
         case .history: "clock"
         case .commands: "terminal"
         case .insights: "waveform.path.ecg"

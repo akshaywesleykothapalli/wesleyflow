@@ -7,22 +7,23 @@ import Synchronization
 
 /// Read-only application/system observations must identify the same bound process.
 @MainActor enum NativeFocusedElementResolver {
-    static func resolve<Element>(processID:Int32,application:()throws->Element?,system:()throws->Element?,window:()throws->Element? = { nil },owner:(Element)->Int32?,isEditor:(Element)throws->Bool = { _ in true }) throws -> Element {
-        // A same-process container is not necessarily the editable composer.
-        // Foreign ownership/secure controls fail closed; no fallback retargeting.
-        if let element = try application() {
-            guard owner(element) == processID else { throw TextTargetError.changed }
-            if try isEditor(element) { return element }
-        }
-        if let element = try system() {
-            guard owner(element) == processID else { throw TextTargetError.changed }
-            if try isEditor(element) { return element }
-        }
-        if let element = try window() {
-            guard owner(element) == processID else { throw TextTargetError.changed }
-            if try isEditor(element) { return element }
-        }
+    static func resolve<Element>(processID:Int32,application:()throws->Element?,system:()throws->Element?,window:()throws->Element? = { nil },owner:(Element)->Int32?,isEditor:(Element)throws->Bool = { _ in true },focusedChild:(Element)throws->Element? = { _ in nil }) throws -> Element {
+        if let editor = try follow(application(),processID:processID,owner:owner,isEditor:isEditor,focusedChild:focusedChild) { return editor }
+        if let editor = try follow(system(),processID:processID,owner:owner,isEditor:isEditor,focusedChild:focusedChild) { return editor }
+        if let editor = try follow(window(),processID:processID,owner:owner,isEditor:isEditor,focusedChild:focusedChild) { return editor }
         throw TextTargetError.unsupported
+    }
+
+    static func follow<Element>(_ candidate:Element?,processID:Int32,owner:(Element)->Int32?,isEditor:(Element)throws->Bool,focusedChild:(Element)throws->Element?) throws -> Element? {
+        // Follow explicit focus links only. Bound the walk even for malformed cycles.
+        var next = candidate
+        for depth in 0..<4 {
+            guard let element = next else { return nil }
+            guard owner(element) == processID else { throw TextTargetError.changed }
+            if try isEditor(element) { return element }
+            if depth < 3 { next = try focusedChild(element) }
+        }
+        return nil
     }
 }
 
@@ -44,12 +45,14 @@ import Synchronization
 @MainActor enum FocusedDescendantSearch {
     static func find<Element>(root: Element, limit: Int = 64, maximumDepth: Int = 8,
                              permitted: () -> Bool = { true }, focusedEditor: (Element) -> Bool,
-                             children: (Element,Int) -> [Element]) -> Element? {
+                             explicitEditor: (Element) throws -> Element? = { _ in nil },
+                             children: (Element,Int) -> [Element]) rethrows -> Element? {
         guard limit > 0, limit <= 256, maximumDepth >= 0, maximumDepth <= 16 else { return nil }
         var queue: [(Element,Int)] = [(root,0)], index = 0
         while index < queue.count, permitted() {
             let (element,depth) = queue[index]; index += 1
             if focusedEditor(element) { return element }
+            if let editor = try explicitEditor(element) { return editor }
             let remaining = limit-queue.count
             if depth < maximumDepth, remaining > 0 {
                 queue.append(contentsOf:children(element,remaining).prefix(remaining).map { ($0,depth+1) })
@@ -360,7 +363,23 @@ enum NativeEditorCapability {
         return (window,editor)
     }
     fileprivate static func focusedElement(_ root: AXUIElement, processID: Int32,record:(InsertionVerificationDiagnostic)->Void = { _ in }) throws -> AXUIElement {
-        try NativeFocusedElementResolver.resolve(processID:processID,application:{
+        func owner(_ element: AXUIElement) -> Int32? {
+            var pid: pid_t = 0
+            return AXUIElementGetPid(element,&pid) == .success ? pid : nil
+        }
+        func isEditor(_ element: AXUIElement) throws -> Bool {
+            let subrole = attribute(element,kAXSubroleAttribute) as? String ?? ""
+            guard !subrole.lowercased().contains("secure"), !subrole.lowercased().contains("password") else { throw TextTargetError.secure }
+            let role = attribute(element,kAXRoleAttribute) as? String ?? ""
+            let supported = [kAXTextAreaRole,kAXTextFieldRole,kAXComboBoxRole].contains(role)
+            record(.init(.target,.focusCandidateRole,supported ? .success : .unsupported))
+            return supported
+        }
+        func focusedChild(_ element: AXUIElement) throws -> AXUIElement? {
+            AXUIElementSetMessagingTimeout(element,0.05)
+            return try focusElementAttribute(element,kAXFocusedUIElementAttribute,code:.focusedChild,record:record)
+        }
+        return try NativeFocusedElementResolver.resolve(processID:processID,application:{
             try focusElementAttribute(root,kAXFocusedUIElementAttribute,code:.applicationFocus,record:record)
         },system:{
             let system = AXUIElementCreateSystemWide(); AXUIElementSetMessagingTimeout(system,0.2)
@@ -369,39 +388,53 @@ enum NativeEditorCapability {
             guard let window = try focusElementAttribute(root,kAXFocusedWindowAttribute,code:.focusedWindow,record:record) else { return nil }
             let deadline = ContinuousClock.now.advanced(by:.milliseconds(500))
             var visited = 0, deadlineReached = false
-            let found = FocusedDescendantSearch.find(root:window,limit:256,maximumDepth:16,permitted:{
+            guard owner(window) == processID else { throw TextTargetError.changed }
+            let found = try FocusedDescendantSearch.find(root:window,limit:256,maximumDepth:16,permitted:{
                 if ContinuousClock.now >= deadline { deadlineReached = true; return false }
                 return AXIsProcessTrusted()
             },focusedEditor:{ element in
                 visited += 1
                 AXUIElementSetMessagingTimeout(element,0.05)
-                guard (attribute(element,kAXFocusedAttribute) as? Bool) == true,
+                guard owner(element) == processID, (attribute(element,kAXFocusedAttribute) as? Bool) == true,
                       let role = attribute(element,kAXRoleAttribute) as? String else { return false }
                 return [kAXTextAreaRole,kAXTextFieldRole,kAXComboBoxRole].contains(role)
+            },explicitEditor:{ element in
+                guard owner(element) == processID, ContinuousClock.now < deadline,
+                      let role = attribute(element,kAXRoleAttribute) as? String,
+                      [kAXWindowRole,kAXGroupRole,kAXScrollAreaRole,kAXSplitGroupRole,"AXWebArea"].contains(role)
+                else { return nil }
+                let candidate = try focusedChild(element)
+                let editor = try NativeFocusedElementResolver.follow(candidate,processID:processID,owner:owner,isEditor:isEditor,focusedChild:{
+                    guard ContinuousClock.now < deadline else { return nil }
+                    return try focusedChild($0)
+                })
+                if let editor, let exposedWindow = try focusElementAttribute(editor,kAXWindowAttribute,code:.windowFromEditor,record:record),
+                   !CFEqual(exposedWindow,window) { throw TextTargetError.changed }
+                return editor
             },children:{ element,remaining in
-                var count: CFIndex = 0, values: CFArray?
-                guard AXUIElementGetAttributeValueCount(element,kAXChildrenAttribute as CFString,&count) == .success,
-                      count > 0,
-                      AXUIElementCopyAttributeValues(element,kAXChildrenAttribute as CFString,0,min(count,remaining),&values) == .success,
-                      let values = values as? [AXUIElement] else { return [] }
-                return values
+                guard owner(element) == processID else { return [] }
+                func read(_ name:String, limit:Int) -> [AXUIElement] {
+                    var count: CFIndex = 0, values: CFArray?
+                    guard limit > 0, ContinuousClock.now < deadline,
+                          AXUIElementGetAttributeValueCount(element,name as CFString,&count) == .success,
+                          count > 0,
+                          AXUIElementCopyAttributeValues(element,name as CFString,0,min(count,limit),&values) == .success
+                    else { return [] }
+                    return values as? [AXUIElement] ?? []
+                }
+                var children = read(kAXChildrenAttribute,limit:remaining)
+                for content in read(kAXContentsAttribute,limit:remaining - children.count)
+                    where !children.contains(where:{ CFEqual($0,content) }) {
+                    children.append(content)
+                }
+                return children
             })
             record(.init(.target,.focusedSearch,found == nil ? .unsupported : .success,observed:visited))
             if found == nil && visited == 256 { record(.init(.target,.focusSearchLimit,.failure)) }
             if deadlineReached { record(.init(.target,.focusSearchDeadline,.failure)) }
             guard AXIsProcessTrusted() else { throw TextTargetError.denied }
             return found
-        },owner:{ element in
-            var pid: pid_t = 0
-            return AXUIElementGetPid(element,&pid) == .success ? pid : nil
-        },isEditor:{ element in
-            let subrole = Self.attribute(element,kAXSubroleAttribute) as? String ?? ""
-            guard !subrole.lowercased().contains("secure"), !subrole.lowercased().contains("password") else { throw TextTargetError.secure }
-            let role = Self.attribute(element,kAXRoleAttribute) as? String ?? ""
-            let supported = [kAXTextAreaRole,kAXTextFieldRole,kAXComboBoxRole].contains(role)
-            record(.init(.target,.focusCandidateRole,supported ? .success : .unsupported))
-            return supported
-        })
+        },owner:owner,isEditor:isEditor,focusedChild:focusedChild)
     }
     fileprivate static func editable(_ element: AXUIElement, console: Bool) -> Bool {
         func settable(_ name: String) -> Bool {

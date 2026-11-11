@@ -13,7 +13,7 @@ import VoiceInput
     @State private var selectedEntry: DictationHistoryEntry?
     @State private var confirmClear = false
     @State private var observedAgentSteps:Set<UUID>=[]
-    @State private var commandLibraryExpanded = false
+    @State private var showingCommandActivity = false
     @State private var deletingEntry: DictationHistoryEntry?
     @State private var copyError: String?
     @StateObject private var copyFeedback = HistoryCopyFeedback()
@@ -21,7 +21,7 @@ import VoiceInput
     @Environment(\.timeZone) private var timeZone
     @State private var confirmRestore = false
     @State private var recoveryID: String?
-    @State private var speechExpanded = false
+    @State private var showingSpeechSetup = false
     @StateObject private var loginItem = LoginItemControl()
     @ScaledMetric(relativeTo:.title2) private var headingSize = FlowTypography.pageTitle
     @ScaledMetric(relativeTo:.body) private var bodySize = FlowTypography.body
@@ -68,6 +68,12 @@ import VoiceInput
                 HStack {
                     Text(page.rawValue).font(.system(size:headingSize,weight:.semibold))
                     Spacer()
+                    if page == .speechRecognition {
+                        Button("Apple Speech setup…") { showingSpeechSetup = true }
+                            .popover(isPresented: $showingSpeechSetup) {
+                                FlowPage { appleSpeechSettings }.frame(width: 450, height: 340)
+                            }
+                    }
                     if page == .history { Button("Back to Dictation") { page = .dictation } }
                     if page == .dictation || page == .history { HistoryHeaderSearch(text:$coordinator.search) }
                 }.padding(.horizontal,22).frame(minHeight:56).layoutPriority(1)
@@ -75,6 +81,14 @@ import VoiceInput
                 Group {
                     switch page {
                     case .dictation: dictationPage
+                    case .speechRecognition:
+                        FlowPage {
+                            if let speakers = coordinator.speakers {
+                                SpeakerSettingsView(settings: speakers, dictationBusy: coordinator.busy || coordinator.speechResourceWorking)
+                            } else {
+                                Text("Voice profiles are unavailable in this session.").foregroundStyle(.secondary)
+                            }
+                        }
                     case .history: historyPage
                     case .commands: commandsPage
                     case .insights: insightsPage
@@ -107,14 +121,18 @@ import VoiceInput
         .onDisappear { copyFeedback.cancelAll() }
         .onChange(of:coordinator.agentReviewRequest) { _,_ in
             page = .commands
-            commandLibraryExpanded = coordinator.agentHUD == "Agent help"
+            showingCommandActivity = false
             if NSClassFromString("XCTestCase") == nil { openWindow(id:"foundation"); NSApplication.shared.activate() }
         }
         .onChange(of:coordinator.flowPageRequestID) { _,_ in
             if let destination = coordinator.flowPageRequest { page = destination }
             if NSClassFromString("XCTestCase") == nil { openWindow(id:"foundation"); NSApplication.shared.activate() }
         }
-        .onChange(of:page) { _,_ in copyFeedback.cancelAll(); copyError = nil }
+        .onChange(of:page) { _, destination in
+            copyFeedback.cancelAll()
+            copyError = nil
+            if destination != .speechRecognition { showingSpeechSetup = false }
+        }
         .onChange(of:coordinator.entries.map(\.id)) { _,ids in copyFeedback.retain(ids:Set(ids)) }
         .confirmationDialog("Clear all local dictation history?",isPresented:$confirmClear) {
             Button("Clear all history",role:.destructive) { Task { await coordinator.clearHistory() } }
@@ -221,48 +239,9 @@ import VoiceInput
                 }
             }
             Text(coordinator.agentNotice).font(.callout).foregroundStyle(coordinator.phase == .error ? .orange : .secondary)
-            FlowSettingsGroup("Dictation controls") {
-                FlowSettingsRow("Current dictation language") { Text(coordinator.preferences.languageMode == .english ? "English" : (coordinator.preferences.teluguRecognitionLanguage == .teluguOnly ? "Telugu only" : "Telugu + English")).foregroundStyle(.secondary) }
-                ForEach(FlowVoiceControl.examples,id:\.self) { example in
-                    FlowCommandHelpRow(command:example,explanation:FlowVoiceControl.parse(example)?.helpDescription ?? "")
-                }
-            }
-            FlowSettingsGroup("Everyday Mac actions") {
-                ForEach(["Open Notes","Set volume to thirty percent","Turn volume up","Mute audio","Show battery status","Move Safari to the left half"],id:\.self) { example in
-                    FlowCommandHelpRow(command:example,explanation:Self.macCommandHelp[example] ?? "")
-                }
-            }
-            Text("Speak normally with the separate Agent key. Installed apps can be opened or normally quit. Google/YouTube searches open in your default browser. Music controls the existing player. Messages require a final recipient and text confirmation.").font(FlowTypography.secondary).foregroundStyle(.secondary)
             if let failure=coordinator.lastAgentFailure {
                 Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
                 Button("Copy command speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
-            }
-            Text("Hold the Agent key, speak, then release. Routine requests run directly. Ambiguous requests stop for clarification; messages require confirmation. Dictation always inserts text.").font(.caption).foregroundStyle(.secondary)
-            Divider()
-            DisclosureGroup("Type a command instead") {
-                TextField("Command",text:$coordinator.agentCommandText).disabled(coordinator.agentQuestion != nil)
-                Button("Run text request") { coordinator.reviewAgentCommand() }.disabled(coordinator.busy)
-            }
-            DisclosureGroup("Command library",isExpanded:$commandLibraryExpanded) {
-                ForEach(PersonalCommandLibrary.examples,id:\.self) { example in Text(example).font(.caption).textSelection(.enabled) }
-                Text("Natural requests: Hey, open WhatsApp · Go open Google · Open Gmail in Safari · Open YouTube and search for piano music").font(.caption).textSelection(.enabled)
-                Text("Known website names: "+PersonalWebsiteNames.sites.map(\.name).joined(separator:", ")).font(.caption).foregroundStyle(.secondary)
-                Text("Command understanding is local. Loading online websites still needs an internet connection. Unknown website names require an exact address.").font(.caption).foregroundStyle(.secondary)
-                Divider()
-                Text("100-command expansion").font(.headline)
-                ForEach(PersonalRoadmapCatalog.commands) { command in
-                    VStack(alignment:.leading,spacing:2) {
-                        Text(String(format:"%03d",command.id)+" · "+command.example).font(.caption).textSelection(.enabled)
-                        Text(command.mode.label+" · "+command.detail).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            Text("Folder commands use Documents, Desktop or Downloads. Delete moves to Trash only after review; it never permanently erases. Finder controls and protected folders may need macOS consent. Browser searches use the named installed browser.").font(.caption).foregroundStyle(.secondary)
-            if !coordinator.agentHeard.isEmpty {
-                FlowSettingsGroup("Latest spoken request") {
-                    FlowCommandHelpRow(command:"Heard",explanation:coordinator.agentHeard)
-                    if !coordinator.agentInterpretation.isEmpty { FlowCommandHelpRow(command:"Understood",explanation:coordinator.agentInterpretation) }
-                }
             }
             if let question=coordinator.agentQuestion {
                 VStack(alignment:.leading,spacing:8) {
@@ -294,6 +273,51 @@ import VoiceInput
                 Button(plan.steps.contains(where:{$0.tool == .mailAction && (try? PersonalMailCommand.decode($0.text).action) == .send}) ? "Send this reviewed email" : plan.steps.contains(where:{$0.tool == .message}) ? "Send this reviewed message" : plan.steps.contains(where:{$0.tool == .trashFolder}) ? "Move reviewed folder to Trash" : "Approve these actions and run") { coordinator.approveAgentPlan(expectedPlan:plan) }.disabled(coordinator.busy || (plan.steps.contains(where:{$0.tool == .message}) && !coordinator.agentReplyText.isEmpty))
                 Button("Reject plan") { coordinator.cancelAgentTask(plan.id) }.disabled(coordinator.busy)
             }
+            if let name=coordinator.agentEditingRoutine {
+                Text("Edit routine: "+name).font(.headline)
+                ForEach(Array(coordinator.agentRoutineExistingSteps.enumerated()),id:\.offset) { _,summary in Text(summary).font(.caption) }
+                Text("Enter one complete replacement command per line, up to eight steps. Saving does not run them.").font(.caption)
+                TextEditor(text:$coordinator.agentRoutineEditText).frame(minHeight:80)
+                HStack {Button("Review revised routine") {coordinator.saveAgentRoutineEdits()};Button("Cancel editing") {coordinator.cancelAgentRoutineEdits()}}
+            }
+            if !coordinator.agentRecords.isEmpty || !coordinator.agentScheduledDrafts.isEmpty {
+                Button("Review saved command activity…") { showingCommandActivity = true }
+            }
+            FlowSettingsGroup("Dictation controls") {
+                FlowSettingsRow("Current dictation language") { Text(coordinator.preferences.languageMode == .english ? "English" : (coordinator.preferences.teluguRecognitionLanguage == .teluguOnly ? "Telugu only" : "Telugu + English")).foregroundStyle(.secondary) }
+                ForEach(FlowVoiceControl.examples,id:\.self) { example in
+                    FlowCommandHelpRow(command:example,explanation:FlowVoiceControl.parse(example)?.helpDescription ?? "")
+                }
+            }
+            FlowSettingsGroup("Keep awake by voice") {
+                Text(coordinator.keepAwakeStatus).font(.callout).foregroundStyle(.secondary).padding(12)
+                FlowCommandHelpRow(command: "Make my screen active until I say, turn it off", explanation: "Keep the display awake until a stop command.")
+                FlowCommandHelpRow(command: "Keep my screen awake for one hour", explanation: "Set a timer of up to 24 hours.")
+                FlowCommandHelpRow(command: "Keep my screen awake until Xcode quits", explanation: "Watch one currently running app.")
+                FlowCommandHelpRow(command: "Keep my screen awake until report.zip is downloaded", explanation: "Watch for a new file with that name in Downloads.")
+                FlowCommandHelpRow(command: "Cover the screen", explanation: "Keep work running behind the privacy curtain. Use Touch ID to reveal it.")
+                FlowCommandHelpRow(command: "Cover the screen by making it awake for one hour", explanation: "The timer ends keep awake. The curtain stays until Touch ID.")
+                Text("The curtain temporarily turns off Swipe between spaces and restores your previous Trackpad choice. Other system controls can still bypass it.")
+                    .font(.caption).foregroundStyle(.secondary).padding(12)
+                FlowCommandHelpRow(command: "Turn it off", explanation: "End the active keep-awake session.")
+            }
+            FlowSettingsGroup("Everyday Mac actions") {
+                ForEach(["Open Notes","Set volume to thirty percent","Turn volume up","Mute audio","Show battery status","Move Safari to the left half"],id:\.self) { example in
+                    FlowCommandHelpRow(command:example,explanation:Self.macCommandHelp[example] ?? "")
+                }
+            }
+        }
+        .sheet(isPresented:$showingCommandActivity) {
+            commandActivitySheet
+        }
+    }
+    private var commandActivitySheet: some View {
+        FlowPage {
+            HStack {
+                Text("Command activity").font(.headline)
+                Spacer()
+                Button("Done") { showingCommandActivity = false }.keyboardShortcut(.cancelAction)
+            }
             if !coordinator.agentScheduledDrafts.isEmpty {
                 Text("Scheduled local message drafts").font(.headline)
                 Text("These drafts never send automatically. At the due time, Review opens a fresh exact-send approval. Notification delivery depends on macOS settings.").font(.caption).foregroundStyle(.secondary)
@@ -302,19 +326,12 @@ import VoiceInput
                         Text(verbatim:[draft.message.recipient,draft.date.formatted(),draft.state.rawValue].joined(separator:" · ")).font(.caption)
                         Text(draft.message.body).font(.caption).textSelection(.enabled)
                         HStack {
-                            Button("Review due message") {coordinator.reviewScheduledDraft(draft.id)}.disabled(coordinator.busy || draft.state != .pending)
+                            Button("Review due message") {showingCommandActivity = false; coordinator.reviewScheduledDraft(draft.id)}.disabled(coordinator.busy || draft.state != .pending)
                             if draft.state != .pending {Button("Delete local draft record") {coordinator.deleteScheduledDraft(draft.id)}.disabled(coordinator.busy)}
                         }
                     }
                 }
                 Button("Refresh scheduled drafts") {coordinator.loadScheduledDrafts()}.disabled(coordinator.busy)
-            }
-            if let name=coordinator.agentEditingRoutine {
-                Text("Edit routine: "+name).font(.headline)
-                ForEach(Array(coordinator.agentRoutineExistingSteps.enumerated()),id:\.offset) { _,summary in Text(summary).font(.caption) }
-                Text("Enter one complete replacement command per line, up to eight steps. Saving does not run them.").font(.caption)
-                TextEditor(text:$coordinator.agentRoutineEditText).frame(minHeight:80)
-                HStack {Button("Review revised routine") {coordinator.saveAgentRoutineEdits()};Button("Cancel editing") {coordinator.cancelAgentRoutineEdits()}}
             }
             ForEach(coordinator.agentRecords.reversed()) { record in
                 VStack(alignment:.leading,spacing:4) {
@@ -328,32 +345,15 @@ import VoiceInput
                         }
                     }
                     HStack {
-                        if record.state == .awaitingApproval { Button("Review") { coordinator.reviewQueuedAgent(record.id) } }
+                        if record.state == .awaitingApproval { Button("Review") { showingCommandActivity = false; coordinator.reviewQueuedAgent(record.id) } }
                         if record.state == .running {Button("Pause after current step") {coordinator.pauseAgentTask(record.id)}}
-                        if [PersonalTaskState.paused,.cancelled,.needsReview].contains(record.state),record.supersededBy==nil {Button("Continue with review") {coordinator.continueAgentTask(record.id)}.disabled(coordinator.busy)}
+                        if [PersonalTaskState.paused,.cancelled,.needsReview].contains(record.state),record.supersededBy==nil {Button("Continue with review") {showingCommandActivity = false; coordinator.continueAgentTask(record.id)}.disabled(coordinator.busy)}
                         if record.state == .running || record.state == .awaitingApproval { Button("Cancel remaining steps") { coordinator.cancelAgentTask(record.id) } }
                         Button("Delete task record") { coordinator.deleteAgentTask(record.id) }.disabled(coordinator.busy)
                     }
                 }
             }
-            Divider()
-            Toggle("Explicit local memory (off each launch)",isOn:Binding(get:{coordinator.agentMemoryEnabled},set:{coordinator.setAgentMemory($0)}))
-            Text("Only text you save here is remembered for 30 days. No passive activity or sensitive capture. Task receipts are separate and can be deleted above.").font(.caption).foregroundStyle(.secondary)
-            TextField("Memory text, search, or correction",text:$coordinator.agentMemoryText)
-            HStack {
-                Button("Remember") { coordinator.rememberAgentText() }.disabled(!coordinator.agentMemoryEnabled)
-                Button("Search") { coordinator.searchAgentMemory() }.disabled(!coordinator.agentMemoryEnabled)
-                Button("Delete all memory") { coordinator.deleteAgentMemory() }
-            }
-            ForEach(coordinator.agentMemories) { memory in
-                HStack {
-                    Text(memory.text).font(.caption)
-                    Button("Replace with entered text") { coordinator.correctAgentMemory(memory.id) }
-                    Button("Delete") { coordinator.deleteAgentMemory(memory.id) }
-                }
-            }
-
-        }
+        }.frame(width:600,height:440)
     }
     private var historyPage: some View { dictationPage }
     private func speakerKey(_ entry: DictationHistoryEntry) -> String {
@@ -528,9 +528,6 @@ import VoiceInput
     private var generalPage: some View {
         FlowPage {
             languageSettings
-            if let speakers = coordinator.speakers {
-                SpeakerSettingsView(settings:speakers,dictationBusy:coordinator.busy)
-            }
             FlowSettingsGroup("Appearance & startup") {
                 FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
                 if loginItem.status == .requiresApproval { FlowSettingsRow("Login approval") { Button("Open Login Items") { loginItem.openSettings() } } }
@@ -541,15 +538,12 @@ import VoiceInput
             FlowSettingsGroup("Permissions") {
                 FlowSettingsRow("Microphone",description:coordinator.microphoneStatus) { Button("Open Settings") { openPrivacy("Privacy_Microphone") } }
                 FlowSettingsRow("Accessibility",description:coordinator.accessibilityAllowed ? "Allowed" : "Needed for inserting text") { Button("Open Settings") { openPrivacy("Privacy_Accessibility") } }
-                if coordinator.preferences.languageMode == .english {
-                    FlowSettingsRow("Speech recognition",description:coordinator.speechStatus) { Button("Open Settings") { openPrivacy("Privacy_SpeechRecognition") } }
-                }
             }
             FlowSettingsGroup("History") {
                 FlowSettingsRow("Save dictation history on this Mac") { Toggle("Save dictation history on this Mac",isOn:$coordinator.preferences.keepHistory) }
                 FlowSettingsRow("Saved dictations",description:"Turning off history keeps existing entries.") { Button("Clear all history…",role:.destructive) { confirmClear = true }.disabled(coordinator.busy || coordinator.entries.isEmpty) }
             }
-            DisclosureGroup("Troubleshooting") { advancedSpeechSettings.padding(.top,12) }
+            DisclosureGroup("Troubleshooting") { dictationTroubleshooting.padding(.top,12) }
             FlowSettingsGroup("About") {
                 FlowSettingsRow("Wesley Flow") { Text(AppRelease.version).foregroundStyle(.secondary) }
                 FlowSettingsRow("Source code") { Link("View on GitHub",destination:URL(string:"https://github.com/akshaywesleykothapalli/wesleyflow")!) }
@@ -557,17 +551,30 @@ import VoiceInput
             if let error = coordinator.settingsError { Text(error).foregroundStyle(.orange) }
         }.onAppear { loginItem.refresh(); coordinator.refreshPermissions() }
     }
-    private var advancedSpeechSettings: some View {
+    private var dictationTroubleshooting: some View {
         FlowSettingsGroup("Dictation support") {
             if coordinator.preferences.languageMode == .teluguRomanised {
                 FlowSettingsRow("Offline Telugu files",description:"Setup instructions are included in the GitHub documentation.") { Text(FileManager.default.fileExists(atPath:WhisperTeluguSmallModel.installedURL.path) ? "Installed" : "Setup required").foregroundStyle(.secondary) }
-            } else {
-                FlowSettingsRow("English speech setup",description:coordinator.speechResourceStatus) {
-                    Button("Check availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking)
-                }
-                if coordinator.speechConfiguration?.installCandidate != nil {
-                    FlowSettingsRow("Speech resources",description:"Install the on-device English resources supplied by macOS.") { Button("Set up English dictation") { coordinator.installSpeechResources() }.disabled(!coordinator.canInstallSpeechResources) }
-                }
+            }
+            FlowSettingsRow("Diagnostics",description:"Status and error codes only; no dictated text or audio.") { Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed) }
+            Text("If Fn opens macOS emoji or Dictation, set Keyboard → Press Globe key to → Do Nothing.").font(.caption).foregroundStyle(.secondary).padding(14)
+        }
+    }
+    @ViewBuilder private var appleSpeechSettings: some View {
+        FlowSettingsGroup("Apple Speech") {
+            FlowSettingsRow("Speech Recognition permission", description: coordinator.speechStatus) {
+                Button("Open Settings") { openPrivacy("Privacy_SpeechRecognition") }
+            }
+            FlowSettingsRow("Microphone permission", description: coordinator.microphoneStatus) {
+                Button("Open Settings") { openPrivacy("Privacy_Microphone") }
+            }
+        }
+        FlowSettingsGroup("English dictation resources") {
+            FlowSettingsRow("English speech setup",description:coordinator.speechResourceStatus) {
+                Button("Check availability") { Task { await coordinator.inspectSpeech() } }.disabled(coordinator.busy || coordinator.speechResourceWorking)
+            }
+            if coordinator.speechConfiguration?.installCandidate != nil {
+                FlowSettingsRow("Speech resources",description:"Install the on-device English resources supplied by macOS.") { Button("Set up English dictation") { coordinator.installSpeechResources() }.disabled(!coordinator.canInstallSpeechResources) }
             }
             if coordinator.speechResourceWorking {
                 FlowSettingsRow("Setup progress") {
@@ -575,8 +582,6 @@ import VoiceInput
                     Button("Stop waiting") { coordinator.stopWaitingForSpeechResources() }
                 }
             }
-            FlowSettingsRow("Diagnostics",description:"Status and error codes only; no dictated text or audio.") { Button("Copy diagnostics") { _ = coordinator.copyReviewedText(coordinator.combinedDictationDiagnostics) }.disabled(!coordinator.historyCopyAllowed) }
-            Text("If Fn opens macOS emoji or Dictation, set Keyboard → Press Globe key to → Do Nothing.").font(.caption).foregroundStyle(.secondary).padding(14)
         }
     }
     private func openPrivacy(_ pane: String) { if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?"+pane) { NSWorkspace.shared.open(url) } }
@@ -808,39 +813,24 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
     let dictationBusy: Bool
     @State private var name = ""
     @State private var consent = false
+    @State private var showingEnrollment = false
     @State private var pendingDeletion: UUID?
 
     var body: some View {
-        FlowSettingsGroup("Speaker profiles") {
-            VStack(alignment: .leading, spacing: 10) {
+        FlowSettingsGroup("Voice profiles") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Add your voice so Wesley Flow can label new saved dictations. Voices it can’t confidently match appear as Unknown speaker.")
+                    .foregroundStyle(.secondary)
+                TextField("Your name", text: $name)
+                    .accessibilityIdentifier("wesley.speakerName")
+                Button("Add My Voice") {
+                    consent = false
+                    showingEnrollment = true
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!SpeakerProfile.validName(name) || dictationBusy || settings.working || settings.enrolling)
                 Toggle("Label saved dictations by voice", isOn: Binding(get: { settings.enabled }, set: settings.setEnabled))
                     .disabled(dictationBusy || settings.enrolling || settings.working || settings.profiles.isEmpty)
-                Text("Read three samples for each person. Wesley Flow stores a local voice profile and discards the recordings. Uncertain matches appear as Unknown speaker.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if settings.enrolling {
-                    if settings.sample < SpeakerSettings.passages.count {
-                        Text("Sample \(settings.sample + 1) of \(SpeakerSettings.passages.count)").font(.headline)
-                        Text(SpeakerSettings.passages[settings.sample]).textSelection(.enabled)
-                        if settings.recording {
-                            Button("Finish sample") { Task { await settings.finishSample() } }
-                        } else {
-                            Button("Record sample") { Task { await settings.startSample() } }.disabled(settings.working)
-                        }
-                    } else {
-                        Button("Save voice profile") {
-                            Task {
-                                await settings.save()
-                                if !settings.enrolling { name = ""; consent = false }
-                            }
-                        }.disabled(settings.working)
-                    }
-                    Button("Cancel enrollment") { Task { await settings.cancel() } }.disabled(settings.working)
-                } else {
-                    TextField("Speaker name", text: $name)
-                    Toggle("I consent to storing this speaker’s voice profile on this Mac", isOn: $consent).toggleStyle(.checkbox)
-                    Button("Add speaker") { Task { await settings.begin(name: name) } }
-                        .disabled(!consent || !SpeakerProfile.validName(name) || dictationBusy || settings.working)
-                }
                 ForEach(settings.profiles, id: \.id) { profile in
                     HStack {
                         Text(profile.name)
@@ -853,12 +843,64 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
             }.padding(14)
         }
         .task { await settings.refresh() }
-        .onDisappear { if settings.enrolling, settings.recording || settings.working { Task { await settings.cancel() } } }
+        .sheet(isPresented: $showingEnrollment) { enrollment }
         .confirmationDialog("Delete this voice profile?", isPresented: Binding(
             get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }
         ), presenting: pendingDeletion) { id in
             Button("Delete voice profile", role: .destructive) { Task { await settings.delete(id: id) } }
         } message: { _ in Text("Future dictations will no longer match this profile. Saved history keeps its labels.") }
+    }
+
+    private var enrollment: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Add My Voice").font(.title2.bold())
+            Text(name).font(.headline)
+            Text("Read three passages in your normal voice. Your voice profile stays on this Mac, and Wesley Flow discards the sample recordings.")
+                .foregroundStyle(.secondary)
+            if !settings.enrolling || settings.sample < SpeakerSettings.passages.count {
+                let sample = settings.enrolling ? settings.sample : 0
+                Text("Passage \(sample + 1) of \(SpeakerSettings.passages.count)").font(.headline)
+                Text(SpeakerSettings.passages[sample]).padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                Label("All three samples are ready", systemImage: "checkmark.circle")
+            }
+            if !settings.enrolling {
+                Toggle("I consent to storing my voice profile on this Mac", isOn: $consent).toggleStyle(.checkbox)
+            }
+            Text(settings.status).font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Button("Cancel") {
+                    Task {
+                        if settings.enrolling { await settings.cancel() }
+                        showingEnrollment = false
+                    }
+                }.keyboardShortcut(.cancelAction).disabled(settings.working)
+                Spacer()
+                if !settings.enrolling {
+                    Button("Continue") { Task { await settings.begin(name: name) } }
+                        .disabled(!consent || dictationBusy || settings.working)
+                } else if settings.sample == SpeakerSettings.passages.count {
+                    Button("Save voice profile") {
+                        Task {
+                            await settings.save()
+                            if !settings.enrolling { name = ""; showingEnrollment = false }
+                        }
+                    }.disabled(settings.working)
+                } else if settings.recording {
+                    Button("Finish sample") { Task { await settings.finishSample() } }
+                } else {
+                    Button("Record sample") { Task { await settings.startSample() } }.disabled(settings.working || dictationBusy)
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+        .interactiveDismissDisabled(settings.enrolling || settings.working)
+        .onDisappear {
+            if settings.enrolling && !settings.working { Task { await settings.cancel() } }
+        }
     }
 }
 

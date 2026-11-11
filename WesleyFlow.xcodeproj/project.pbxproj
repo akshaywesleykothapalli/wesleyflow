@@ -5,6 +5,10 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "A89000000000000000000004" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "AppTests/KeepAwakeTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "B89000000000000000000004" = { "isa" = "PBXBuildFile"; "fileRef" = "A89000000000000000000004"; };
+    "A89000000000000000000002" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/KeepAwake.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "B89000000000000000000002" = { "isa" = "PBXBuildFile"; "fileRef" = "A89000000000000000000002"; };
     "AE3500013500350035003500" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Packages/WesleyFlowCore/Tests/WorkspaceTests/FocusedTextResolverTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
     "BE3500013500350035003500" = { "isa" = "PBXBuildFile"; "fileRef" = "AE3500013500350035003500"; };
     "EC9505D3F9C24A1C87FCACCB" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "AppTests/GlobalDictationTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
@@ -449,6 +453,7 @@
         "79C8F64D3B5541A38A3212FE",
         "C823BA46AF1C417195F68544",
         "CCFAB5CC993F4DCF8643DFAC",
+        "B89000000000000000000002",
         "EC53E2A4C00D49EB935EB777",
         "A0AD78130D41429E92255BA8",
         "D93C06C0F79DE604053E56F0",
@@ -470,10 +475,12 @@
       "name" = "Sources";
       "children" = (
         "EC9505D3F9C24A1C87FCACCB",
+        "A89000000000000000000004",
         "0322194798894536851F84B1",
         "E18FE40E6E214967B2903BED",
         "9C88AE59274C409F9605152B",
         "08F33CD8BC9D4D2394B39F36",
+        "A89000000000000000000002",
         "F5D86A826642B1704CC3BA71",
         "34B9DA293E35A7050763212D",
         "AE3500013500350035003500",
@@ -541,6 +548,7 @@
       "buildActionMask" = "2147483647";
       "files" = (
         "2C77FDDA4D304F5680EC9EA1",
+        "B89000000000000000000004",
         "BAD6E616C87832773A21935D",
         "FE29802D63C081DF58633D5F",
       );
@@ -702,7 +710,8 @@
         "MARKETING_VERSION" = "1.0.0";
         "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
         "INFOPLIST_KEY_NSHumanReadableCopyright" = "Copyright © 2026 KOTHAPALLI AKSHAY WESLEY";
-        "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone when you dictate, use a voice command, or choose to record a voice profile sample.";
+        "INFOPLIST_KEY_NSDownloadsFolderUsageDescription" = "Wesley Flow watches Downloads when you ask it to keep the screen awake until a file downloads.";
+        "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone when you dictate, use a voice command, or record a voice profile sample.";
         "INFOPLIST_KEY_NSSpeechRecognitionUsageDescription" = "Wesley Flow transcribes your speech on this device into editable text.";
         "INFOPLIST_KEY_NSContactsUsageDescription" = "Wesley Flow reads contact names and requested phone or email details only for your explicit Agent requests. Sending requires final review.";
         "INFOPLIST_KEY_NSAppleEventsUsageDescription" = "Wesley Flow controls supported apps only for your explicit Agent requests. Sending communications and changing existing private items require review.";
@@ -893,7 +902,8 @@
         "MARKETING_VERSION" = "1.0.0";
         "INFOPLIST_KEY_CFBundleDisplayName" = "Wesley Flow";
         "INFOPLIST_KEY_NSHumanReadableCopyright" = "Copyright © 2026 KOTHAPALLI AKSHAY WESLEY";
-        "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone when you dictate, use a voice command, or choose to record a voice profile sample.";
+        "INFOPLIST_KEY_NSDownloadsFolderUsageDescription" = "Wesley Flow watches Downloads when you ask it to keep the screen awake until a file downloads.";
+        "INFOPLIST_KEY_NSMicrophoneUsageDescription" = "Wesley Flow uses the microphone when you dictate, use a voice command, or record a voice profile sample.";
         "INFOPLIST_KEY_NSSpeechRecognitionUsageDescription" = "Wesley Flow transcribes your speech on this device into editable text.";
         "INFOPLIST_KEY_NSContactsUsageDescription" = "Wesley Flow reads contact names and requested phone or email details only for your explicit Agent requests. Sending requires final review.";
         "INFOPLIST_KEY_NSAppleEventsUsageDescription" = "Wesley Flow controls supported apps only for your explicit Agent requests. Sending communications and changing existing private items require review.";

@@ -41,7 +41,8 @@ import Domain
     }
     private static func menuItems(_ menu:NSMenu)->[NSMenuItem] {menu.items.flatMap{[$0]+($0.submenu.map{menuItems($0)} ?? [])}}
     @MainActor private final class Flag {var inactive=false}
-    private static func lock() async throws ->PersonalReceipt {
+    public static func lockScreen() async throws ->PersonalReceipt {
+        try Task.checkCancellation()
         let matches=(NSApp.mainMenu.map{menuItems($0)} ?? []).filter{$0.keyEquivalent.lowercased()=="q" && $0.keyEquivalentModifierMask.intersection([.command,.control,.option,.shift])==[.command,.control] && $0.isEnabled && !$0.isHidden}
         let invoke:()->Bool
         if matches.count==1,let item=matches.first,let action=item.action {invoke={NSApp.sendAction(action,to:item.target,from:item)}}
@@ -59,6 +60,7 @@ import Domain
         let observed=Flag(),center=NSWorkspace.shared.notificationCenter
         let token=center.addObserver(forName:NSWorkspace.sessionDidResignActiveNotification,object:nil,queue:.main) {_ in Task {@MainActor in observed.inactive=true}}
         defer {center.removeObserver(token)}
+        try Task.checkCancellation()
         guard invoke() else {throw PersonalAgentError.verificationFailed}
         for _ in 0..<30 {if observed.inactive {return .init(identifier:UUID().uuidString,evidence:"Native Lock Screen menu accepted; session became inactive. No synthetic key or privileged process used.")};try await Task.sleep(for:.milliseconds(100))}
         throw PersonalAgentError.verificationFailed
@@ -78,7 +80,7 @@ import Domain
     }
     public static func perform(_ step:PersonalStep) async throws ->PersonalReceipt {
         let c=try PersonalMenuAction.decode(step.text)
-        if c.action == .lock {return try await lock()}
+        if c.action == .lock {return try await lockScreen()}
         guard AXIsProcessTrusted() else {throw PersonalAgentError.permissionDenied}
         guard let pid=c.processID,let app=NSRunningApplication(processIdentifier:pid),app.bundleIdentifier==c.appID,!app.isTerminated else {throw PersonalAgentError.verificationFailed}
         app.activate(options:[])

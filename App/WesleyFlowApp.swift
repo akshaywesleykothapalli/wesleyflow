@@ -30,7 +30,10 @@ struct WesleyFlowApp: App {
                 .onAppear { if NSClassFromString("XCTestCase") == nil { appDelegate.connectGlobal(global); global.resumeShortcutIfAuthorized() } }
                 .task {
                     // Hosted unit tests use only injected stores, never the user’s transcript history.
-                    if NSClassFromString("XCTestCase") == nil { await global.loadHistory() }
+                    if NSClassFromString("XCTestCase") == nil {
+                        await global.recoverCurtainSwipe()
+                        await global.loadHistory()
+                    }
                 }
         }
         .defaultSize(width:CompactWindowLayout.defaultSize.width,height:CompactWindowLayout.defaultSize.height)
@@ -40,6 +43,7 @@ struct WesleyFlowApp: App {
             Text(global.message)
             Text(global.previewNotice)
             Text(global.agentShortcutStatus)
+            Text(global.keepAwakeStatus)
             Button(global.agentShortcutEnabled ? "Disable Agent shortcut" : "Enable Agent shortcut…") {
                 if global.agentShortcutEnabled { global.disableAgentShortcut() } else { global.enableAgentShortcut() }
             }.disabled(global.busy)

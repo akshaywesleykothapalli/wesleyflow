@@ -69,4 +69,145 @@ import Domain
         for _ in 0..<20 {if ProcessInfo.processInfo.isLowPowerModeEnabled {return .init(identifier:"low-power-mode",evidence:"Native Low Power Mode control selected; ProcessInfo confirms Low Power Mode enabled. No sudo or privileged helper used.")};try await Task.sleep(for:.milliseconds(100))}
         throw PersonalAgentError.verificationFailed
     }
+
+    public enum SpacesSwipe: String, Codable, Sendable {
+        case off = "Off"
+        case threeFingers = "Swipe Left or Right with Three Fingers"
+        case fourFingers = "Swipe Left or Right with Four Fingers"
+    }
+
+    public static func spacesSwipe() async throws -> SpacesSwipe {
+        let foreground = NSWorkspace.shared.frontmostApplication
+        let settingsWasVisible = runningTrackpadSettings()?.isHidden == false
+        defer { restoreForegroundAfterTrackpadSettings(foreground, settingsWasVisible: settingsWasVisible) }
+        let root = try await trackpadGestures()
+        return try swipeChoice(try swipePopup(in: root))
+    }
+
+    public static func replaceSpacesSwipe(_ expected: SpacesSwipe, with wanted: SpacesSwipe,
+                                          beforeChange: () throws -> Void) async throws {
+        let foreground = NSWorkspace.shared.frontmostApplication
+        let settingsWasVisible = runningTrackpadSettings()?.isHidden == false
+        defer { restoreForegroundAfterTrackpadSettings(foreground, settingsWasVisible: settingsWasVisible) }
+        let root = try await trackpadGestures()
+        let popup = try swipePopup(in: root)
+        let current = try swipeChoice(popup)
+        guard current == expected else { throw PersonalAgentError.verificationFailed }
+        try Task.checkCancellation()
+        guard AXUIElementPerformAction(popup, kAXPressAction as CFString) == .success else {
+            throw PersonalAgentError.unsupported
+        }
+        for _ in 0..<12 {
+            let items = try matchingElements(in: popup) { element in
+                (read(element, kAXRoleAttribute) as? String) == kAXMenuItemRole
+                    && (read(element, kAXTitleAttribute) as? String) == wanted.rawValue
+            }
+            if items.count == 1, let item = items.first {
+                try Task.checkCancellation()
+                try beforeChange()
+                guard AXUIElementPerformAction(item, kAXPressAction as CFString) == .success else {
+                    throw PersonalAgentError.verificationFailed
+                }
+                for _ in 0..<15 {
+                    if let control = try? swipePopup(in: root), (try? swipeChoice(control)) == wanted { return }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                throw PersonalAgentError.verificationFailed
+            }
+            guard items.isEmpty else { throw PersonalAgentError.unsupported }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw PersonalAgentError.unsupported
+    }
+
+    private static func trackpadGestures() async throws -> AXUIElement {
+        guard AXIsProcessTrusted() else { throw PersonalAgentError.permissionDenied }
+        let workspace = NSWorkspace.shared
+        let identifier = "com.apple.systempreferences"
+        if let app = runningTrackpadSettings() {
+            let root = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetMessagingTimeout(root, 0.2)
+            if (try? swipePopup(in: root)) != nil { return root }
+        }
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Trackpad-Settings.extension"),
+              let appURL = workspace.urlForApplication(withBundleIdentifier: identifier) else {
+            throw PersonalAgentError.unsupported
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        configuration.addsToRecentItems = false
+        let app = try await workspace.open([url], withApplicationAt: appURL, configuration: configuration)
+        guard app.bundleIdentifier == identifier else { throw PersonalAgentError.unsupported }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(root, 0.2)
+        for _ in 0..<30 {
+            try Task.checkCancellation()
+            guard !app.isTerminated else { throw PersonalAgentError.verificationFailed }
+            if (try? swipePopup(in: root)) != nil { return root }
+            let tabs = try windowElements(in: root) { element in
+                let role = read(element, kAXRoleAttribute) as? String
+                return [kAXCheckBoxRole, kAXRadioButtonRole].contains(role ?? "")
+                    && (read(element, kAXDescriptionAttribute) as? String) == "More Gestures"
+            }
+            if tabs.count == 1, let tab = tabs.first,
+               (read(tab, kAXValueAttribute) as? NSNumber)?.intValue == 0 {
+                guard AXUIElementPerformAction(tab, kAXPressAction as CFString) == .success else {
+                    throw PersonalAgentError.unsupported
+                }
+            }
+            try await Task.sleep(for: .milliseconds(150))
+        }
+        throw PersonalAgentError.unsupported
+    }
+
+    private static func runningTrackpadSettings() -> NSRunningApplication? {
+        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences")
+            .filter { !$0.isTerminated }
+        return apps.count == 1 ? apps.first : nil
+    }
+
+    private static func restoreForegroundAfterTrackpadSettings(_ previous: NSRunningApplication?, settingsWasVisible: Bool) {
+        // A popup action can bring Settings forward even when it opened in the background.
+        guard let settings = runningTrackpadSettings(),
+              previous?.processIdentifier != settings.processIdentifier else { return }
+        let becameForeground = NSWorkspace.shared.frontmostApplication?.processIdentifier == settings.processIdentifier
+        if becameForeground || !settingsWasVisible { _ = settings.hide() }
+        if becameForeground, let previous, !previous.isTerminated { _ = previous.activate(options: []) }
+    }
+
+    private static func swipePopup(in root: AXUIElement) throws -> AXUIElement {
+        let matches = try windowElements(in: root) { element in
+            (read(element, kAXRoleAttribute) as? String) == kAXPopUpButtonRole
+                && (read(element, kAXIdentifierAttribute) as? String) == "GNAME_DASHBOARD"
+        }
+        guard matches.count == 1, let popup = matches.first else { throw PersonalAgentError.unsupported }
+        return popup
+    }
+
+    private static func swipeChoice(_ popup: AXUIElement) throws -> SpacesSwipe {
+        guard let text = read(popup, kAXValueAttribute) as? String, let choice = SpacesSwipe(rawValue: text) else {
+            throw PersonalAgentError.unsupported
+        }
+        return choice
+    }
+
+    private static func windowElements(in root: AXUIElement, where matches: (AXUIElement) -> Bool) throws -> [AXUIElement] {
+        let windows = read(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        guard windows.count <= 4 else { throw PersonalAgentError.unsupported }
+        return try windows.flatMap { try matchingElements(in: $0, where: matches) }
+    }
+
+    private static func matchingElements(in root: AXUIElement, where matches: (AXUIElement) -> Bool) throws -> [AXUIElement] {
+        let deadline = ContinuousClock.now + .seconds(1)
+        var queue = [root], index = 0, result: [AXUIElement] = []
+        while index < queue.count {
+            guard index < 500, ContinuousClock.now < deadline else { throw PersonalAgentError.unsupported }
+            let item = queue[index]
+            index += 1
+            if matches(item) { result.append(item) }
+            queue += read(item, kAXChildrenAttribute) as? [AXUIElement] ?? []
+        }
+        return result
+    }
+
 }

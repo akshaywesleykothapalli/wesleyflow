@@ -217,6 +217,7 @@ public struct InsertionVerificationDiagnostic: Sendable, Equatable {
         case clipboardRestored = "CLIPBOARD_RESTORED", clipboardSuperseded = "NEWER_CLIPBOARD_PRESERVED", clipboardRetained = "CLIPBOARD_RECOVERY_RETAINED"
         case applicationFocus = "APPLICATION_FOCUSED_ELEMENT", systemFocus = "SYSTEM_FOCUSED_ELEMENT"
         case focusedWindow = "FOCUSED_WINDOW", focusCandidateRole = "FOCUS_CANDIDATE_IS_EDITOR"
+        case focusedChild = "CONTAINER_FOCUSED_ELEMENT"
         case focusedSearch = "FOCUSED_EDITOR_SEARCH", focusSearchLimit = "FOCUS_SEARCH_LIMIT", focusSearchDeadline = "FOCUS_SEARCH_DEADLINE"
         case captureFailed = "TARGET_CAPTURE_FAILED", roleSupported = "EDITABLE_ROLE_SUPPORTED", subroleKnown = "SUBROLE_EXPOSED"
         case selectedTextWritable = "SELECTED_TEXT_WRITABLE", selectionWritable = "SELECTION_RANGE_WRITABLE"

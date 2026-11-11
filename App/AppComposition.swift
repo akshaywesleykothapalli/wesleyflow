@@ -56,6 +56,9 @@ struct AppComposition {
         let storeURL = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("WesleyFlow/Dictation",isDirectory:true).appendingPathComponent("dictations.store")
         let speakers = SpeakerSettings()
+        let swipeReceipt = storeURL.deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PrivacyCurtain/spaces-swipe.txt")
+        let keepAwake = KeepAwakeSession(swipeSetting: CurtainSwipeSetting(receipt: swipeReceipt))
         let english = AppleDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership)
         let telugu = TeluguDictationInput(exclusiveCapture:NativeDictationInstanceGuard.requireOwnership)
         english.speakerCapture = speakers.capture
@@ -63,7 +66,7 @@ struct AppComposition {
         let speech = LanguageDictationInput(english:english,telugu:telugu)
         return SystemWideDictationCoordinator(input:speech,targets:NativeInsertionTargetCapture(),
             insertion:TextInsertionService(clipboard:NativeDictationPasteboard(),clock:clock),shortcut:NativeDictationShortcut(),clock:clock,
-            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },personalPlanner:ApplePersonalPlanner(memory:SystemInferenceMemory(),clock:clock),personalMessageResolution:{plan in try await NativeAgentResolution.resolve(plan)},offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250,speakers:speakers)
+            historyFactory:{ try await SwiftDataDictationHistoryStore.open(url:storeURL) },personalPlanner:ApplePersonalPlanner(memory:SystemInferenceMemory(),clock:clock),personalMessageResolution:{plan in try await NativeAgentResolution.resolve(plan)},offlineRewriter:AppleTranscriptRewriter(memory:SystemInferenceMemory(),clock:clock),previewRegistrar:NativePreviewShortcuts(),focusedTextResolver:NativeFocusedTextResolver(),minimumHoldMilliseconds:250,speakers:speakers,keepAwake:keepAwake)
     }
 
 }

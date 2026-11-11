@@ -711,6 +711,8 @@ import VoiceInput
     @Published var agentCommandText = ""
     @Published private(set) var agentPlan: PersonalPlan?
     @Published private(set) var agentRecords: [PersonalTaskRecord] = []
+    private let keepAwake: KeepAwakeSession
+    @Published private(set) var keepAwakeStatus = "Keep awake is off. Hold the Agent key to speak a command."
     @Published private(set) var agentNotice = "Hold the Agent key and speak. Routine requests run directly; messages need final confirmation."
     @Published var agentMemoryText = ""
     @Published private(set) var agentMemoryEnabled = false
@@ -1455,7 +1457,7 @@ import VoiceInput
     private var closed = false
     var shortcutLabel: String { preferences.activationKey.label }
     var pillVisible: Bool { (preferences.showPill || commandSession || agentExecutingID != nil || agentPlan != nil || agentQuestion != nil || (agentHUD != nil && hudFeedbackVisible)) && ((preferences.idlePillEnabled && !closed) || (startedFromShortcut && busy) || ((agentPlan != nil || agentQuestion != nil) && agentHUD != nil) || hudFeedbackVisible || inPlaceHUD != .idle) }
-    var keepsAppRunningAfterWindowClose: Bool { preferences.holdFnEnabled || preferences.agentHotkeyEnabled || preferences.idlePillEnabled || preferences.previewShortcutsEnabled || busy }
+    var keepsAppRunningAfterWindowClose: Bool { preferences.holdFnEnabled || preferences.agentHotkeyEnabled || preferences.idlePillEnabled || preferences.previewShortcutsEnabled || busy || keepAwake.isActive || keepAwake.isCurtainVisible }
     var isPreparingTelugu: Bool { phase == .preparing && activeLanguageMode == .teluguRomanised }
     let speakers: SpeakerSettings?
     var busy: Bool { [.preparing,.recording,.finalizing,.inserting].contains(phase) }
@@ -1486,8 +1488,10 @@ import VoiceInput
          speechResources: AppleSpeechResourceService = AppleSpeechResourceService(),
          minimumHoldMilliseconds: Int64 = 0,
          speakers: SpeakerSettings? = nil,
+         keepAwake: KeepAwakeSession = KeepAwakeSession(),
          wallTime: @escaping @Sendable () -> Date = { Date() }) {
         self.speakers = speakers
+        self.keepAwake = keepAwake
         self.networkPolicy = networkPolicy; self.networkSnapshot = networkPolicy.snapshot()
         self.focusedTextResolver = focusedTextResolver
         self.previewPresentationRequest = previewPresentationRequest
@@ -1501,6 +1505,7 @@ import VoiceInput
         self.hudClock = hudClock; self.clock = clock; self.preferenceStore = preferenceStore; self.history = history; self.historyFactory = historyFactory
         self.localeIdentifier = localeIdentifier; self.wallTime = wallTime; self.modelInspector = modelInspector; preferences = preferenceStore.load()
         networkPolicy.setBlocked(preferences.blockNetworkRequests); networkSnapshot = networkPolicy.snapshot()
+        keepAwake.onStatus = { [weak self] in self?.keepAwakeStatus = $0 }
     }
     var clipboardRecoveryID: String? { insertion.pendingClipboardRecovery?.id }
     private func reconcileClipboard() {
@@ -1568,6 +1573,7 @@ import VoiceInput
     }
     func startManual() { guard !busy, !closed else { return }; begin(manual:true) }
     private func begin(manual: Bool, fromShortcut: Bool = false, activation:DictationActivationContext?=nil, agent:Bool = false) {
+        guard !keepAwake.isCurtainVisible, !keepAwake.isUpdatingCurtain else { return }
         guard speakers?.enrolling != true, speakers?.working != true else {
             message = "Finish or cancel speaker enrollment before dictating."; return
         }
@@ -1773,6 +1779,14 @@ import VoiceInput
                 agentShortcutStatus = agentNotice; message = agentNotice; showHUDFeedback(); return
             }
             phase = .idle; agentCommandText = cleaned
+            if let command = KeepAwakeCommand.parse(cleaned, active: keepAwake.canStop) {
+                let succeeded = keepAwake.run(command, origin: captureActivation?.application)
+                phase = succeeded ? .success : .error
+                agentHeard = cleaned; agentInterpretation = keepAwakeStatus; agentCommandText = ""
+                lastAgentFailure = succeeded ? nil : keepAwakeStatus
+                agentStatus(keepAwakeStatus, hud: succeeded ? "Keep awake" : "Keep awake unavailable")
+                return
+            }
             if handleFlowVoiceControl(cleaned) { return }
             if personalPlanner != nil { interactWithAgent(cleaned); return }
             reviewAgentCommand(cleaned)
@@ -1812,7 +1826,8 @@ import VoiceInput
         let completedFormattingLabel = formattedLabel
         let target = destination, source = target?.info.applicationName, raw = raw, text = cleaned
         let fallback = fallback, captureExplanation = captureExplanation, date = timestamp, began = recordingBegan, saveAtStart = historyConsentAtStart
-        let speakerAudio = forced == nil && saveAtStart && preferences.keepHistory ? speakers?.capture.take() : nil
+        let labelSpeaker = forced == nil && saveAtStart && preferences.keepHistory && speakers?.capture.armed == true
+        let speakerAudio = labelSpeaker ? speakers?.capture.take() : nil
         speakers?.capture.reset()
         work = Task { [weak self] in
             guard let self else { speakerAudio?.cancel(); return }
@@ -1876,7 +1891,7 @@ import VoiceInput
                 let delta = now.subtractingReportingOverflow(start)
                 return delta.overflow ? 0 : max(0,min(DictationText.maximumDurationMilliseconds,delta.partialValue))
             } ?? 0
-            let label = await speaker?.value
+            let label = await speaker?.value ?? (labelSpeaker ? .unknown : nil)
             let entry = DictationHistoryEntry(id:id,timestamp:date,raw:raw,cleaned:text,sourceApplication:source,
                                              durationMilliseconds:duration,insertion:receipt,
                                              speaker: self.session == id && !Task.isCancelled ? label : nil)
@@ -2044,8 +2059,15 @@ import VoiceInput
     func disableShortcut() { commandArmed = false; preferences.holdFnEnabled = false; stopShortcutMonitoring(); cancel() }
     private func stopShortcutMonitoring() { shortcutGeneration += 1; shortcutEnabled = false; shortcutHeld = false; shortcut.disable() }
     /// Normal Quit must not silently discard an in-flight insertion or its RAM clipboard backup.
+    func recoverCurtainSwipe() async {
+        guard (try? NativeDictationInstanceGuard.requireOwnership()) != nil else { return }
+        await keepAwake.recoverCurtainSwipe()
+    }
+
     func canTerminateSafely() -> Bool {
         reconcileClipboard()
+        if keepAwake.isUpdatingCurtain { message = "Wait for the privacy curtain to finish updating."; return false }
+        if keepAwake.isCurtainVisible { message = "Reveal the desktop with Touch ID before quitting."; return false }
         if busy { message = "Finish or cancel dictation before quitting."; return false }
         if speakers?.working == true || speakers?.enrolling == true { message = "Finish or cancel speaker enrollment before quitting."; return false }
         if speechResourceWorking { message = "Finish speech resource setup or choose Stop waiting before quitting."; return false }
@@ -2053,6 +2075,7 @@ import VoiceInput
         return true
     }
     func close() {
+        keepAwake.stop()
         armedFormattingKind = nil; armedFormattingOrigin = nil; armedFormattingAt = nil; activeBeforeFormatting = nil
         for task in closeObservers.values {task.cancel()};closeObservers.removeAll()
         agentDialogue.clear();agentQuestion=nil;agentRecipientChoice=nil;agentReplyText="";agentHeard="";agentInterpretation=""

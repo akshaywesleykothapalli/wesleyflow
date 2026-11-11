@@ -190,16 +190,16 @@ private actor GHistory: DictationHistoryStore {
         #expect(throws:TextTargetError.changed) { try NativeFocusedElementResolver.resolve(processID:42,application:{ Optional<Int>.none },system:{ nil },window:{ 7 },owner:{ _ in 99 }) }
     }
     @Test func descendantFocusSearchNeverSelectsAnUnfocusedEditor() {
-        #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ $0 == 3 },children:{ node,_ in node == 0 ? [1,2,3] : [] }) == 3)
-        #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ _ in false },children:{ _,_ in [1,2] }) == nil)
-        #expect(FocusedDescendantSearch.find(root:0,permitted:{ false },focusedEditor:{ _ in true },children:{ _,_ in [] }) == nil)
+        #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ $0 == 3 },explicitEditor:{ _ in nil },children:{ node,_ in node == 0 ? [1,2,3] : [] }) == 3)
+        #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ _ in false },explicitEditor:{ _ in nil },children:{ _,_ in [1,2] }) == nil)
+        #expect(FocusedDescendantSearch.find(root:0,permitted:{ false },focusedEditor:{ _ in true },explicitEditor:{ _ in nil },children:{ _,_ in [] }) == nil)
     }
     @Test func descendantFocusSearchBoundsCyclesAndHostileChildCounts() {
         var visits = 0
-        #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ _ in visits += 1; return false },children:{ _,_ in Array(0..<1000) }) == nil)
+        #expect(FocusedDescendantSearch.find(root:0,focusedEditor:{ _ in visits += 1; return false },explicitEditor:{ _ in nil },children:{ _,_ in Array(0..<1000) }) == nil)
         #expect(visits <= 64)
-        #expect(FocusedDescendantSearch.find(root:0,maximumDepth:0,focusedEditor:{ $0 == 1 },children:{ _,_ in [1] }) == nil)
-        #expect(FocusedDescendantSearch.find(root:0,limit:257,focusedEditor:{ _ in true },children:{ _,_ in [] }) == nil)
+        #expect(FocusedDescendantSearch.find(root:0,maximumDepth:0,focusedEditor:{ $0 == 1 },explicitEditor:{ _ in nil },children:{ _,_ in [1] }) == nil)
+        #expect(FocusedDescendantSearch.find(root:0,limit:257,focusedEditor:{ _ in true },explicitEditor:{ _ in nil },children:{ _,_ in [] }) == nil)
     }
     @Test func invalidUnicodeCaretIsRejectedWithoutEffects() async {
         let target = GTarget(text:"😀x",selection:.init(location:1,length:0))
@@ -795,6 +795,40 @@ private actor GHistory: DictationHistoryStore {
         #expect(requests.isEmpty); #expect(coordinator.agentPlan?.steps.first?.tool == .openApp); #expect(coordinator.phase == .success); #expect(try await history.load().isEmpty)
         #expect(!coordinator.commandArmed); coordinator.close()
     }
+    @Test func keepAwakeRunsOnlyFromFinalAgentSpeech() async {
+        let input = GInput(), agent = GShortcut(), dictation = GShortcut(), history = GHistory()
+        var acquired = 0
+        var released = 0
+        let awake = KeepAwakeSession(acquire: { acquired += 1; return 42 }, release: { _ in released += 1 })
+        let coordinator = SystemWideDictationCoordinator(input: input, targets: GCapture(),
+            insertion: TextInsertionService(clipboard: GClipboard(), clock: GClock()), shortcut: dictation,
+            agentShortcut: agent, agentCaptureValidation: {}, agentConflict: { _ in false },
+            preferenceStore: preferences(), history: history, keepAwake: awake)
+        defer { coordinator.close() }
+        coordinator.personalAgentQueueURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathComponent("queue.json")
+        defer { if let url = coordinator.personalAgentQueueURL { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } }
+        coordinator.enableAgentShortcut()
+        let command = "Keep my screen awake until I say stop"
+        coordinator.reviewAgentCommand(command)
+        #expect(acquired == 0)
+        coordinator.startManual()
+        await coordinator.waitUntilRecording()
+        input.receive?(.transcript(command)); coordinator.stop(); input.receive?(.finished)
+        await waitForTerminal(coordinator)
+        #expect(acquired == 0)
+
+        agent.receive?(.pressed); await coordinator.waitUntilRecording()
+        input.receive?(.transcript(command))
+        #expect(acquired == 0)
+        agent.receive?(.released); input.receive?(.finished)
+        #expect(acquired == 1)
+        #expect(awake.isActive)
+        agent.receive?(.pressed); await coordinator.waitUntilRecording()
+        input.receive?(.transcript("Turn it off")); agent.receive?(.released); input.receive?(.finished)
+        #expect(released == 1)
+        #expect(!awake.isActive)
+    }
     @Test func unarmedCommandWordsRemainDictation() async {
         let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), agent = GShortcut(), history = GHistory()
         var requests: [AppOpeningCommand] = []
@@ -1049,7 +1083,9 @@ private actor GHistory: DictationHistoryStore {
         #expect(DictationPage.privacy.symbol == "shield")
         #expect(DictationPage.dictation.moving(-1) == .dictation)
         #expect(DictationPage.general.moving(1) == .general)
-        #expect(DictationPage.dictation.moving(1) == .insights)
+        #expect(DictationPage.dictation.moving(1) == .speechRecognition)
+        #expect(DictationPage.speechRecognition.moving(1) == .insights)
+        #expect(DictationPage.restoring("Speech Recognition") == .speechRecognition)
         #expect(DictationPage.privacy.moving(1) == .general)
     }
     @Test func sidebarHoverClearsAndSelectionChangesTheActualNativeSymbolWeight() throws {
@@ -1095,7 +1131,7 @@ private actor GHistory: DictationHistoryStore {
         #expect(!panel.canBecomeKey); #expect(!panel.canBecomeMain); #expect(panel.contentRect(forFrameRect:panel.frame).size == NSSize(width:84,height:32)); panel.close()
     }
     @Test func sidebarAndAppearanceSettingsPersistWithoutAIActivation() {
-        #expect(DictationPage.sidebar.map(\.rawValue) == ["Dictation","Insights","Command Mode","Smart Formatting","Privacy","General"])
+        #expect(DictationPage.sidebar.map(\.rawValue) == ["Dictation","Speech Recognition","Insights","Command Mode","Smart Formatting","Privacy","General"])
         #expect(DictationPage.restoring("Dictionary") == .dictation)
         #expect(FlowVoiceControl.parse("Open my dictionary") == nil)
         #expect(DictationPage.allCases.contains(.history)); #expect(!DictationPage.sidebar.contains(.history))
@@ -3961,8 +3997,8 @@ private actor FortyOneBlockingResolver {
 
 @Suite("41A-R5 deeper explicit focus") @MainActor struct PersonalAgent41FocusDepthTests {
     @Test func deepComposerRequiresItsOwnFocusFlag() {
-        #expect(FocusedDescendantSearch.find(root:0,limit:256,maximumDepth:16,focusedEditor:{$0==12},children:{n,_ in n<12 ? [n+1]:[]})==12)
-        #expect(FocusedDescendantSearch.find(root:0,limit:256,maximumDepth:16,focusedEditor:{_ in false},children:{n,_ in n<12 ? [n+1]:[]})==nil)
+        #expect(FocusedDescendantSearch.find(root:0,limit:256,maximumDepth:16,focusedEditor:{$0==12},explicitEditor:{ _ in nil },children:{n,_ in n<12 ? [n+1]:[]})==12)
+        #expect(FocusedDescendantSearch.find(root:0,limit:256,maximumDepth:16,focusedEditor:{_ in false},explicitEditor:{ _ in nil },children:{n,_ in n<12 ? [n+1]:[]})==nil)
     }
 }
 
@@ -5269,6 +5305,41 @@ extension InPlaceRewriteTests {
 }
 
 @Suite("Browser web-app verified insertion",.serialized) @MainActor struct BrowserInsertionTests {
+    @Test func focusedContainerResolvesItsExplicitEditorBeforeWindowSearch() throws {
+        let editor = try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{
+            Issue.record("An explicitly focused editor should resolve before fallback"); return nil
+        },owner:{ _ in 42 },isEditor:{ $0 == 3 },focusedChild:{ $0 + 1 })
+        #expect(editor == 3)
+    }
+
+    @Test func focusedContainerCannotRedirectToForeignOrSecureEditors() {
+        #expect(throws:TextTargetError.changed) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{ nil },
+                owner:{ $0 == 2 ? 99 : 42 },isEditor:{ $0 == 2 },focusedChild:{ _ in 2 })
+        }
+        #expect(throws:TextTargetError.secure) {
+            try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{ nil },
+                owner:{ _ in 42 },isEditor:{ if $0 == 2 { throw TextTargetError.secure }; return false },
+                focusedChild:{ _ in 2 })
+        }
+    }
+
+    @Test func windowContainerFindsExplicitFocusWithoutFocusedFlags() throws {
+        let found = try FocusedDescendantSearch.find(root:1,focusedEditor:{ _ in false },explicitEditor:{ node in
+            try NativeFocusedElementResolver.follow(node == 2 ? 3 : nil,processID:42,
+                owner:{ _ in 42 },isEditor:{ $0 == 4 },focusedChild:{ $0 == 3 ? 4 : nil })
+        },children:{ node,_ in node == 1 ? [2] : [] })
+        #expect(found == 4)
+    }
+
+    @Test func cyclicContainerFocusIsBounded() throws {
+        var reads = 0
+        let editor = try NativeFocusedElementResolver.resolve(processID:42,application:{ 1 },system:{ 2 },
+            owner:{ _ in 42 },isEditor:{ $0 == 2 },focusedChild:{ reads += 1; return $0 })
+        #expect(editor == 2)
+        #expect(reads == 3)
+    }
+
     @Test func missingApplicationWindowCanUseTheVerifiedEditorWindow() throws {
         let window=try NativeFocusedWindowResolver.resolve(processID:42,application:{nil as Int?},focusedEditorWindow:{7},owner:{_ in 42},isWindow:{$0==7})
         #expect(window==7)
