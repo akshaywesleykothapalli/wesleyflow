@@ -1,63 +1,94 @@
 # Wesley Flow
 
-Native voice dictation and text formatting for Apple Silicon Macs. Hold Fn to dictate into a supported text field, then use Option+1 to polish the wording or Option+2 to turn it into a clear prompt.
+Wesley Flow is a native macOS app for on-device dictation and voice commands. Hold a key to dictate into a supported text field, polish what you just wrote, or use a separate key to give your Mac a command.
 
-## Features
-
-- English dictation using installed Apple on-device speech engines.
-- Offline Romanised Telugu with Telugu-only and automatic Telugu/English recognition modes.
-- A compact recording pill, configurable dictation and Agent keys, and language switching.
-- English Smart Polish and prompt formatting through Apple's on-device AI, with local formatting for protected sentences.
-- A personal dictionary, phrase replacements, punctuation and text cleanup controls.
-- Local history, activity insights, appearance and launch-at-login preferences.
-- Command Mode for supported dictation controls and Mac actions, with review for sensitive actions.
+Built for Apple Silicon. [Build from source](#build-from-source) · [Voice commands](#keep-your-mac-awake) · [Telugu setup](#set-up-telugu-dictation)
 
 ## Get started
 
-1. Build and open Wesley Flow on an Apple Silicon Mac running macOS 26 or later.
-2. In General, choose English or Telugu (Romanised), review the requested microphone, speech and Accessibility permissions, and enable hold-to-talk.
-3. Click inside a supported text field, hold Fn, speak and release.
-4. In Smart Formatting, enable formatting shortcuts. Enable Smart Polish or prompt formatting as desired, then press Option+1 or Option+2 after dictating. On-device AI features require Apple Intelligence to be available on the Mac.
-5. For Command Mode, configure the separate Agent key in General. Supported commands are listed in the app. Agent requests are not pasted into your text field.
+1. Open Wesley Flow. In **General**, choose **English** or **Telugu (Romanised)** and enable **Hold-to-talk dictation**. Grant Microphone, Speech Recognition, and Accessibility access when requested. Accessibility lets Wesley Flow insert text into other apps.
+2. Place the cursor in a supported text field. Hold **Fn / Globe**, speak, then release to insert the transcript.
+3. To edit the last dictation in place, enable the features you want under **Smart Formatting** and keep the cursor in the original field. To issue voice commands, enable the separate shortcut in **Command Mode**.
 
-No chat message or prompt is submitted automatically. Formatting replacement requires an unchanged, verified last dictation and editor support. Unsupported or unverified delivery retains the transcript for review.
+| Default shortcut | Action |
+| --- | --- |
+| Hold **Fn / Globe** | Dictate into the focused text field |
+| **Option + 1** | Use Smart Polish to improve the wording of the last English dictation |
+| **Option + 2** | Turn the last English dictation into a structured prompt |
+| Hold **Right Command** | Speak an English voice command |
 
-## Telugu setup
+Both hold keys are configurable. AI-assisted formatting requires Apple Intelligence to be available. In-place formatting requires a supported editor and an unchanged, verified insertion.
 
-Telugu uses local Small model files verified by size and SHA-256. Telugu-only needs the specialist model; automatic language recognition also needs multilingual Small. Acquisition is explicit and separate from inference:
+A personal dictionary, phrase replacements, and punctuation controls help tailor the transcript. When local history is enabled, **Dictation** shows saved entries and **Insights** charts activity by app.
+
+## Label saved dictations by voice
+
+Open **Speech Recognition**, enter a name, and select **Add My Voice**. With your consent, Wesley Flow records three short passages to create a local voice profile and discards the recordings. Enable **Label saved dictations by voice** to label future entries. Speech that cannot be confidently matched appears as **Unknown speaker**.
+
+You can delete a profile from the same page. Saved dictations retain their existing labels.
+
+## Keep your Mac awake
+
+Enable the shortcut in **Command Mode**, then hold **Right Command** and speak one of these commands.
+
+| Say | What happens |
+| --- | --- |
+| “Keep my screen awake until I say turn it off” | Keep the display awake until you stop the session |
+| “Keep my screen awake for one hour” | End the session after one hour |
+| “Keep my screen awake until this app quits” | End the session when the app in front at the time of the command quits |
+| “Keep my screen awake until report.pdf is downloaded” | End the session once a new file with that name appears and settles in Downloads |
+| “Cover the screen by keeping it awake for one hour” | Start a timed session with a frosted privacy curtain after Touch ID confirmation |
+| “Turn it off” | End the active keep-awake session and let normal display sleep resume |
+
+The privacy curtain covers connected displays. Wesley Flow temporarily disables the Trackpad gesture for switching Spaces in the background. Use **Reveal with Touch ID** on the curtain to show the desktop and restore the prior gesture setting. A timed session can expire while the curtain stays in place, and revealing the desktop can leave the keep-awake session running.
+
+The curtain is an app-level overlay. macOS system controls can bypass it.
+
+## Build from source
+
+Use an Apple Silicon Mac with a full Xcode installation. The verified toolchain uses **Xcode 27**, **Swift 6.4**, and the **macOS 27 SDK**. The deployment target is macOS 26, where runtime acceptance remains pending.
+
+```sh
+git clone https://github.com/akshaywesleykothapalli/wesleyflow.git
+cd wesleyflow
+open WesleyFlow.xcodeproj
+```
+
+Select the **WesleyFlow** scheme and **My Mac**, then choose **Product → Run**. Xcode resolves a checksum-pinned whisper.cpp XCFramework at build time. The app runs with local development signing. Public binary distribution requires Developer ID signing and notarization.
+
+### Set up Telugu dictation
+
+Install the local Small models, then choose **General → Language → Telugu (Romanised)**. Use **Telugu only** for Telugu speech or **Auto** for Telugu and English.
 
 ```sh
 python3 Tools/Telugu/install_model.py --model both
 ```
 
-This downloads approximately 752 MB of pinned model files. To install an already acquired model without networking, use `--model telugu --source /path/to/model` or `--model multilingual --source /path/to/model`. Models are stored in the user's Application Support directory and are not included in Git. See [setup and model provenance](Docs/Telugu/RECOGNITION-QUALITY-FIX.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+Both models together download approximately 752 MB. Telugu-only mode needs the specialist model. Automatic recognition also needs multilingual Small. The installer checks file sizes and SHA-256 hashes before storing the models in your Application Support directory. To use a local copy, pass `--source /path/to/model` with `--model telugu` or `--model multilingual`. See [model setup and provenance](Docs/Telugu/RECOGNITION-QUALITY-FIX.md).
 
-## Build and verify
+## Privacy and text delivery
 
-The currently verified lane uses Xcode 27, Swift 6.4 and the macOS 27 SDK on Apple Silicon. The deployment target is macOS 26; runtime acceptance on macOS 26 is still pending. Open `WesleyFlow.xcodeproj`, select the WesleyFlow scheme and My Mac. No Ollama server or separate coding model is required.
+- **Speech stays on-device.** With the necessary speech assets installed, dictation uses local recognition with no cloud transcription fallback. macOS manages Apple speech and Apple Intelligence assets.
+- **History is optional.** Wesley Flow stores no microphone recordings. If you enable dictation history, transcripts are stored locally in plaintext under your user account and may be included in backups. Manage history in **General**.
+- **Your clipboard is protected during supported pastes.** Wesley Flow restores the previous clipboard after verified delivery if it still owns the clipboard. If delivery is uncertain, use the app’s recovery prompt to review the backup. Wesley Flow preserves newer clipboard content and never automatically retries uncertain delivery.
+- **You stay in control of submission.** Dictation inserts text for you to review. Wesley Flow never automatically submits a message or prompt. Secure fields are excluded, and Apple Terminal uses manual copy.
+
+Editor compatibility depends on the accessibility information each app exposes. The network switch in **Privacy** governs Wesley Flow’s own HTTP connections. macOS services and other apps manage their own network access.
+
+## Run the checks
+
+Point `DEVELOPER_DIR` to the full Xcode toolchain on your Mac. Use a fresh output directory for each check.
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-python3 Tools/CI/run_checks.py test --output Evidence/ReleaseCheck
-python3 Tools/CI/run_checks.py concurrency --output Evidence/ReleaseCheck
+python3 Tools/CI/run_checks.py test --output Evidence/TestCheck
+python3 Tools/CI/run_checks.py concurrency --output Evidence/ConcurrencyCheck
 ```
 
-Choose an existing full Xcode path on your Mac. The package uses a checksum-pinned whisper.cpp XCFramework fetched at build time. Tests use fixtures and do not record audio or type into your applications. See [contributing](CONTRIBUTING.md) for additional checks and [release notes](RELEASE-NOTES.md) for the current checkpoint.
+The deterministic checks use fixtures. See [Contributing](CONTRIBUTING.md) for additional checks and the [GitHub Actions workflow](.github/workflows/ci.yml) for hosted CI.
 
-## Privacy and delivery
+## Release and license
 
-Once the necessary resources are installed, speech recognition runs on-device with no configured cloud transcription fallback. Wesley Flow does not save microphone audio. Optional dictation history is local plaintext protected by your user account and can appear in backups; manage it in General.
+Wesley Flow 1.0.0 is available as source for local builds. See the [1.0.0 release notes](RELEASE-NOTES.md) for the original checkpoint and the [development history](Docs/Engineering/DEVELOPMENT-HISTORY.md) for earlier work.
 
-Supported browser editors use guarded clipboard paste. Successful verified delivery restores the previous clipboard when ownership permits. If delivery is uncertain, the app preserves the backup for explicit recovery and never retries the old text. After recovery, return to the field for a fresh Fn recording. Newer clipboard contents are preserved. Password/secure fields are excluded; Apple Terminal is manual-copy only.
-
-The app's network switch governs its own HTTP connections, not macOS services or other apps. English/AI assets are managed by macOS. No private accessibility activation flags, background microphone capture or automatic message sending are enabled.
-
-## Release status
-
-Version 1.0.0 is a source and product-interface checkpoint of the current working app. The repository does not contain a Developer ID-signed/notarized distribution or an App Store release. Local ad-hoc development signing is supported; production distribution requires your own signing identity and notarization. Editor compatibility depends on the application's exposed accessibility data and requires physical acceptance on the target Mac.
-
-CI configuration is included. Hosted results must be checked for the exact pushed revision; local checks are not a claim that a future GitHub run has passed. Private history, weights, recordings, build outputs and raw verification evidence are excluded from Git.
-
-## License
-
-[MIT](LICENSE). Third-party code and models retain their own licenses: [third-party notices](THIRD_PARTY_NOTICES.md). [Engineering records](Docs/Engineering/DEVELOPMENT-HISTORY.md) preserve historical work separately from the current product instructions.
+Wesley Flow is licensed under [MIT](LICENSE). Third-party code and models retain their own licenses. See [Third-party notices](THIRD_PARTY_NOTICES.md).
