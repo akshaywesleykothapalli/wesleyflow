@@ -302,14 +302,36 @@ extension AppComposition {
         } catch { status = "The voice profile could not be deleted." }
     }
 
-    func identify(_ captured: Task<SpeakerAudioSegment?, Never>) async -> DictationSpeakerLabel {
-        guard enabled, !Task.isCancelled, let audio = await captured.value else { return .unknown }
+    enum IdentificationStatus: String {
+        case notRequested, pending, cancelled, disabled, audioUnavailable, modelUnavailable
+        case inferenceFailed, profilesUnavailable, noCompatibleProfiles, noConfidentMatch, matched
+    }
+
+    func identify(_ captured: Task<SpeakerAudioSegment?, Never>) async -> (DictationSpeakerLabel, IdentificationStatus) {
+        guard enabled else { return (.unknown, .disabled) }
+        let audio = await captured.value
+        guard !Task.isCancelled else { return (.unknown, .cancelled) }
+        guard let audio else { return (.unknown, .audioUnavailable) }
+
+        var failure: IdentificationStatus = .modelUnavailable
         do {
             try await engine.loadModel()
+            failure = .inferenceFailed
             let embedding = try await engine.extractEmbedding(from: audio)
-            let profiles = try await repository.getProfiles()
+            failure = .profilesUnavailable
+            let profiles = try await repository.getProfiles().filter {
+                $0.model == engine.model && $0.minimumSimilarity != nil
+            }
             try Task.checkCancellation()
-            return try SpeakerMatching.enrolledLabel(embedding, model: engine.model, profiles: profiles)
-        } catch { return .unknown }
+            guard !profiles.isEmpty else { return (.unknown, .noCompatibleProfiles) }
+            failure = .inferenceFailed
+            let label = try SpeakerMatching.enrolledLabel(embedding, model: engine.model, profiles: profiles,
+                                                         audioFrameCount: audio.samples.count)
+            return (label, label.profileID == nil ? .noConfidentMatch : .matched)
+        } catch is CancellationError {
+            return (.unknown, .cancelled)
+        } catch {
+            return (.unknown, failure)
+        }
     }
 }

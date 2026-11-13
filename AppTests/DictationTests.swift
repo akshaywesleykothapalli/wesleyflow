@@ -151,6 +151,7 @@ private actor VoiceClock: TaskClock {
         #expect(throws: DictationFailure.recognitionFailed) { try buffer.replace("invalid",start: .nan,end: 4) }
         #expect(throws: DictationFailure.overflow) { try buffer.replace(String(repeating: "x",count: DictationText.maximumBytes + 1),start: 3,end: 4) }
     }
+    @available(macOS 26.0, *)
     @Test func nativeAudioBridgeConvertsAndFinishesWithoutMicrophone() async throws {
         let source = try #require(AVAudioFormat(standardFormatWithSampleRate: 48000,channels: 1))
         let target = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16,sampleRate: 16000,channels: 1,interleaved: false))
@@ -164,12 +165,14 @@ private actor VoiceClock: TaskClock {
         #expect(abs(Double(frames)-1024.0/3.0) <= 1)
         #expect(bridge.diagnostics.converterDrained && bridge.diagnostics.closeReason == "endOfInput")
     }
+    @available(macOS 26.0, *)
     @Test func analyzerRejectsFloatPCMBeforeFrameworkPrecondition() throws {
         let float = try #require(AVAudioFormat(standardFormatWithSampleRate: 16000,channels: 1))
         let pair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream(bufferingPolicy: .bufferingOldest(32))
         #expect(throws: DictationFailure.audioUnavailable) { try AudioIngress(source: float,target: float,modern: pair.continuation) }
         pair.continuation.finish()
     }
+    @available(macOS 26.0, *)
     @Test func boundedNativeAudioQueueFailsInsteadOfDroppingSilently() async throws {
         let format = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16,sampleRate: 16000,channels: 1,interleaved: false))
         let input = try #require(AVAudioPCMBuffer(pcmFormat: format,frameCapacity: 1024)); input.frameLength = 1024
@@ -183,6 +186,7 @@ private actor VoiceClock: TaskClock {
         #expect(count == 32)
     }
 
+    @available(macOS 26.0, *)
     @Test func changedAudioFormatFailsBeforeConversion() async throws {
         let source = try #require(AVAudioFormat(standardFormatWithSampleRate: 48000,channels: 1))
         let target = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16,sampleRate: 16000,channels: 1,interleaved: false))
@@ -212,6 +216,7 @@ private actor VoiceClock: TaskClock {
             DispatchQueue.global().async { callback(nil, DictationFailure.recognitionFailed) }
         }
     }
+    @available(macOS 26.0, *)
     @Test func nativeTapCallbackMayRunOnBackgroundQueue() async throws {
         let format = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16,sampleRate: 16000,channels: 1,interleaved: false))
         let pair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream(bufferingPolicy: .bufferingOldest(32))
@@ -595,6 +600,7 @@ extension LiveAudioEnergyTests {
         #expect(try buffer.replace("one two",start:0,end:2,isFinal:true) == "one two")
         #expect(try buffer.replace("three",start:2,end:3) == "one two three")
     }
+    @available(macOS 26.0, *)
     @Test(arguments: [15, 60, 180, 300])
     func syntheticPCMStreamsWithBoundedConsumerWithoutMicrophone(_ seconds: Int) async throws {
         let source = try #require(AVAudioFormat(standardFormatWithSampleRate:16000,channels:1))
@@ -852,6 +858,7 @@ extension SpeechResources38L2Tests {
         #expect(try buffer.replace("next",start:20,end:21,isFinal:true) == "all earlier speech next")
         #expect(buffer.preservedSegmentCount == 2)
     }
+    @available(macOS 26.0, *)
     @Test func deliveredAudioCountsAndSampleGapsAreObservedWithoutText() async throws {
         let source = try #require(AVAudioFormat(standardFormatWithSampleRate:16000,channels:1))
         let target = try #require(AVAudioFormat(commonFormat:.pcmFormatInt16,sampleRate:16000,channels:1,interleaved:false))
@@ -866,6 +873,7 @@ extension SpeechResources38L2Tests {
         #expect(ingress.diagnostics.timestampedBuffers == 3 && ingress.diagnostics.discontinuities == 1 && ingress.diagnostics.maximumGapFrames == 72)
         #expect(ingress.diagnostics.converterDrained && ingress.diagnostics.closeReason == "endOfInput")
     }
+    @available(macOS 26.0, *)
     @Test func releaseDrainsResamplerTailBeforeEndingSequence() async throws {
         let source = try #require(AVAudioFormat(standardFormatWithSampleRate:48000,channels:1))
         let target = try #require(AVAudioFormat(commonFormat:.pcmFormatInt16,sampleRate:16000,channels:1,interleaved:false))
@@ -993,11 +1001,13 @@ extension SpeechFailure38L3Tests {
 @Suite("38L3R2 provider range reconciliation") struct SpeechRange38L3R2Tests {
     func time(_ seconds:Double)->CMTime { CMTime(seconds:seconds,preferredTimescale:48000) }
     func range(_ start:Double,_ end:Double)->CMTimeRange { CMTimeRange(start:time(start),end:time(end)) }
+    @available(macOS 26.0, *)
     func timed(_ words:[(String,Double,Double)])->AttributedString {
         var result=AttributedString()
         for (text,start,end) in words { var word=AttributedString(text);word.audioTimeRange=range(start,end);result.append(word) }
         return result
     }
+    @available(macOS 26.0, *)
     @Test func overlappingModernRevisionPreservesUnaffectedBeginningAndEnd() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("first ",0,2),("middle ",2,4),("end",4,6)]),range:range(0,6),isFinal:false)
@@ -1006,17 +1016,20 @@ extension SpeechFailure38L3Tests {
         #expect(try b.finishAfterAnalyzerFinalization()=="first revised end")
         #expect(b.finalizedSegmentCount==3)
     }
+    @available(macOS 26.0, *)
     @Test func revisedFullPhraseMayMoveBothTimeBoundaries() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("tentative phrase",0,6)]),range:range(0,6),isFinal:false)
         #expect(try b.replace(timed([("correct phrase",0.1,5.9)]),range:range(0.1,5.9),isFinal:true)=="correct phrase")
         #expect(try b.replace(timed([("correct phrase",0.1,5.9)]),range:range(0.1,5.9),isFinal:true)=="correct phrase")
     }
+    @available(macOS 26.0, *)
     @Test func emptyModernRevisionRevokesOnlyItsAudioRange() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("first ",0,2),("revoked ",2,4),("end",4,6)]),range:range(0,6),isFinal:false)
         #expect(try b.replace(AttributedString(),range:range(2,4),isFinal:false)=="first end")
     }
+    @available(macOS 26.0, *)
     @Test func finalizationMetadataCommitsUnchangedEarlierVolatileSpeech() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("first",0,2)]),range:range(0,2),isFinal:false,finalization:time(0))
@@ -1025,6 +1038,7 @@ extension SpeechFailure38L3Tests {
         #expect(try b.finishAfterAnalyzerFinalization()=="first second")
         #expect(b.finalizedSegmentCount==2)
     }
+    @available(macOS 26.0, *)
     @Test func genuinelyConflictingFinalCannotRewriteCommittedSpeech() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("first",0,2)]),range:range(0,2),isFinal:true)
@@ -1054,6 +1068,7 @@ extension SpeechFailure38L3Tests {
         #expect(try b.replace("earlier final",start:0.2,end:9.5,metadataStart:0,metadataDuration:9.5,isFinal:true)=="earlier final")
         #expect(!b.boundaryPending)
     }
+    @available(macOS 26.0, *)
     @Test(arguments:[10,20,45]) func modernRecordingRevisionsPreserveWholeTranscript(seconds:Int) throws {
         var b=TranscriptBuffer(),expected:[String]=[]
         for second in 0..<seconds {
@@ -1074,11 +1089,13 @@ extension SpeechFailure38L3Tests {
 
 
 extension SpeechRange38L3R2Tests {
+    @available(macOS 26.0, *)
     @Test func overlapInSilenceInsertsBetweenTimedWords() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("first ",0,1),("end",4,6)]),range:range(0,6),isFinal:false)
         #expect(try b.replace(timed([("middle",2,3)]),range:range(2,3),isFinal:false)=="first middle end")
     }
+    @available(macOS 26.0, *)
     @Test func finalizationMaySplitPriorVolatilePhraseAtVerifiedWordBoundary() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("first ",0,2),("middle ",2,4),("end",4,6)]),range:range(0,6),isFinal:false)
@@ -1092,6 +1109,7 @@ extension SpeechRange38L3R2Tests {
         #expect(b.finalizedSegmentCount==0)
         #expect(try b.replace(AttributedString("correct"),range:range(0,1),isFinal:true)=="correct")
     }
+    @available(macOS 26.0, *)
     @Test func partialFinalizationInsideUntimedWordFailsWithoutLosingEarlierText() throws {
         var b=TranscriptBuffer()
         _ = try b.replace(timed([("indivisible",0,6)]),range:range(0,6),isFinal:false)

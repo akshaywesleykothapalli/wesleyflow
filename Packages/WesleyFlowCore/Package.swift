@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "WesleyFlowCore",
-    platforms: [.macOS("26.0")],
+    platforms: [.macOS("15.0")],
     products: [
         .library(name: "Domain", targets: ["Domain"]),
         .library(name: "VoiceInput", targets: ["VoiceInput"]),

@@ -6,6 +6,7 @@ import Domain
 @testable import VoiceInput
 
 @Suite("Apple microphone array downmix") struct AppleAudioIngressTests {
+    @available(macOS 26.0, *)
     @Test(arguments:[1,2,3], [false,true])
     func unlabeledChannelsReachAnalyzerAsAudibleMono(_ count:Int,_ interleaved:Bool) async throws {
         let layout = try #require(AVAudioChannelLayout(layoutTag:kAudioChannelLayoutTag_DiscreteInOrder | UInt32(count)))
@@ -41,6 +42,7 @@ import Domain
             #expect(ingress.diagnostics.queuedFrames == 16000)
         }
     }
+    @available(macOS 26.0, *)
     @Test func nonFiniteArrayInputFailsBeforeAnalyzerDelivery() async throws {
         let format = try #require(AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:2,interleaved:false))
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:320)); buffer.frameLength = 320
@@ -55,6 +57,7 @@ import Domain
 }
 
 @Suite("Opt-in real Apple English recognition",.serialized) @MainActor struct NativeAppleAudioIntegrationTests {
+    @available(macOS 26.0, *)
     @Test(.enabled(if:ProcessInfo.processInfo.environment["WESLEY_APPLE_AUDIO_FIXTURE"] != nil))
     func prerecordedEnglishArrayUsesInstalledSpeechTranscriberWithoutMicrophone() async throws {
         let url = URL(fileURLWithPath:try #require(ProcessInfo.processInfo.environment["WESLEY_APPLE_AUDIO_FIXTURE"]))

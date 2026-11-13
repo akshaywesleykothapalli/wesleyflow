@@ -175,6 +175,16 @@ import Foundation
             retain(snapshot,ownership,session:session)
             return .init(.uncertain,.cancelled,attempted:true,clipboardPending:true)
         }
+        if (target as? any ClipboardFreeInsertionTarget)?.requiresGuardedPaste == true,
+           let observed = result.observed, let original = target.original,
+           expectation.acknowledgesPaste(observed, replacing: original) {
+            let restored = clipboard.restore(snapshot,ifOwned:ownership)
+            recordRestoration(restored)
+            if restored == .unavailable { retain(snapshot,ownership,session:session) }
+            failureExplanation = "The transcript appeared in the original editor, but the surrounding draft did not match. Check the draft before continuing."
+            record(.init(.receipt,.uncertain,.failure,timing:.terminal))
+            return .init(.uncertain,.verificationUnavailable,attempted:true,clipboardPending:pending != nil)
+        }
         // An unacknowledged paste may still be queued. Retain the bounded backup in RAM;
         // restoration now needs explicit human confirmation and still checks clipboard ownership.
         retain(snapshot,ownership,session:session)

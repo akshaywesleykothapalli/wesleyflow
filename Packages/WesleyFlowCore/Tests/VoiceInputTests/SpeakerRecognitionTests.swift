@@ -124,6 +124,26 @@ private actor FixtureSpeakerEngine: SpeakerEmbeddingEngine {
         #expect(try SpeakerMatching.enrolledLabel([1, 0], model: model, profiles: [first, ambiguous]) == .unknown)
     }
 
+    @Test func shortDictationRecoversOnlyStrongUnambiguousNearMatches() throws {
+        let now = Date()
+        let first = try SpeakerProfile(displayName: "Alice", model: model, embedding: [1, 0],
+                                       createdAt: now, modifiedAt: now, sampleCount: 3, minimumSimilarity: 0.96)
+        let neighbor = try SpeakerProfile(displayName: "Bob", model: model, embedding: [0.999, 0.04],
+                                          createdAt: now, modifiedAt: now, sampleCount: 3, minimumSimilarity: 0.99)
+        let candidate: [Float] = [0.91, sqrt(1 - 0.91 * 0.91)]
+        let lowerScore: [Float] = [0.88, sqrt(1 - 0.88 * 0.88)]
+        let rate = SpeakerAudioSegment.sampleRate
+        #expect(try SpeakerMatching.enrolledLabel(candidate, model: model, profiles: [first],
+                                                 audioFrameCount: 2 * rate) ==
+                .init(profileID: first.id, name: first.displayName))
+        #expect(try SpeakerMatching.enrolledLabel(candidate, model: model, profiles: [first],
+                                                 audioFrameCount: 5 * rate) == .unknown)
+        #expect(try SpeakerMatching.enrolledLabel(lowerScore, model: model, profiles: [first],
+                                                 audioFrameCount: 2 * rate) == .unknown)
+        #expect(try SpeakerMatching.enrolledLabel(candidate, model: model, profiles: [first, neighbor],
+                                                 audioFrameCount: 2 * rate) == .unknown)
+    }
+
     @Test func historySpeakerLabelRoundTripsAndOldPayloadDecodes() throws {
         let entry = DictationHistoryEntry(id: UUID().uuidString, timestamp: Date(), raw: "Test", cleaned: "Test",
             sourceApplication: nil, durationMilliseconds: 1_500, insertion: .init(.unsupportedTarget, .manualOnly),
@@ -154,6 +174,47 @@ private actor FixtureSpeakerEngine: SpeakerEmbeddingEngine {
         #expect(converted.startFrame == 0)
         #expect(converted.samples.count == 24_000)
         #expect(!capture.armed)
+    }
+
+    @MainActor @Test func speakerCaptureKeepsBoundedAudioAndTrimsQuietEdges() async throws {
+        let capture = SpeakerCapture()
+        capture.armed = true
+        let rate = Double(SpeakerAudioSegment.sampleRate)
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate,
+                                                channels: 1, interleaved: false))
+        let ring = try #require(capture.prepare(format: format))
+        let blockSize = 4_000
+        let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(blockSize)))
+        pcm.frameLength = AVAudioFrameCount(blockSize)
+        let samples = try #require(pcm.floatChannelData?[0])
+        // Two seconds of audio between pauses, with 16 seconds of input overall.
+        for block in 0..<64 {
+            let voiced = (8..<16).contains(block)
+            for index in 0..<blockSize { samples[index] = voiced ? sin(Float(index) * 0.025) * 0.2 : 0 }
+            ring.append(pcm, at: AVAudioTime(sampleTime: Int64(block * blockSize), atRate: rate))
+        }
+        let task = try #require(capture.take())
+        let converted = try #require(await task.value)
+        #expect(converted.startFrame == 32_000 - 2_560)
+        #expect(converted.samples.count == 32_000 + 2 * 2_560)
+    }
+
+    @MainActor @Test func speakerCaptureRejectsDiscontinuousAudio() async throws {
+        let capture = SpeakerCapture()
+        capture.armed = true
+        let rate = Double(SpeakerAudioSegment.sampleRate)
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate,
+                                                channels: 1, interleaved: false))
+        let ring = try #require(capture.prepare(format: format))
+        let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_000))
+        pcm.frameLength = 8_000
+        let samples = try #require(pcm.floatChannelData?[0])
+        for index in 0..<8_000 { samples[index] = sin(Float(index) * 0.025) * 0.2 }
+        for start in [0, 8_000, 16_000, 32_000] {
+            ring.append(pcm, at: AVAudioTime(sampleTime: Int64(start), atRate: rate))
+        }
+        let task = try #require(capture.take())
+        #expect(await task.value == nil)
     }
 
     @Test func vectorValidation() throws {

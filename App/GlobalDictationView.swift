@@ -84,7 +84,7 @@ import VoiceInput
                     case .speechRecognition:
                         FlowPage {
                             if let speakers = coordinator.speakers {
-                                SpeakerSettingsView(settings: speakers, dictationBusy: coordinator.busy || coordinator.speechResourceWorking)
+                                SpeakerSettingsView(settings: speakers, dictationBusy: coordinator.busy || coordinator.speechResourceWorking, stopSpeech: coordinator.speechOutput.stop)
                             } else {
                                 Text("Voice profiles are unavailable in this session.").foregroundStyle(.secondary)
                             }
@@ -239,6 +239,15 @@ import VoiceInput
                 }
             }
             Text(coordinator.agentNotice).font(.callout).foregroundStyle(coordinator.phase == .error ? .orange : .secondary)
+            SpeechOutputStopButton(output: coordinator.speechOutput)
+            FlowSettingsGroup("Speech Output") {
+                FlowSettingsRow("Speak Agent responses", description: "Hear confirmations and follow-up questions.") {
+                    Toggle("Speak Agent responses", isOn: $coordinator.preferences.spokenAgentResponses)
+                }
+                FlowSettingsRow("Voice setup") {
+                    Button("Open Speech Output") { page = .general }
+                }
+            }
             if let failure=coordinator.lastAgentFailure {
                 Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
                 Button("Copy command speech diagnostics") { _ = coordinator.copyReviewedText(coordinator.speechDiagnosticSummary) }.disabled(!coordinator.historyCopyAllowed)
@@ -528,6 +537,14 @@ import VoiceInput
     private var generalPage: some View {
         FlowPage {
             languageSettings
+            SpeechOutputSettings(
+                output: coordinator.speechOutput,
+                enabled: $coordinator.preferences.spokenAgentResponses,
+                voice: $coordinator.preferences.phononVoice,
+                busy: coordinator.busy,
+                networkBlocked: coordinator.preferences.blockNetworkRequests,
+                policy: coordinator.networkPolicy
+            )
             FlowSettingsGroup("Appearance & startup") {
                 FlowSettingsRow("Launch at login",description:loginItem.message.isEmpty ? loginItem.summary : loginItem.message) { Toggle("Launch at login",isOn:Binding(get:{loginItem.enabled},set:{loginItem.setEnabled($0)})).disabled(loginItem.updating || loginItem.status == .notFound) }
                 if loginItem.status == .requiresApproval { FlowSettingsRow("Login approval") { Button("Open Login Items") { loginItem.openSettings() } } }
@@ -811,6 +828,7 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
 @MainActor private struct SpeakerSettingsView: View {
     @ObservedObject var settings: SpeakerSettings
     let dictationBusy: Bool
+    let stopSpeech: () -> Void
     @State private var name = ""
     @State private var consent = false
     @State private var showingEnrollment = false
@@ -891,7 +909,7 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
                 } else if settings.recording {
                     Button("Finish sample") { Task { await settings.finishSample() } }
                 } else {
-                    Button("Record sample") { Task { await settings.startSample() } }.disabled(settings.working || dictationBusy)
+                    Button("Record sample") { stopSpeech(); Task { await settings.startSample() } }.disabled(settings.working || dictationBusy)
                 }
             }
         }
@@ -1068,5 +1086,58 @@ func agentTaskStatusLabel(_ record:PersonalTaskRecord)->String {
         if activity.missingNames > 0 { note += " Missing app name: \(activity.missingNames)." }
         if activity.missingDurations > 0 { note += " Missing recording time: \(activity.missingDurations)." }
         return note
+    }
+}
+
+@MainActor private struct SpeechOutputSettings: View {
+    @ObservedObject var output: SpeechOutput
+    @Binding var enabled: Bool
+    @Binding var voice: String
+    let busy: Bool
+    let networkBlocked: Bool
+    let policy: ApplicationNetworkPolicy
+
+    var body: some View {
+        FlowSettingsGroup("Speech Output") {
+            FlowSettingsRow("Speak Agent responses", description: "Play Agent replies aloud.") {
+                Toggle("Speak Agent responses", isOn: $enabled)
+            }
+            FlowSettingsRow("Phonon voice", description: "English · Runs offline after setup.") {
+                Picker("Phonon voice", selection: $voice) {
+                    ForEach(SpeechOutput.voices, id: \.self) { voice in
+                        Text(voice == "default" ? "Default" : voice).tag(voice)
+                    }
+                }.pickerStyle(.menu).disabled(output.isInstalling)
+            }
+            FlowSettingsRow("Voice preview", description: output.status.isEmpty
+                ? (output.isInstalled ? "Phonon installed. First playback may take longer." : "The macOS voice is available before Phonon setup.")
+                : output.status) {
+                if output.isInstalling {
+                    ProgressView().controlSize(.small)
+                    Button("Cancel") { output.stopInstallation() }
+                } else if output.isSpeaking {
+                    SpeechOutputStopButton(output: output)
+                } else {
+                    Button("Preview") { output.speak(SpeechOutput.sample, voice: voice) }.disabled(busy)
+                }
+            }
+            FlowSettingsRow("Phonon 31M model", description: networkBlocked
+                ? "Allow app network requests in Privacy to download."
+                : "137 MB download from Gradium.") {
+                Button(output.isInstalled ? "Download Again" : "Download Phonon") {
+                    output.install(policy: policy)
+                }.disabled(busy || networkBlocked || output.isInstalling || output.isSpeaking)
+            }
+        }
+    }
+}
+
+@MainActor private struct SpeechOutputStopButton: View {
+    @ObservedObject var output: SpeechOutput
+
+    var body: some View {
+        if output.isSpeaking {
+            Button("Stop speaking") { output.stop() }
+        }
     }
 }

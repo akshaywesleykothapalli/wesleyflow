@@ -7,6 +7,7 @@ import Domain
 /// The callback only reads PCM, averages channels and copies to the ring; it never locks or allocates.
 final class TeluguAudioRing: @unchecked Sendable {
     private let capacity: Int
+    private let retainPrefix: Bool
     private let samples: UnsafeMutablePointer<Float>
     private let written = Atomic<Int>(0), read = Atomic<Int>(0)
     let ended = Atomic<Bool>(false), overflowed = Atomic<Bool>(false)
@@ -14,8 +15,9 @@ final class TeluguAudioRing: @unchecked Sendable {
     var isWriting: Bool { writing.load(ordering:.sequentiallyConsistent) }
     private var expectedSample: AVAudioFramePosition?
     let sampleRate: Double
-    init(sampleRate: Double, capacity: Int = 524_288) {
+    init(sampleRate: Double, capacity: Int = 524_288, retainPrefix: Bool = false) {
         self.sampleRate = sampleRate; self.capacity = capacity
+        self.retainPrefix = retainPrefix
         samples = .allocate(capacity:capacity); samples.initialize(repeating:0,count:capacity)
     }
     deinit { samples.deinitialize(count:capacity); samples.deallocate() }
@@ -23,6 +25,9 @@ final class TeluguAudioRing: @unchecked Sendable {
         writing.store(true,ordering:.sequentiallyConsistent)
         defer { writing.store(false,ordering:.sequentiallyConsistent) }
         guard !ended.load(ordering:.sequentiallyConsistent), buffer.frameLength > 0 else { return }
+        let start = written.load(ordering: .relaxed)
+        // Speaker capture takes a single bounded prefix. Dictation still streams and detects overflow.
+        if retainPrefix && start == capacity { return }
         guard buffer.format.commonFormat == .pcmFormatFloat32, buffer.format.sampleRate == sampleRate,
               (1...8).contains(buffer.format.channelCount), buffer.frameLength <= 8192,
               let channels = buffer.floatChannelData else { overflowed.store(true,ordering:.releasing); return }
@@ -34,7 +39,7 @@ final class TeluguAudioRing: @unchecked Sendable {
             guard !next.overflow else { overflowed.store(true,ordering:.releasing); return }
             expectedSample = next.partialValue
         }
-        let count = Int(buffer.frameLength), start = written.load(ordering:.relaxed)
+        let count = retainPrefix ? min(Int(buffer.frameLength), capacity - start) : Int(buffer.frameLength)
         guard start - read.load(ordering:.acquiring) + count <= capacity, start < Int.max - count else {
             overflowed.store(true,ordering:.releasing); return
         }

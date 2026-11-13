@@ -52,7 +52,7 @@ public enum PersonalReviewReply: Sendable { case reject, amend(PersonalPlan), ke
 
 /// Ephemeral, explicit slot filling. No background context, passive observation or durable memory.
 public struct PersonalAgentDialogue: Sendable {
-    private enum Slot:Sendable { case website(PersonalWebsiteRequest.Browser?),app(Bool), query(Bool), recipient(String?), body(String), noteBody, recordDate(PersonalRecordCommand), recordKind(PersonalRecordCommand), fileLocation(PersonalFileAction), mailFileLocation(PersonalMailCommand), scheduleDate(PersonalMessage), contactName }
+    private enum Slot:Sendable { case website(PersonalWebsiteRequest.Browser?),app(Bool), query(Bool), timerDuration, recipient(String?), body(String), noteBody, recordDate(PersonalRecordCommand), recordKind(PersonalRecordCommand), fileLocation(PersonalFileAction), mailFileLocation(PersonalMailCommand), scheduleDate(PersonalMessage), contactName }
     private enum Reference:Sendable { case app(PersonalApp), query(String), contact(String) }
     private struct Pending:Sendable { var slot:Slot;var question:PersonalQuestion;var attempts:Int }
     private var expiredReply=false
@@ -76,7 +76,29 @@ public struct PersonalAgentDialogue: Sendable {
         for _ in 0..<2 { if text.lowercased().hasSuffix(" please") { text=String(text.dropLast(7)) };if text.lowercased().hasSuffix(" for me") { text=String(text.dropLast(7)) } }
         return text
     }
-    public static func isCancel(_ text:String)->Bool { ["cancel","cancel that","cancel request","never mind","nevermind","forget it","stop"].contains(canonical(text).lowercased()) }
+    public static func isCancel(_ text: String, awaitingReply: Bool = false) -> Bool {
+        let value = canonical(text).lowercased().replacingOccurrences(of: "’", with: "'")
+        let words = value.split(whereSeparator: { $0.isWhitespace || $0 == "," }).joined(separator: " ")
+        if ["cancel", "cancel that", "cancel request", "never mind", "nevermind", "forget it", "stop"].contains(words) {
+            return true
+        }
+        guard awaitingReply else { return false }
+        return ["no", "no thanks", "no cancel", "no cancel that", "no never mind", "don't", "do not",
+                "don't do it", "do not do it", "don't proceed", "do not proceed"].contains(words)
+    }
+
+    public func rejectsPendingReply(_ text: String) -> Bool {
+        guard let pending else { return false }
+        switch pending.slot {
+        case .body, .noteBody, .query: return false
+        default: break
+        }
+        if Self.isCancel(text, awaitingReply: true) { return true }
+        guard case .timerDuration = pending.slot else { return false }
+        let value = Self.canonical(text).lowercased().replacingOccurrences(of: "’", with: "'")
+        let pattern = #"^(?:no[,.!?]?\s+)?(?:(?:don't|do not)\s+(?:set|start|create)|cancel)\s+(?:(?:a|the|that|this)\s+)?timer$"#
+        return value.range(of: pattern, options: .regularExpression) != nil
+    }
     public static func ordinal(_ text:String,count:Int)->Int? {
         let value=canonical(text).lowercased().replacingOccurrences(of:"the ",with:"").replacingOccurrences(of:" option",with:"").replacingOccurrences(of:" one",with:"")
         let n=["first":1,"second":2,"third":3,"fourth":4,"fifth":5,"sixth":6][value] ?? Int(value)
@@ -104,11 +126,16 @@ public struct PersonalAgentDialogue: Sendable {
         guard !original.isEmpty,original.utf8.count<=4096,now.timeIntervalSince1970.isFinite else { throw PersonalPlanningFailure.unsupported }
         let justExpired=expire(now:now),expired=justExpired || expiredReply,text=Self.canonical(original),lower=text.lowercased()
         expiredReply=false
-        if Self.isCancel(original) { clear();return .cancel }
+        if Self.isCancel(original) || rejectsPendingReply(original) { clear();return .cancel }
         if ["help","what can you do","show examples"].contains(lower) { clear();return .help }
         // A full new app request replaces an old app-name question, never becomes its literal answer.
         if let pending=self.pending,case .app=pending.slot,capture(text,#"^(open|opening|launch|launching|start|starting|close|closing|quit|quitting|exit|exiting) (.+)$"#) != nil { self.pending=nil }
         if let pending=self.pending,case .website=pending.slot,capture(text,#"^(?:open|visit|go to|take me to|navigate to|head to|launch|start) (.+)$"#) != nil {self.pending=nil}
+        if let pending, case .timerDuration = pending.slot,
+           let timer = try? PersonalTimerControl.parse(text, now: now), timer.steps.first?.tool == .timer {
+            self.pending = nil
+            return .plan(timer)
+        }
         if var pending=self.pending {
             self.pending=nil
             let answer=Self.ordinal(text,count:pending.question.options.count).map { pending.question.options[$0].answer } ?? original.trimmingCharacters(in:.whitespacesAndNewlines)
@@ -126,6 +153,10 @@ public struct PersonalAgentDialogue: Sendable {
                     do {if let website=try PersonalWebsiteRequest.plan("open "+answer,apps:apps,now:now) {return .plan(website)}}
                     catch let required as PersonalWebsiteAddressRequired {return ask(.website(required.browser),prompt:"What is the exact website address? I won’t guess a domain.",now:now)}
                 }
+            case .timerDuration:
+                if let plan = try PersonalTimerControl.durationReply(answer, now: now) { return .plan(plan) }
+                guard pending.attempts < 2 else { throw PersonalPlanningFailure.unsupported }
+                return ask(.timerDuration, prompt: "How long should I set the timer for? Say a duration, like five minutes.", now: now, attempts: pending.attempts + 1)
             case .query(let youtube):
                 guard answer.utf8.count<=1200 else { throw PersonalPlanningFailure.unsupported }
                 return .plan(try PersonalPlan(steps:[.init(tool:youtube ? .searchYouTube:.searchGoogle,text:answer)],createdAt:now))
@@ -215,6 +246,9 @@ public struct PersonalAgentDialogue: Sendable {
         do {if let record=try PersonalRecordCommand.plan(original,now:now) {return .plan(record)}}
         catch let required as PersonalRecordDateRequired {return ask(.recordDate(required.command),prompt:"What exact day and time, including AM or PM? For example: Friday at 3 pm.",now:now)}
         catch let required as PersonalRecordKindRequired {return ask(.recordKind(required.command),prompt:"Is this a reminder or a calendar event?",options:[.init(label:"Reminder",answer:"reminder"),.init(label:"Calendar event",answer:"calendar event")],now:now)}
+        if ["set a timer", "start a timer", "set timer", "start timer", "set the timer", "start the timer"].contains(lower) {
+            return ask(.timerDuration, prompt: "How many minutes should I set the timer for?", now: now)
+        }
         if let timer=try PersonalTimerControl.parse(original,now:now) { return .plan(timer) }
         if let mac=try PersonalMacControl.parse(original,now:now) { return .plan(mac) }
         if let layout=try PersonalWindowLayout.parse(original,apps:apps,now:now) { return .plan(layout) }
@@ -246,7 +280,7 @@ public struct PersonalAgentDialogue: Sendable {
         }
     }
     public static func reviewReply(_ text:String,plan:PersonalPlan,now:Date) throws -> PersonalReviewReply {
-        if isCancel(text) { return .reject }
+        if isCancel(text, awaitingReply: true) { return .reject }
         guard plan.steps.count==1,let step=plan.steps.first,step.tool == .message else { return .keep }
         let message=try PersonalMessage.decode(step.text),value=stripLeadingCourtesy(text)
         for prefix in ["change the message to ","change message to ","change the recipient to ","change recipient to "] where value.lowercased().hasPrefix(prefix) {

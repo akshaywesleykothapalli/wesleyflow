@@ -797,19 +797,22 @@ private actor GHistory: DictationHistoryStore {
     }
     @Test func keepAwakeRunsOnlyFromFinalAgentSpeech() async {
         let input = GInput(), agent = GShortcut(), dictation = GShortcut(), history = GHistory()
+        let apple = TestTTSEngine()
+        let output = SpeechOutput(store: .init(directory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)), apple: apple)
         var acquired = 0
         var released = 0
         let awake = KeepAwakeSession(acquire: { acquired += 1; return 42 }, release: { _ in released += 1 })
         let coordinator = SystemWideDictationCoordinator(input: input, targets: GCapture(),
             insertion: TextInsertionService(clipboard: GClipboard(), clock: GClock()), shortcut: dictation,
             agentShortcut: agent, agentCaptureValidation: {}, agentConflict: { _ in false },
-            preferenceStore: preferences(), history: history, keepAwake: awake)
+            preferenceStore: preferences(), history: history, speechOutput: output, keepAwake: awake)
+        coordinator.preferences.spokenAgentResponses = true
         defer { coordinator.close() }
         coordinator.personalAgentQueueURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathComponent("queue.json")
         defer { if let url = coordinator.personalAgentQueueURL { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } }
         coordinator.enableAgentShortcut()
-        let command = "Keep my screen awake until I say stop"
+        let command = "Make my screen active"
         coordinator.reviewAgentCommand(command)
         #expect(acquired == 0)
         coordinator.startManual()
@@ -824,10 +827,14 @@ private actor GHistory: DictationHistoryStore {
         agent.receive?(.released); input.receive?(.finished)
         #expect(acquired == 1)
         #expect(awake.isActive)
+        await output.waitForSpeech()
+        #expect(apple.calls.last?.text.contains("Keeping the screen awake") == true)
         agent.receive?(.pressed); await coordinator.waitUntilRecording()
         input.receive?(.transcript("Turn it off")); agent.receive?(.released); input.receive?(.finished)
         #expect(released == 1)
         #expect(!awake.isActive)
+        await output.waitForSpeech()
+        #expect(apple.calls.last?.text.contains("Keep awake is off") == true)
     }
     @Test func unarmedCommandWordsRemainDictation() async {
         let input = GInput(), capture = GCapture(), clock = GClock(), shortcut = GShortcut(), agent = GShortcut(), history = GHistory()
@@ -3534,7 +3541,13 @@ private actor FortyPlanner:PersonalIntentPlanning {
 @MainActor private final class FortyRunner:PersonalToolRunning {
     var calls:[PersonalStep]=[]
     var unverified=false
-    func perform(_ step:PersonalStep) -> PersonalReceipt { calls.append(step);return .init(identifier:step.id.uuidString,evidence:"fixture",verified:!unverified) }
+    var evidence = "fixture"
+    var failTool: PersonalTool?
+    func perform(_ step: PersonalStep) throws -> PersonalReceipt {
+        calls.append(step)
+        if failTool == step.tool { throw PersonalAgentError.permissionDenied }
+        return .init(identifier: step.id.uuidString, evidence: evidence, verified: !unverified)
+    }
 }
 @Suite("Milestone40 natural Agent requests") @MainActor struct PersonalAgent40Tests {
     static let apps=[PersonalApp(id:"com.apple.Safari",name:"Safari"),PersonalApp(id:"com.brave.Browser",name:"Brave Browser",aliases:["Brave"]),PersonalApp(id:"net.whatsapp.WhatsApp",name:"WhatsApp")]
@@ -4046,7 +4059,8 @@ private actor FortyOneBlockingResolver {
 }
 
 @MainActor private final class ClipboardFreeFixture:ClipboardFreeInsertionTarget {
-    let base=GTarget()
+    let base: GTarget
+    init(base: GTarget = GTarget()) { self.base = base }
     var requiresGuardedPaste = false
     var exposesDirectWrite = false
     var preparations = 0
@@ -5272,6 +5286,59 @@ extension InPlaceRewriteTests {
     }
 }
 extension PersonalAgent42Tests {
+    @Test(arguments: [false, true])
+    func codexPayloadReadbackRestoresClipboardWithoutVerifyingChangedDraft(_ copiedNewerText: Bool) async {
+        let target = ClipboardFreeFixture(), clipboard = GClipboard(), clock = GClock()
+        target.requiresGuardedPaste = true
+        target.base.observedOverride = "hello"
+        let service = TextInsertionService(clipboard: clipboard, clock: clock)
+        let task = Task { await service.insert("hello", target: target, session: "s") }
+        await clock.waitForSleep(1050)
+        if copiedNewerText { clipboard.externalCopy("newer") }
+        await clock.advance(2500)
+        let receipt = await task.value
+        #expect(receipt.status == .dispatchedUnverified && !receipt.clipboardPending)
+        #expect(!service.hasPendingClipboard && target.base.pastes == 1)
+        #expect(clipboard.restores == (copiedNewerText ? 0 : 1))
+        #expect(clipboard.text == (copiedNewerText ? "newer" : "original"))
+    }
+
+    @Test(arguments: [
+        ("draft\n\nhello\n", true),
+        ("draft\n\nhello", true),
+        ("draft\n\nhell o", false),
+        ("different draft\n\nhello", false),
+        ("draft\n\nhello and other text", false)
+    ])
+    func codexParagraphReadbackUsesExactPayloadAtTheCapturedBoundary(_ sample: (String, Bool)) async {
+        let target = ClipboardFreeFixture(base: GTarget(text: "draft", selection: .init(location: 5, length: 0)))
+        let clipboard = GClipboard(), clock = GClock()
+        target.requiresGuardedPaste = true
+        target.base.observedOverride = sample.0
+        let service = TextInsertionService(clipboard: clipboard, clock: clock)
+        let task = Task { await service.insert("hello", target: target, session: "s") }
+        await clock.waitForSleep(1050)
+        await clock.advance(2500)
+        let receipt = await task.value
+        #expect(receipt.status == .dispatchedUnverified)
+        #expect(receipt.clipboardPending == !sample.1)
+        #expect(clipboard.restores == (sample.1 ? 1 : 0))
+        #expect(target.base.pastes == 1)
+    }
+
+    @Test func codexTextAlreadyInTheFieldDoesNotAcknowledgePaste() async {
+        let target = ClipboardFreeFixture(), clipboard = GClipboard(), clock = GClock()
+        target.requiresGuardedPaste = true
+        target.base.acknowledgePaste = false
+        let service = TextInsertionService(clipboard: clipboard, clock: clock)
+        let task = Task { await service.insert("abc", target: target, session: "s") }
+        await clock.waitForSleep(1050)
+        await clock.advance(2500)
+        let receipt = await task.value
+        #expect(receipt.status == .dispatchedUnverified && receipt.clipboardPending)
+        #expect(service.hasPendingClipboard && clipboard.restores == 0)
+    }
+
     @Test func uncertainCodexPasteRetainsBackupAndNeverTriesAnotherRoute() async {
         let target=ClipboardFreeFixture(),clipboard=GClipboard(),clock=GClock()
         target.requiresGuardedPaste=true;target.base.acknowledgePaste=false;target.base.unicodeSupported=true
@@ -5477,5 +5544,204 @@ extension GlobalCoordinatorTests {
             #expect(!text.contains("45A") && !text.contains("38L3") && !text.contains("Phase 1"))
         }
         c.close()
+    }
+}
+
+@MainActor private final class TestTTSEngine: TTSEngine {
+    var calls: [(text: String, voice: String)] = []
+    var failure: SpeechOutputError?
+    var startsBeforeFailure = false
+    var hold = false
+    private var held: CheckedContinuation<Void, any Error>?
+    private var entered: CheckedContinuation<Void, Never>?
+    private(set) var stops = 0
+
+    func speak(_ text: String, voice: String, didStart: @escaping @MainActor () -> Void) async throws {
+        calls.append((text, voice))
+        entered?.resume()
+        entered = nil
+        if failure == nil || startsBeforeFailure { didStart() }
+        if let failure { throw failure }
+        if hold { try await withCheckedThrowingContinuation { held = $0 } }
+    }
+
+    func waitForStart() async {
+        if calls.isEmpty { await withCheckedContinuation { entered = $0 } }
+    }
+
+    func stop() {
+        stops += 1
+        held?.resume(throwing: CancellationError())
+        held = nil
+    }
+}
+
+@Suite("Speech Output", .timeLimit(.minutes(1))) @MainActor struct SpeechOutputTests {
+    @Test func macOSFallbackWhenModelIsMissing() async {
+        let phonon = TestTTSEngine(), apple = TestTTSEngine()
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let output = SpeechOutput(store: .init(directory: directory), phonon: phonon, apple: apple)
+        output.speak("Agent reply", voice: "Harper")
+        await output.waitForSpeech()
+        #expect(phonon.calls.isEmpty)
+        #expect(apple.calls.map(\.text) == ["Agent reply"])
+        #expect(!output.isSpeaking)
+        #expect(output.status.contains("macOS voice"))
+    }
+
+    @Test(arguments: [false, true]) func failureOnlyFallsBackBeforeAudio(hasStarted: Bool) async throws {
+        let phonon = TestTTSEngine(), apple = TestTTSEngine()
+        let directory = try fakeInstalledModel()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = SpeechOutput(store: .init(directory: directory), phonon: phonon, apple: apple)
+        phonon.failure = .voice
+        phonon.startsBeforeFailure = hasStarted
+        output.speak("Agent reply", voice: "Maeve")
+        await output.waitForSpeech()
+        #expect(phonon.calls.map(\.voice) == ["Maeve"])
+        #expect(apple.calls.count == (hasStarted ? 0 : 1))
+        #expect(!output.isSpeaking)
+    }
+
+    @Test func stopPreventsFallbackAndNewSpeechReplacesOld() async throws {
+        let phonon = TestTTSEngine(), apple = TestTTSEngine()
+        let directory = try fakeInstalledModel()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = SpeechOutput(store: .init(directory: directory), phonon: phonon, apple: apple)
+        phonon.hold = true
+        output.speak("Old", voice: "Harper")
+        await phonon.waitForStart()
+        phonon.hold = false
+        output.speak("New", voice: "Easton")
+        await output.waitForSpeech()
+        #expect(phonon.calls.map(\.text) == ["Old", "New"])
+        #expect(phonon.stops == 1)
+        #expect(apple.calls.isEmpty)
+        #expect(!output.isSpeaking)
+    }
+
+    @Test func agentOptInIsSeparateFromDictationAndCaptureStopsPlayback() async {
+        let phonon = TestTTSEngine(), apple = TestTTSEngine()
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let output = SpeechOutput(store: .init(directory: directory), phonon: phonon, apple: apple)
+        let input = GInput()
+        let c = SystemWideDictationCoordinator(input: input, targets: GCapture(),
+            insertion: TextInsertionService(clipboard: GClipboard(), clock: GClock()),
+            shortcut: GShortcut(), preferenceStore: preferences(), speechOutput: output)
+        defer { c.close() }
+        c.showAgentHelp()
+        await output.waitForSpeech()
+        #expect(apple.calls.isEmpty)
+        c.preferences.spokenAgentResponses = true
+        apple.hold = true
+        c.showAgentHelp()
+        await apple.waitForStart()
+        #expect(apple.calls.first?.text == c.agentNotice)
+        c.startManual()
+        #expect(!output.isSpeaking)
+        #expect(apple.stops == 1)
+        await c.waitUntilRecording()
+        c.stop()
+        input.receive?(.transcript("A private dictation"))
+        input.receive?(.finished)
+        await c.waitForInsertionCompletion()
+        await output.waitForSpeech()
+        #expect(apple.calls.count == 1)
+        #expect(phonon.calls.isEmpty)
+    }
+
+    @Test func spokenOpenAndTimerFollowUpUseVerifiedCommandOutcomes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data().write(to: directory.appending(path: "bundle.json"))
+        let phonon = TestTTSEngine(), apple = TestTTSEngine(), runner = FortyRunner()
+        let output = SpeechOutput(store: .init(directory: directory), phonon: phonon, apple: apple)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let c = SystemWideDictationCoordinator(input: GInput(), targets: GCapture(),
+            insertion: TextInsertionService(clipboard: GClipboard(), clock: GClock()),
+            shortcut: GShortcut(), preferenceStore: preferences(), personalPlanner: FortyPlanner(),
+            personalApps: { PersonalAgent40Tests.apps }, personalMessageResolution: { $0 },
+            speechOutput: output, wallTime: { now })
+        defer { c.close() }
+        c.personalAgentQueueURL = directory.appending(path: "queue.json")
+        c.personalToolRunner = runner
+        c.preferences.spokenAgentResponses = true
+        c.preferences.phononVoice = "Harper"
+
+        c.reviewAgentCommand("Open WhatsApp")
+        await c.waitForAgentPlanning()
+        await output.waitForSpeech()
+        #expect(phonon.calls.last?.text == "Opened WhatsApp.")
+        #expect(runner.calls.last?.tool == .openInstalledApp)
+
+        c.reviewAgentCommand("Set a timer")
+        await output.waitForSpeech()
+        #expect(phonon.calls.last?.text == "How many minutes should I set the timer for?")
+        #expect(runner.calls.count == 1)
+
+        c.submitAgentReply("Five.")
+        await c.waitForAgentPlanning()
+        await output.waitForSpeech()
+        #expect(runner.calls.last?.tool == .timer)
+        #expect(runner.calls.last?.date == now.addingTimeInterval(300))
+        #expect(phonon.calls.last?.text == "Timer set for 5 minutes.")
+
+        c.reviewAgentCommand("Start a tea timer for thirty seconds")
+        await c.waitForAgentPlanning()
+        await output.waitForSpeech()
+        #expect(runner.calls.last?.text == "tea")
+        #expect(runner.calls.last?.date == now.addingTimeInterval(30))
+
+        for refusal in ["No.", "No, don’t set a timer.", "Don't start the timer."] {
+            c.reviewAgentCommand("Set a timer")
+            let questionID = try #require(c.agentQuestion?.id)
+            let count = runner.calls.count
+            c.submitAgentReply(refusal, questionID: questionID)
+            await output.waitForSpeech()
+            #expect(c.agentQuestion == nil)
+            #expect(runner.calls.count == count)
+            #expect(phonon.calls.last?.text == "Okay, cancelled.")
+            c.submitAgentReply("Five", questionID: questionID)
+            #expect(runner.calls.count == count)
+        }
+
+        runner.evidence = "Output volume: 40%."
+        c.reviewAgentCommand("What is the volume")
+        await c.waitForAgentPlanning()
+        await output.waitForSpeech()
+        #expect(phonon.calls.last?.text == "Output volume: 40%.")
+
+        runner.failTool = .openInstalledApp
+        c.reviewAgentCommand("Open Safari")
+        await c.waitForAgentPlanning()
+        await output.waitForSpeech()
+        #expect(phonon.calls.last?.text.contains("macOS permission") == true)
+        runner.failTool = nil
+        runner.unverified = true
+        c.reviewAgentCommand("Open Safari")
+        await c.waitForAgentPlanning()
+        await output.waitForSpeech()
+        #expect(phonon.calls.last?.text.contains("unverified") == true)
+        #expect(phonon.calls.allSatisfy { $0.voice == "Harper" })
+        #expect(apple.calls.isEmpty)
+    }
+
+    @Test func blockedModelInstallLeavesNoFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let policy = ApplicationNetworkPolicy()
+        policy.setBlocked(true)
+        await #expect(throws: ApplicationNetworkDenied.self) {
+            try await PhononModelStore(directory: directory).install(policy: policy)
+        }
+        #expect(policy.snapshot().denied == 1)
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    private func fakeInstalledModel() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data().write(to: directory.appending(path: "bundle.json"))
+        return directory
     }
 }

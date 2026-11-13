@@ -84,6 +84,7 @@ import VoiceInput
     @Published private(set) var unmergedSpeechRecoveryEntry: DictationHistoryEntry?
     @Published private(set) var speechFailureDiagnostics: DictationSpeechDiagnostics?
     @Published private(set) var speechRunDiagnostics: [String] = []
+    private var speakerIdentificationStatus: SpeakerSettings.IdentificationStatus = .notRequested
     var speechDiagnosticSummary: String {
         let executable = Bundle.main.executableURL?.path ?? "unknown"
         let current = speechFailureDiagnostics ?? (input as? any DictationCaptureReporting)?.speechDiagnostics
@@ -91,6 +92,7 @@ import VoiceInput
             + "agentStartupMs=" + (agentStartupMilliseconds.map(String.init) ?? "unmeasured") + " · "
             + (current?.summary ?? "speechTelemetry=unavailable")
             + "\nCapture: " + ((input as? any DictationCaptureReporting)?.captureDiagnosticSummary ?? "unavailable")
+            + "\nSpeaker identification: " + speakerIdentificationStatus.rawValue
             + "\nDestination binding: " + destinationBindingSummary
             + "\nCurrent inspected resources: " + (speechConfiguration.map { value in
                 "requestedLocale=\(value.locale) speechAvailable=\(value.speech.deviceAvailable) speechState=\(value.speech.state.rawValue) speechInventory=\(value.speech.inventoryStatus) dictationState=\(value.dictation.state.rawValue) dictationInventory=\(value.dictation.inventoryStatus)"
@@ -651,7 +653,10 @@ import VoiceInput
     }
     @Published private(set) var clipboardPending = false
     @Published private(set) var shortcutEnabled = false
+    let speechOutput: SpeechOutput
     @Published var preferences: DictationPreferences { didSet {
+        if oldValue.spokenAgentResponses && !preferences.spokenAgentResponses { speechOutput.releaseModel() }
+        if oldValue.phononVoice != preferences.phononVoice { speechOutput.stop() }
         if oldValue.polishStyle != preferences.polishStyle { cancelInPlaceRewrite(); cancelRewritePreview() }
         if oldValue.formattingShortcutAction != preferences.formattingShortcutAction, armedFormattingKind != nil { cancelArmedFormatting() }
         if oldValue.useFocusedTextWhenUnselected != preferences.useFocusedTextWhenUnselected { cancelTextCapture() }
@@ -767,8 +772,14 @@ import VoiceInput
         catch { agentNotice = "Queue could not be loaded; existing data is preserved." }
     }
     func waitForAgentPlanning() async { await work?.value; if phase == .inserting { await work?.value } }
-    private func agentStatus(_ value:String,hud:String) {
+    private func agentStatus(_ value: String, hud: String, speak: Bool = true) {
         agentNotice=value;agentShortcutStatus=value;message=value;agentHUD=hud;showHUDFeedback()
+        if speak { speakAgentResponse(value) }
+    }
+
+    private func speakAgentResponse(_ text: String) {
+        guard preferences.spokenAgentResponses, !closed, !busy, speakers?.enrolling != true else { return }
+        speechOutput.speak(text, voice: preferences.phononVoice)
     }
     private func askAgent(_ question:PersonalQuestion) {
         agentQuestion=question;agentReplyText="";phase = .idle
@@ -781,6 +792,8 @@ import VoiceInput
         interactWithAgent(value)
     }
     func cancelAgentConversation() {
+        speechOutput.stop()
+        agentOutcomeID = nil
         if busy { cancel();if busy { return } }
         if let plan=agentPlan {
             do { try getPersonalEngine().cancel(plan.id);agentRecords=personalEngine?.records ?? [] ;agentPlan=nil }
@@ -788,7 +801,7 @@ import VoiceInput
         }
         for task in closeObservers.values {task.cancel()};closeObservers.removeAll()
         agentDialogue.clear();agentRecipientChoice=nil;agentQuestion=nil;agentReplyText="";agentContinuationSource=nil;phase = .idle
-        agentStatus("Request cancelled. Nothing else will run.",hud:"Agent cancelled")
+        agentStatus("Okay, cancelled.",hud:"Agent cancelled")
     }
     func showAgentHelp() {
         guard !busy,!closed else { return }
@@ -801,7 +814,7 @@ import VoiceInput
     private func scheduledStore()->PersonalScheduledMessageStore {PersonalScheduledMessageStore(url:agentScheduledStoreURL ?? personalAgentQueueURL?.deletingLastPathComponent().appendingPathComponent("scheduled-message-drafts.json") ?? PersonalScheduledMessageStore.defaultURL)}
     func loadScheduledDrafts() {
         do {agentScheduledDrafts=try scheduledStore().records()}
-        catch {agentStatus("Scheduled draft data could not be read; it is preserved.",hud:"Check scheduled drafts")}
+        catch {agentStatus("Scheduled draft data could not be read; it is preserved.",hud:"Check scheduled drafts", speak: false)}
     }
     func reviewScheduledDraft(_ id:UUID) {
         guard !busy,!closed,agentPlan==nil else {return}
@@ -929,12 +942,18 @@ import VoiceInput
 
     private func interactWithAgent(_ text:String) {
         guard !busy,!closed else { return }
+        speechOutput.stop()
+        agentOutcomeID = nil
         guard !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { agentStatus("Please give a request or reply.",hud:"Reply needed");return }
         guard text.utf8.count<=4096 else { agentStatus("That request is too long. Please shorten it; nothing ran.",hud:"Request too long");return }
         if handleFlowVoiceControl(text) { return }
         agentHeard=text;agentInterpretation="";agentCommandText="";lastAgentFailure=nil
         let now=wallTime(),apps=personalApps()
-        if PersonalAgentDialogue.isCancel(text) { cancelAgentConversation();return }
+        if PersonalAgentDialogue.isCancel(text, awaitingReply: agentRecipientChoice != nil || agentPlan != nil)
+            || agentDialogue.rejectsPendingReply(text) {
+            cancelAgentConversation()
+            return
+        }
         if ["help","what can you do","show examples"].contains(PersonalAgentDialogue.canonical(text).lowercased()) { showAgentHelp();return }
         do {
             if let question=agentQuestion,question.expiresAt<=now || question.expiresAt.timeIntervalSince(now)>120 {
@@ -996,7 +1015,7 @@ import VoiceInput
             if PersonalFileIntents.isFolderRequest(text) {
                 agentStatus("Use a single folder name and Documents, Desktop or Downloads. Example: Create folder Projects in Documents. Nothing ran.",hud:"Folder details needed")
             } else if let failure=error as? PersonalPlanningFailure,failure == .appNotFound || failure == .appAmbiguous {
-                agentStatus(failure == .appAmbiguous ? "More than one installed app matches. Say the full app name. Nothing opened." : "No installed app matched ‘" + text + "’. Installed app index: \(apps.count). Check Your words against the installed name. Nothing opened.",hud:failure == .appAmbiguous ? "App name ambiguous":"App not found")
+                agentStatus(failure == .appAmbiguous ? "More than one installed app matches. Say the full app name. Nothing opened." : "I couldn’t find that installed app. Try its full name.",hud:failure == .appAmbiguous ? "App name ambiguous":"App not found")
             } else { agentStatus("I couldn't use that reply safely. Please give a complete request with the exact app, query, recipient or message. Nothing ran.",hud:"Clarify request") }
         }
     }
@@ -1049,6 +1068,7 @@ import VoiceInput
                 default: "Request is unsupported or cannot be understood completely. Try separate explicit requests. Nothing ran."
                 }
                 self.message=self.agentNotice;self.agentShortcutStatus=self.agentNotice;self.showHUDFeedback()
+                self.speakAgentResponse(self.agentNotice)
             }
         }
     }
@@ -1090,11 +1110,15 @@ import VoiceInput
             self.phase=receipt.verified ? (complete ? .success:.idle):.error
             self.agentHUD=receipt.verified ? (complete ? "App closed":"Close confirmed"):(receipt.appClose?.outcome == .reopened ? "App reopened":"Check app")
             if receipt.verified {self.agentDialogue.completed(plan,apps:self.personalApps(),now:self.wallTime())}
-            self.agentNotice=receipt.evidence+(receipt.verified && !complete ? " Remaining steps require fresh review; nothing resumed.":"");self.agentShortcutStatus=self.agentNotice;self.message=self.agentNotice;self.showHUDFeedback()
+            let result = complete
+                ? self.commandResult(plan, record: self.agentRecords.first { $0.id == plan.id }, apps: self.personalApps())
+                : receipt.evidence + (receipt.verified ? " Review the remaining steps to continue." : "")
+            self.agentStatus(result, hud: self.agentHUD ?? "Close result")
         }
     }
     private func runAgentPlan(_ plan:PersonalPlan,routine:Bool) {
         guard let engine=personalEngine else { return }
+        speechOutput.stop()
         agentPlan = nil; agentExecutingID = plan.id;agentOutcomeID=plan.id; phase = .inserting; agentHUD = plan.steps.allSatisfy({$0.tool == .closeApp}) ? "Closing app":"Processing command"
         agentNotice = routine ? "Running your requested actions…" : "Running the exact actions you confirmed…"
         work = Task { [weak self] in
@@ -1102,23 +1126,27 @@ import VoiceInput
             do { if routine { try await engine.runRequestedRoutine(plan) } else { try await engine.approveAndRun(plan) } }
             catch { self.agentNotice = "Execution stopped; inspect the saved task before retrying." }
             self.agentRecords = engine.records
-            let state = engine.records.first(where: { $0.id == plan.id })?.state
-            self.agentNotice = "Task: " + (state?.rawValue ?? "unknown") + ". Check receipts; uncertain effects are never replayed automatically."
-            if state == .completed { self.agentDialogue.completed(plan,apps:self.personalApps(),now:self.wallTime()) }
-            self.phase = state == .completed ? .success : .error; self.work = nil
+            let record = self.agentRecords.first { $0.id == plan.id }
+            let state = record?.state
+            let apps = self.personalApps()
+            if state == .completed { self.agentDialogue.completed(plan, apps: apps, now: self.wallTime()) }
+            self.phase = state == .completed ? .success : .error
+            self.work = nil
             self.agentExecutingID = nil
-            let dispatched=engine.records.first(where:{$0.id == plan.id})?.receipts.values.contains(where:{ !$0.verified }) == true
-            self.agentHUD = state == .completed ? (plan.steps.contains(where:{[PersonalTool.searchGoogle,.searchYouTube].contains($0.tool)}) ? "Search opened" : "Done") : dispatched ? (plan.steps.contains(where:{$0.tool == .message}) ? "Message submitted" : plan.steps.contains(where:{$0.tool == .mailAction}) ? "Email submitted":"App handoff") : "Agent needs review"
-            if dispatched && plan.steps.contains(where:{$0.tool == .website}) {self.agentHUD="Website opened"}
-            if dispatched { self.agentNotice="Request handed to the app; external outcome is unverified. Inspect it before retrying. No automatic replay." }
-            if state == .completed,let index=plan.steps.firstIndex(where:{$0.tool == .findFolder}),let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts[index] {
-                self.agentNotice=receipt.evidence;self.agentHUD="Folder results"
+            self.agentNotice = self.commandResult(plan, record: record, apps: apps)
+            let dispatched = record?.receipts.values.contains { !$0.verified } == true
+            self.agentHUD = state == .completed ? "Done" : dispatched ? "App handoff" : "Agent needs review"
+            if state == .completed && plan.steps.allSatisfy({ $0.tool == .closeApp }) { self.agentHUD = "App closed" }
+            if state == .completed {
+                if plan.steps.contains(where: { [.searchGoogle, .searchYouTube].contains($0.tool) }) { self.agentHUD = "Search opened" }
+                if plan.steps.contains(where: { $0.tool == .findFolder }) { self.agentHUD = "Folder results" }
+            } else if dispatched {
+                if plan.steps.contains(where: { $0.tool == .website }) { self.agentHUD = "Website opened" }
+                if plan.steps.contains(where: { $0.tool == .message }) { self.agentHUD = "Message submitted" }
+                if plan.steps.contains(where: { $0.tool == .mailAction }) { self.agentHUD = "Email submitted" }
             }
-            if state == .completed,let index=plan.steps.firstIndex(where:{$0.tool == .systemAudio || $0.tool == .browserControl || $0.tool == .macControl || $0.tool == .layoutApp || $0.tool == .ownedTimers || $0.tool == .recordAction || $0.tool == .notesAction || $0.tool == .mediaAction || $0.tool == .contactAction || $0.tool == .fileAction || $0.tool == .screenCapture || $0.tool == .browserExtra || $0.tool == .mailAction || $0.tool == .routineSave || $0.tool == .menuAction || $0.tool == .messageSchedule}),let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts[index] {
-                self.agentNotice=receipt.evidence;self.agentHUD = "Command result"
-            }
-            if plan.steps.allSatisfy({$0.tool == .closeApp}),state == .completed {self.agentHUD="App closed"}
-            if let receipt=engine.records.first(where:{$0.id==plan.id})?.receipts.values.first(where:{!$0.verified && $0.appClose != nil}),let close=receipt.appClose {
+            if let receipt = record?.receipts.values.first(where: { !$0.verified && $0.appClose != nil }),
+               let close = receipt.appClose {
                 self.agentNotice=receipt.evidence
                 if !receipt.verified {
                     self.agentHUD=switch close.outcome {case .pending:"Quit pending";case .refused:"Quit refused";case .reopened:"App reopened";case .unavailable:"Can't check app";case .unconfirmed:"Check app";case .closed:"Check app"}
@@ -1126,11 +1154,68 @@ import VoiceInput
                 }
             }
             if plan.steps.contains(where:{$0.tool == .messageSchedule}) {self.loadScheduledDrafts()}
-            if state == .paused {self.phase = .idle;self.agentHUD="Routine paused";self.agentNotice="Paused after verified steps. Continue requires a fresh review; uncertain effects are never replayed."}
-            self.agentShortcutStatus=self.agentNotice
-            self.message = self.agentNotice; self.showHUDFeedback()
+            if state == .paused { self.phase = .idle; self.agentHUD = "Routine paused" }
+            self.agentStatus(self.agentNotice, hud: self.agentHUD ?? "Command result")
         }
     }
+
+    private func commandResult(_ plan: PersonalPlan, record: PersonalTaskRecord?, apps: [PersonalApp]) -> String {
+        guard let record else { return "I couldn’t finish that request. Check Command Mode for details." }
+        let confirmed = plan.steps.enumerated().compactMap { index, step -> String? in
+            guard record.steps[index] == .verified, let receipt = record.receipts[index], receipt.verified else { return nil }
+            return verifiedCommandReply(step, receipt: receipt, startedAt: plan.createdAt, apps: apps)
+        }
+        let outstanding: String? = switch record.state {
+        case .completed: confirmed.isEmpty ? "Done." : nil
+        case .failed where record.diagnostic == "permission-denied",
+             .needsReview where record.diagnostic == "permission-denied":
+            "macOS permission is needed to finish this request. Check System Settings."
+        case .failed: "I couldn’t finish that request. Check Command Mode for details."
+        case .cancelled: "Cancelled the remaining actions."
+        case .needsReview where record.receipts.values.contains(where: { !$0.verified }):
+            "I handed the request to the app. The outcome is unverified. Check the app before trying again."
+        case .needsReview: "Check Command Mode to review what happened before trying again."
+        case .paused: "The routine is paused. Review the remaining steps to continue."
+        case .awaitingApproval: "Review the requested actions in Command Mode."
+        case .running: "The command is still running."
+        }
+        return (confirmed + [outstanding].compactMap { $0 }).joined(separator: " ")
+    }
+
+    private func verifiedCommandReply(_ step: PersonalStep, receipt: PersonalReceipt, startedAt: Date, apps: [PersonalApp]) -> String {
+        let appName = apps.first { $0.id == step.text }?.name
+        switch step.tool {
+        case .openInstalledApp: return "Opened \(appName ?? "the app")."
+        case .openApp: return "Opened \(AppOpeningCommand(rawValue: step.text)?.rawValue ?? "the app")."
+        case .closeApp: return "Closed \(appName ?? "the app")."
+        case .minimizeApp: return "Minimised \(appName ?? "the window")."
+        case .restoreApp: return "Restored \(appName ?? "the window")."
+        case .fullScreenApp: return "Made \(appName ?? "the window") full screen."
+        case .exitFullScreenApp: return "Exited full screen for \(appName ?? "the window")."
+        case .maximizeApp: return "Maximised \(appName ?? "the window")."
+        case .timer:
+            guard let seconds = step.date?.timeIntervalSince(startedAt),
+                  seconds.isFinite, (1...31_536_000).contains(seconds.rounded()) else { return "Timer set." }
+            return "Timer set for \(Duration.seconds(Int(seconds.rounded())).formatted(.units(width: .wide)))."
+        case .note: return "Created the note."
+        case .reminder: return "Created the reminder."
+        case .calendar: return "Created the calendar event."
+        case .safari: return "Opened the page in Safari."
+        case .searchGoogle: return "Opened the Google search."
+        case .searchYouTube: return "Opened the YouTube search."
+        case .searchBrowser: return "Opened the search in your chosen browser."
+        case .openFolder: return "Opened the folder in Finder."
+        case .layoutApp: return "Arranged the window."
+        case .website, .music, .spotify, .createFolder, .closeFolder, .findFolder, .trashFolder,
+             .systemAudio, .browserControl, .macControl, .ownedTimers, .recordAction, .notesAction,
+             .mediaAction, .contactAction, .fileAction, .screenCapture, .browserExtra, .routineSave,
+             .mailAction, .menuAction, .messageSchedule, .message:
+            let result = receipt.evidence.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !result.isEmpty else { return "Done." }
+            return result.last.map { ".!?".contains($0) } == true ? result : result + "."
+        }
+    }
+
     func cancelAgentTask(_ id: UUID) {
         do { try personalEngine?.cancel(id); agentRecords = personalEngine?.records ?? [] }
         catch { agentNotice = "Cancellation could not be saved. The draft is still awaiting review."; return }
@@ -1488,8 +1573,10 @@ import VoiceInput
          speechResources: AppleSpeechResourceService = AppleSpeechResourceService(),
          minimumHoldMilliseconds: Int64 = 0,
          speakers: SpeakerSettings? = nil,
+         speechOutput: SpeechOutput = SpeechOutput(),
          keepAwake: KeepAwakeSession = KeepAwakeSession(),
          wallTime: @escaping @Sendable () -> Date = { Date() }) {
+        self.speechOutput = speechOutput
         self.speakers = speakers
         self.keepAwake = keepAwake
         self.networkPolicy = networkPolicy; self.networkSnapshot = networkPolicy.snapshot()
@@ -1516,8 +1603,8 @@ import VoiceInput
         }
     }
     func refreshPermissions() {
-        if agentDialogue.expire(now:wallTime()),agentQuestion != nil,agentRecipientChoice == nil { agentQuestion=nil;agentReplyText="";agentStatus("Question expired. Start a complete new request.",hud:"Reply expired") }
-        if let question=agentQuestion,(question.expiresAt<=wallTime() || question.expiresAt.timeIntervalSince(wallTime())>120) { agentDialogue.markExpired();agentQuestion=nil;agentRecipientChoice=nil;agentReplyText="";agentStatus("Question expired. Start a complete new request.",hud:"Reply expired") }
+        if agentDialogue.expire(now:wallTime()),agentQuestion != nil,agentRecipientChoice == nil { agentQuestion=nil;agentReplyText="";agentStatus("Question expired. Start a complete new request.",hud:"Reply expired", speak: false) }
+        if let question=agentQuestion,(question.expiresAt<=wallTime() || question.expiresAt.timeIntervalSince(wallTime())>120) { agentDialogue.markExpired();agentQuestion=nil;agentRecipientChoice=nil;agentReplyText="";agentStatus("Question expired. Start a complete new request.",hud:"Reply expired", speak: false) }
         networkSnapshot = networkPolicy.snapshot()
         agentShortcutDiagnostics = agentShortcut.diagnosticSummary
         reconcileClipboard()
@@ -1578,6 +1665,7 @@ import VoiceInput
             message = "Finish or cancel speaker enrollment before dictating."; return
         }
         guard !speechResourceWorking else { message = "Speech resource setup is in progress. Finish or stop waiting before recording."; return }
+        speechOutput.stop()
         activeBeforeFormatting = nil
         commandSession = agent; agentHUD = agent ? "Starting mic…" : nil
         if agent { agentStartupBegan=ProcessInfo.processInfo.systemUptime;agentStartupMilliseconds=nil }
@@ -1644,6 +1732,7 @@ import VoiceInput
         if let routing = input as? LanguageDictationInput { routing.mode = activeLanguageMode; routing.recognitionLanguage = preferences.teluguRecognitionLanguage }
         speakers?.capture.reset()
         speakers?.capture.armed = !commandSession && preferences.keepHistory && speakers?.enabled == true
+        if !commandSession { speakerIdentificationStatus = .notRequested }
         session = id; timestamp = wallTime(); recordingBegan = nil; historyConsentAtStart = preferences.keepHistory
         raw = ""; cleaned = ""; engine = nil; phase = .preparing
         message = "Preparing on-device speech. Allow microphone and speech access if asked."
@@ -1719,6 +1808,7 @@ import VoiceInput
         if phase == .finalizing { armTimer(activeLanguageMode == .teluguRomanised ? 60_000 : 8000,id:id,finishing:true) }
     }
     func cancel() {
+        speechOutput.stop()
         if session != nil { speakers?.capture.reset() }
         if armedFormattingKind != nil { cancelArmedFormatting() }
         stopAudioVisualization(); cancelInPlaceRewrite()
@@ -1776,10 +1866,12 @@ import VoiceInput
                     agentNotice = (speechFailureDiagnostics?.failureDescription ?? terminalSpeechFailure.map(DictationModel.description) ?? "Command recognition did not finish.") + " No command was executed."
                 } else { agentNotice = "No command words were recognised. Speak after ‘Agent listening’, then release the command key. No action ran." }
                 lastAgentFailure = agentNotice
-                agentShortcutStatus = agentNotice; message = agentNotice; showHUDFeedback(); return
+                agentStatus(agentNotice, hud: agentHUD ?? "Agent speech failed"); return
             }
             phase = .idle; agentCommandText = cleaned
-            if let command = KeepAwakeCommand.parse(cleaned, active: keepAwake.canStop) {
+            if agentPlan == nil, let command = KeepAwakeCommand.parse(cleaned, active: keepAwake.canStop) {
+                agentOutcomeID = nil
+                agentDialogue.clear(); agentQuestion = nil; agentRecipientChoice = nil; agentReplyText = ""
                 let succeeded = keepAwake.run(command, origin: captureActivation?.application)
                 phase = succeeded ? .success : .error
                 agentHeard = cleaned; agentInterpretation = keepAwakeStatus; agentCommandText = ""
@@ -1828,11 +1920,16 @@ import VoiceInput
         let fallback = fallback, captureExplanation = captureExplanation, date = timestamp, began = recordingBegan, saveAtStart = historyConsentAtStart
         let labelSpeaker = forced == nil && saveAtStart && preferences.keepHistory && speakers?.capture.armed == true
         let speakerAudio = labelSpeaker ? speakers?.capture.take() : nil
+        if labelSpeaker { speakerIdentificationStatus = .pending }
         speakers?.capture.reset()
         work = Task { [weak self] in
             guard let self else { speakerAudio?.cancel(); return }
             let speaker = speakerAudio.flatMap { audio in
-                self.speakers.map { settings in Task<DictationSpeakerLabel, Never> { await settings.identify(audio) } }
+                self.speakers.map { settings in
+                    Task<(DictationSpeakerLabel, SpeakerSettings.IdentificationStatus), Never> {
+                        await settings.identify(audio)
+                    }
+                }
             }
             defer { speaker?.cancel(); speakerAudio?.cancel() }
             let now = await self.clock.now()
@@ -1891,7 +1988,11 @@ import VoiceInput
                 let delta = now.subtractingReportingOverflow(start)
                 return delta.overflow ? 0 : max(0,min(DictationText.maximumDurationMilliseconds,delta.partialValue))
             } ?? 0
-            let label = await speaker?.value ?? (labelSpeaker ? .unknown : nil)
+            let identification = await speaker?.value
+            let label = identification?.0 ?? (labelSpeaker ? .unknown : nil)
+            if labelSpeaker, self.session == id, !Task.isCancelled {
+                self.speakerIdentificationStatus = identification?.1 ?? .audioUnavailable
+            }
             let entry = DictationHistoryEntry(id:id,timestamp:date,raw:raw,cleaned:text,sourceApplication:source,
                                              durationMilliseconds:duration,insertion:receipt,
                                              speaker: self.session == id && !Task.isCancelled ? label : nil)
@@ -2075,6 +2176,8 @@ import VoiceInput
         return true
     }
     func close() {
+        speechOutput.stopInstallation()
+        speechOutput.releaseModel()
         keepAwake.stop()
         armedFormattingKind = nil; armedFormattingOrigin = nil; armedFormattingAt = nil; activeBeforeFormatting = nil
         for task in closeObservers.values {task.cancel()};closeObservers.removeAll()

@@ -24,6 +24,7 @@ public extension NativeRewriteGenerating {
     }
 }
 /// The app owns sentence order, fixed spans and section layout. The model edits prose only.
+@available(macOS 26.0, *)
 @Generable struct NativePromptSections {
     @Guide(description:"Improve supplied editable passages using their global passage indices. Supply the whole rewritten passage. No duplicate indices. Empty only if wording needs no improvement.", .maximumCount(16))
     var edits:[NativeGrammarPassage]
@@ -33,6 +34,7 @@ public extension NativeRewriteGenerating {
     }
 }
 
+@available(macOS 26.0, *)
 @Generable struct NativePolishEdits {
     @Guide(description:"Token positions to capitalize. Never target protected tokens.", .maximumCount(16))
     var capitalize:[Int]
@@ -47,7 +49,9 @@ public extension NativeRewriteGenerating {
     var plan:PolishEditPlan { .init(capitalize:capitalize,removeFillers:removeFillers,commas:commas,periods:periods,questions:questions) }
 }
 
+@available(macOS 26.0, *)
 @Generable struct NativeGrammarPassage { var index:Int; var text:String }
+@available(macOS 26.0, *)
 @Generable struct NativeGrammarRewrite {
     @Guide(description:"Whole passages rewritten for clearer grammar and wording, identified by a supplied editable index. At most one edit per index. Keep text unchanged only when no faithful improvement is available.", .minimumCount(1), .maximumCount(16))
     var edits:[NativeGrammarPassage]
@@ -58,6 +62,7 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
     public init() { compactGrammar = true }
     internal init(compactGrammar:Bool) { self.compactGrammar = compactGrammar }
     public func readiness(localeIdentifier: String) -> NativeRewriteReadiness {
+        guard #available(macOS 26.0, *) else { return .unavailable }
         let model = SystemLanguageModel.default
         guard model.isAvailable else { return .unavailable }
         return model.supportsLocale(Locale(identifier:localeIdentifier)) ? .available : .unsupportedLanguage
@@ -70,7 +75,7 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
     }
     public func generate(maskedText:String,localeIdentifier:String,tone:OfflineRewriteTone,kind:OfflinePreviewKind,polishStyle:PolishStyle) async throws -> String {
         guard kind == .polish && polishStyle == .grammar else { return try await generate(maskedText:maskedText,localeIdentifier:localeIdentifier,tone:tone,kind:kind) }
-        guard SystemLanguageModel.default.isAvailable else { throw NativeRewriteDriverFailure.unavailable }
+        guard #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable else { throw NativeRewriteDriverFailure.unavailable }
         let contract = try GrammarPolishText(maskedText)
         guard contract.hasEditableText else { return maskedText }
         let lease = UUID(); try await FoundationGenerationLease.shared.claim(lease)
@@ -109,7 +114,7 @@ public struct AppleRewriteGenerator: NativeRewriteGenerating {
         } catch { await FoundationGenerationLease.shared.release(lease); throw error }
     }
     public func generate(maskedText:String,localeIdentifier:String,tone:OfflineRewriteTone,kind:OfflinePreviewKind) async throws -> String {
-        guard SystemLanguageModel.default.isAvailable else { throw NativeRewriteDriverFailure.unavailable }
+        guard #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable else { throw NativeRewriteDriverFailure.unavailable }
         let instructions: String
         if kind == .promptEngineering {
             instructions = """

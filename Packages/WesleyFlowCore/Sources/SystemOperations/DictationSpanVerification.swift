@@ -28,6 +28,33 @@ struct DictationInsertionExpectation: Sendable {
         return observed
     }
     func matches(_ observed:String?) -> Bool { (try? verified(observed)) != nil }
+
+    /// Clipboard acknowledgment only. A paragraph boundary can change the
+    /// insertion range, so this cannot establish a verified edit or rewrite anchor.
+    func acknowledgesPaste(_ observed: String, replacing original: TargetTextState) -> Bool {
+        guard !Self.exact(observed, original.text) else { return false }
+        if Self.exact(observed, insertedText) { return true }
+
+        let expected = document.utf16
+        let prefix = expected.prefix(span.location)
+        let suffix = expected.dropFirst(span.location + span.length)
+        let current = observed.utf16
+        guard current.count >= prefix.count + suffix.count,
+              current.starts(with: prefix),
+              current.suffix(suffix.count).elementsEqual(suffix),
+              let selected = try? Self.readSpan(original.text, range: original.selection) else { return false }
+
+        let middle = current.dropFirst(prefix.count).dropLast(suffix.count)
+        let payload = Self.withoutBoundaryWhitespace(insertedText.utf16)
+        return !payload.isEmpty
+            && Self.withoutBoundaryWhitespace(middle).elementsEqual(payload)
+            && !Self.withoutBoundaryWhitespace(selected.utf16).elementsEqual(payload)
+    }
+
+    private static func withoutBoundaryWhitespace(_ units: some BidirectionalCollection<UInt16>) -> [UInt16] {
+        func isPadding(_ unit: UInt16) -> Bool { unit == 0x20 || unit == 0x09 || unit == 0x0A || unit == 0x0D }
+        return Array(units.drop(while: isPadding).reversed().drop(while: isPadding).reversed())
+    }
     static func validateSpan(_ observed:String,range:TextSelection,insertedText:String,record:(DictationVerificationDiagnostic)->Void) throws {
         let text:String
         do { text = try readSpan(observed,range:range); record(.init(.range,.valid,expected:range.length,current:observed.utf16.count)) }

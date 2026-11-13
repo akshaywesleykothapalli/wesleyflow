@@ -31,23 +31,49 @@ enum SpeechAudioDownmix {
 
 /// Tap delivery metrics contain counts and sample positions only, never PCM or text.
 final class AudioIngress: Sendable {
-    struct State {
+    private enum EnqueueResult { case enqueued, dropped, terminated, unknown }
+
+    private struct ModernInput {
+        let enqueue: (AVAudioPCMBuffer) -> EnqueueResult
+        let finish: ((any Error)?) -> Void
+    }
+
+    private struct State {
         var open = true
         let inputFormat: AVAudioFormat
         let monoFormat: AVAudioFormat?
         let converter: AVAudioConverter?
         let format: AVAudioFormat
-        let modern: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation?
+        let modern: ModernInput?
         let legacy: SFSpeechAudioBufferRecognitionRequest?
         var delivery = DictationAudioDelivery()
         var expectedSample: AVAudioFramePosition?
     }
     private let state: OSAllocatedUnfairLock<State>
     private let onFailure: @Sendable (DictationFailure) -> Void
-    init(source: AVAudioFormat, target: AVAudioFormat,
-         modern: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation? = nil,
-         legacy: SFSpeechAudioBufferRecognitionRequest? = nil,
-         onFailure: @escaping @Sendable (DictationFailure) -> Void = { _ in }) throws {
+    @available(macOS 26.0, *)
+    convenience init(source: AVAudioFormat, target: AVAudioFormat,
+                     modern: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation,
+                     onFailure: @escaping @Sendable (DictationFailure) -> Void = { _ in }) throws {
+        let input = ModernInput(enqueue: { buffer in
+            switch modern.yield(AnalyzerInput(buffer: buffer)) {
+            case .enqueued: .enqueued
+            case .dropped: .dropped
+            case .terminated: .terminated
+            @unknown default: .unknown
+            }
+        }, finish: { modern.finish(throwing: $0) })
+        try self.init(source: source, target: target, modern: input, legacy: nil, onFailure: onFailure)
+    }
+
+    convenience init(source: AVAudioFormat, target: AVAudioFormat, legacy: SFSpeechAudioBufferRecognitionRequest,
+                     onFailure: @escaping @Sendable (DictationFailure) -> Void = { _ in }) throws {
+        try self.init(source: source, target: target, modern: nil, legacy: legacy, onFailure: onFailure)
+    }
+
+    private init(source: AVAudioFormat, target: AVAudioFormat, modern: ModernInput?,
+                 legacy: SFSpeechAudioBufferRecognitionRequest?,
+                 onFailure: @escaping @Sendable (DictationFailure) -> Void) throws {
         self.onFailure = onFailure
         guard source.sampleRate.isFinite, target.sampleRate.isFinite,
               (8000...192000).contains(source.sampleRate), (8000...192000).contains(target.sampleRate),
@@ -69,7 +95,7 @@ final class AudioIngress: Sendable {
     }
     var diagnostics: DictationAudioDelivery { state.withLockUnchecked { $0.delivery } }
     private func fail(_ reason: DictationFailure, code: String, native: SpeechNativeError? = nil, state s: inout State) {
-        s.open = false; s.delivery.closeReason = code; s.delivery.nativeError = native; s.modern?.finish(throwing:reason); onFailure(reason)
+        s.open = false; s.delivery.closeReason = code; s.delivery.nativeError = native; s.modern?.finish(reason); onFailure(reason)
     }
     private func enqueue(_ output: AVAudioPCMBuffer, state s: inout State) -> Bool {
         // Resamplers can emit filter padding at EOF. Preserve every frame up to
@@ -81,12 +107,12 @@ final class AudioIngress: Sendable {
         output.frameLength = AVAudioFrameCount(min(UInt64(originalFrames),remaining))
         s.delivery.trimmedPaddingFrames += UInt64(originalFrames-output.frameLength)
         guard output.frameLength > 0 else { return true }
-        if let result = s.modern?.yield(AnalyzerInput(buffer:output)) {
+        if let result = s.modern?.enqueue(output) {
             switch result {
             case .enqueued: s.delivery.queuedBuffers += 1; s.delivery.queuedFrames += UInt64(output.frameLength); return true
             case .dropped: fail(.overflow,code:"queueOverflow",state:&s)
             case .terminated: fail(.recognitionFailed,code:"inputTerminated",state:&s)
-            @unknown default: fail(.recognitionFailed,code:"unknownYield",state:&s)
+            case .unknown: fail(.recognitionFailed,code:"unknownYield",state:&s)
             }
             return false
         }
@@ -149,10 +175,18 @@ final class AudioIngress: Sendable {
                 s.delivery.converterDrained = true
             }
             s.delivery.closeReason = flush ? "endOfInput" : "cancelled"
-            s.modern?.finish(); s.legacy?.endAudio()
+            s.modern?.finish(nil); s.legacy?.endAudio()
         }
     }
 }
+
+private protocol ModernAnalysis: Sendable {
+    func finalizeAndFinishThroughEndOfInput() async throws
+    func cancelAndFinishNow() async
+}
+
+@available(macOS 26.0, *)
+extension SpeechAnalyzer: ModernAnalysis {}
 
 /// Native on-device engines only; no asset installation, files, model provider or tool port.
 @MainActor public final class AppleDictationInput: AgentDictationInput, AgentApplicationNameHinting, DictationAudioMetering, DictationCaptureReporting, DictationRecoveryProviding {
@@ -202,7 +236,7 @@ final class AudioIngress: Sendable {
     private var engine: AVAudioEngine?
     private var ingress: AudioIngress?
     private var tapInstalled = false
-    private var analyzer: SpeechAnalyzer?
+    private var analyzer: (any ModernAnalysis)?
     private var results: Task<Void, Never>?
     private var finalization: Task<Void, Never>?
     private var cleanup: Task<Void, Never>?
@@ -264,7 +298,7 @@ final class AudioIngress: Sendable {
                 try current(id)
                 diagnostic.modernSpeechAssets = readiness.speech.inventoryStatus
                 diagnostic.modernDictationAssets = readiness.dictation.inventoryStatus
-                if let selectedEngine = readiness.readyModernEngine,
+                if #available(macOS 26.0, *), let selectedEngine = readiness.readyModernEngine,
                    let selectedLocale = readiness.resources(for:selectedEngine).resolvedLocale {
                     diagnostic.provider = selectedEngine == .speechTranscriber ? .speechTranscriber : .dictationTranscriber
                     diagnostic.resolvedLocale = selectedLocale
@@ -358,6 +392,7 @@ final class AudioIngress: Sendable {
         guard format.sampleRate > 0, format.channelCount > 0 else { throw DictationFailure.audioUnavailable }
         engine = audio; return audio
     }
+    @available(macOS 26.0, *)
     private func beginModern<M: SpeechModule>(_ module: M, locale: Locale, id: UUID, name: String, agent:Bool = false) async throws -> DictationInfo {
         currentStage = .modernPreparation; diagnostic.preparation = "preparing"
         let audio = try makeEngine()
@@ -418,6 +453,7 @@ final class AudioIngress: Sendable {
         if diagnostic.rangeEvents.count == 16 { diagnostic.rangeEvents.removeFirst() }
         diagnostic.rangeEvents.append(line)
     }
+    @available(macOS 26.0, *)
     private func merge(_ text: AttributedString, range: CMTimeRange, isFinal: Bool, finalization: CMTime, id: UUID) {
         guard session == id else { return }
         observeRange(start:range.start.isNumeric ? CMTimeGetSeconds(range.start) : nil,end:CMTimeRangeGetEnd(range).isNumeric ? CMTimeGetSeconds(CMTimeRangeGetEnd(range)) : nil,previousStart:segments.acceptedStart,previousEnd:segments.acceptedEnd,kind:isFinal ? "modernFinal" : "modernVolatile",timebase:"analyzerInputCMTime")
@@ -458,7 +494,7 @@ final class AudioIngress: Sendable {
         guard let id = session, !stopRequested else { return }
         releaseObservedAt = uptime(); stopRequested = true; diagnostic.phase = "finalizing"
         stopCapture(flush:true)
-        if let analyzer {
+        if #available(macOS 26.0, *), let analyzer {
             let pendingResults = results
             finalization = Task { [weak self] in
                 do {
@@ -546,11 +582,13 @@ struct TranscriptBuffer {
         lastRejection="none";lastDecision="initial"
         guard Self.valid(range),finalization.map(Self.valid) ?? true else { try reject("invalidCMTime") }
         guard String(text.characters).utf8.count<=DictationText.maximumBytes else { lastRejection="textBudget";throw DictationFailure.overflow }
-        var previousAttributeStart:CMTime?
-        for run in text.runs {
-            if let time=run.audioTimeRange {
-                guard Self.valid(time),previousAttributeStart.map({CMTimeCompare(time.start,$0)>=0}) ?? true else { try reject("invalidWordTimebase") }
-                previousAttributeStart=time.start
+        if #available(macOS 26.0, *) {
+            var previousAttributeStart:CMTime?
+            for run in text.runs {
+                if let time=run.audioTimeRange {
+                    guard Self.valid(time),previousAttributeStart.map({CMTimeCompare(time.start,$0)>=0}) ?? true else { try reject("invalidWordTimebase") }
+                    previousAttributeStart=time.start
+                }
             }
         }
         let end=CMTimeRangeGetEnd(range)
@@ -568,6 +606,7 @@ struct TranscriptBuffer {
             revised=true
             let coversOld=CMTimeCompare(range.start,old.range.start)<=0 && CMTimeCompare(end,oldEnd)>=0
             if coversOld || wholeHypothesis { continue }
+            guard #available(macOS 26.0, *) else { try reject("volatilePrefixOverlap") }
             let chars:Range<AttributedString.Index>
             if let intersection=old.text.rangeOfAudioTimeRangeAttributes(intersecting:range) { chars=intersection }
             else if old.text.runs.contains(where:{$0.audioTimeRange != nil}) {
@@ -611,6 +650,7 @@ struct TranscriptBuffer {
                 committed=joined(committed,plain(piece.text));committedSegments += 1
             } else {
                 if CMTimeCompare(piece.range.start,through)<0 {
+                    guard #available(macOS 26.0, *) else { try reject("unmappedFinalizationBoundary") }
                     let tail=CMTimeRange(start:through,end:CMTimeRangeGetEnd(piece.range))
                     guard piece.text.runs.contains(where:{$0.audioTimeRange != nil}) else { try reject("unmappedFinalizationBoundary") }
                     // A finalization boundary may commit the beginning of a prior
@@ -729,6 +769,7 @@ struct LegacyTranscriptBuffer {
 }
 
 
+@available(macOS 26.0, *)
 @MainActor enum AgentSpeechContext {
     static func make(applicationNames:[String]) -> AnalysisContext {
         let context = AnalysisContext()

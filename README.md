@@ -46,7 +46,9 @@ The curtain is an app-level overlay. macOS system controls can bypass it.
 
 ## Build from source
 
-Use an Apple Silicon Mac with a full Xcode installation. The verified toolchain uses **Xcode 27**, **Swift 6.4**, and the **macOS 27 SDK**. The deployment target is macOS 26, where runtime acceptance remains pending.
+Wesley Flow targets **macOS 15 Sequoia and later** on Apple Silicon. On Sequoia, English dictation and voice commands use Apple's earlier on-device recognizer when it supports the selected language. Modern Apple Speech and Apple Intelligence–powered formatting and command interpretation require macOS 26 or later. Offline Telugu continues to use its local models.
+
+Build with a full Xcode installation. The verified toolchain uses **Xcode 27**, **Swift 6.4**, and the **macOS 27 SDK**. Builds and automated tests run on macOS 27.2. Live runtime testing on Sequoia is pending.
 
 ```sh
 git clone https://github.com/akshaywesleykothapalli/wesleyflow.git

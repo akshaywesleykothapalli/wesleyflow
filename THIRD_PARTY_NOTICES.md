@@ -9,3 +9,5 @@ The root MIT license applies to original Wesley Flow material, not a replacement
 - Optional Model Lab packages are pinned in `ModelLab/requirements.lock`. Their upstream licenses continue to apply if installed; the environment and wheels are not vendored into this repository.
 
 Apple platform APIs, application names, GitHub and other product references identify dependencies, supported targets or development history. They are not copyright assignments, promotional credits or endorsements. No DailyOps, LocalFlow or legacy Wesley Flow source or assets are distributed as part of this implementation.
+
+**Phonon speech output.** Wesley Flow links Gradium’s [Phonon 0.7.0 Swift package and native runtime](https://github.com/gradium-ai/xn-ptts/releases/tag/v0.7.0) under MIT OR Apache-2.0. The upstream license texts are included in `App/PhononNotices` and the app bundle. On request, the app installs Gradium’s separate [Phonon 31M English model](https://huggingface.co/gradium/phonon-31m-en) and [catalog voices](https://huggingface.co/gradium/phonon-voices), both published under Apache-2.0. The model archive is downloaded directly from the pinned Gradium release.

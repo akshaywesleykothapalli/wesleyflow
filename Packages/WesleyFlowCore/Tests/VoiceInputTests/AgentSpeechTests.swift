@@ -6,6 +6,7 @@ import Domain
 @testable import VoiceInput
 
 @Suite("Opt-in recorded Agent command recognition",.serialized) @MainActor struct AgentSpeechTests {
+    @available(macOS 26.0, *)
     @Test(.enabled(if:ProcessInfo.processInfo.environment["WESLEY_AGENT_AUDIO_DIRECTORY"] != nil))
     func modernCommandSpeechRecognizesLanguageAndBatteryWithoutMicrophone() async throws {
         let directory = URL(fileURLWithPath:try #require(ProcessInfo.processInfo.environment["WESLEY_AGENT_AUDIO_DIRECTORY"]))

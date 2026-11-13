@@ -6,14 +6,21 @@ public protocol PersonalIntentGenerating: Sendable {
     func available(locale:String) async -> Bool
     func generate(_ request:PersonalIntentRequest) async throws -> [PersonalIntentSlots]
 }
+@available(macOS 26.0, *)
 @Generable private enum NativePersonalActionKind { case open,close,google,youtube,music,spotify,message,note }
+@available(macOS 26.0, *)
 @Generable private struct NativePersonalAction { var action:NativePersonalActionKind; var app:String; var content:String; var recipient:String }
+@available(macOS 26.0, *)
 @Generable private struct NativePersonalActions { var actions:[NativePersonalAction] }
 
 public struct ApplePersonalIntentGenerator: PersonalIntentGenerating {
     public init() {}
-    public func available(locale:String) -> Bool { SystemLanguageModel.default.isAvailable && SystemLanguageModel.default.supportsLocale(Locale(identifier:locale)) }
+    public func available(locale:String) -> Bool {
+        guard #available(macOS 26.0, *) else { return false }
+        return SystemLanguageModel.default.isAvailable && SystemLanguageModel.default.supportsLocale(Locale(identifier:locale))
+    }
     public func generate(_ request:PersonalIntentRequest) async throws -> [PersonalIntentSlots] {
+        guard #available(macOS 26.0, *) else { throw PersonalPlanningFailure.modelUnavailable }
         try Task.checkCancellation()
         let names=request.apps.prefix(300).map { $0.name + " / " + $0.aliases.joined(separator:" / ") }.joined(separator:"\n")
         let instructions="""

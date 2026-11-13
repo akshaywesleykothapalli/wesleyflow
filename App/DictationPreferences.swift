@@ -58,8 +58,10 @@ struct DictationPreferences: Codable, Equatable {
     var useFocusedTextWhenUnselected = false
     var previewShortcutsEnabled = false
     var offlineAIRewriting = false
+    var spokenAgentResponses = false
+    var phononVoice = "default"
     init() {}
-    private enum CodingKeys: String, CodingKey { case polishStyle, formattingShortcutAction, languageMode, teluguRecognitionLanguage, agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled }
+    private enum CodingKeys: String, CodingKey { case polishStyle, formattingShortcutAction, languageMode, teluguRecognitionLanguage, agentKey, agentHotkeyEnabled, inPlaceAIRewrite, useFocusedTextWhenUnselected, version, keepHistory, spacingCleanup, showPill, appearance, holdFnEnabled, formatting, activationKey, idlePillEnabled, offlineAIRewriting, blockNetworkRequests, polishTone, promptEngineeringEnabled, previewShortcutsEnabled, spokenAgentResponses, phononVoice }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         polishStyle = try c.decodeIfPresent(PolishStyle.self,forKey:.polishStyle) ?? .cleanup
@@ -83,6 +85,8 @@ struct DictationPreferences: Codable, Equatable {
         blockNetworkRequests = try c.decodeIfPresent(Bool.self,forKey:.blockNetworkRequests) ?? false
         polishTone = try c.decodeIfPresent(OfflineRewriteTone.self,forKey:.polishTone) ?? .natural
         offlineAIRewriting = try c.decodeIfPresent(Bool.self,forKey:.offlineAIRewriting) ?? false
+        spokenAgentResponses = try c.decodeIfPresent(Bool.self,forKey:.spokenAgentResponses) ?? false
+        phononVoice = try c.decodeIfPresent(String.self,forKey:.phononVoice) ?? "default"
         holdFnEnabled = try c.decodeIfPresent(Bool.self,forKey:.holdFnEnabled) ?? true
     }
 }

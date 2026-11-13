@@ -5,6 +5,13 @@
   "objectVersion" = "77";
   "archiveVersion" = "1";
   "objects" = {
+    "705A00000000000000000001" = { "isa" = "XCRemoteSwiftPackageReference"; "repositoryURL" = "https://github.com/gradium-ai/xn-ptts.git"; "requirement" = { "kind" = "exactVersion"; "version" = "0.7.0"; }; };
+    "705A00000000000000000002" = { "isa" = "XCSwiftPackageProductDependency"; "package" = "705A00000000000000000001"; "productName" = "ptts"; };
+    "705A00000000000000000003" = { "isa" = "PBXBuildFile"; "productRef" = "705A00000000000000000002"; };
+    "705A00000000000000000004" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/SpeechOutput.swift"; "sourceTree" = "SOURCE_ROOT"; };
+    "705A00000000000000000005" = { "isa" = "PBXBuildFile"; "fileRef" = "705A00000000000000000004"; };
+    "705A00000000000000000006" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "folder"; "path" = "App/PhononNotices"; "sourceTree" = "SOURCE_ROOT"; };
+    "705A00000000000000000007" = { "isa" = "PBXBuildFile"; "fileRef" = "705A00000000000000000006"; };
     "A89000000000000000000004" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "AppTests/KeepAwakeTests.swift"; "sourceTree" = "SOURCE_ROOT"; };
     "B89000000000000000000004" = { "isa" = "PBXBuildFile"; "fileRef" = "A89000000000000000000004"; };
     "A89000000000000000000002" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "App/KeepAwake.swift"; "sourceTree" = "SOURCE_ROOT"; };
@@ -453,6 +460,7 @@
         "79C8F64D3B5541A38A3212FE",
         "C823BA46AF1C417195F68544",
         "CCFAB5CC993F4DCF8643DFAC",
+        "705A00000000000000000005",
         "B89000000000000000000002",
         "EC53E2A4C00D49EB935EB777",
         "A0AD78130D41429E92255BA8",
@@ -480,6 +488,8 @@
         "E18FE40E6E214967B2903BED",
         "9C88AE59274C409F9605152B",
         "08F33CD8BC9D4D2394B39F36",
+        "705A00000000000000000006",
+        "705A00000000000000000004",
         "A89000000000000000000002",
         "F5D86A826642B1704CC3BA71",
         "34B9DA293E35A7050763212D",
@@ -614,6 +624,7 @@
       "productType" = "com.apple.product-type.application";
       "packageProductDependencies" = (
         "992DACA5DEC047AE8E0B9485",
+        "705A00000000000000000002",
         "8869B785F88836A6A9E41598",
         "341ED86D476EA7829AA8206A",
         "92088E23FE4427BE452444D1",
@@ -645,7 +656,7 @@
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG $(inherited)";
         "CLANG_ENABLE_MODULES" = "YES";
         "CODE_SIGN_IDENTITY" = "-";
-        "MACOSX_DEPLOYMENT_TARGET" = "26.0";
+        "MACOSX_DEPLOYMENT_TARGET" = "15.0";
         "ENABLE_TESTABILITY" = "YES";
         "ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
         "SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
@@ -688,7 +699,7 @@
         "DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
         "CLANG_ENABLE_MODULES" = "YES";
         "CODE_SIGN_IDENTITY" = "-";
-        "MACOSX_DEPLOYMENT_TARGET" = "26.0";
+        "MACOSX_DEPLOYMENT_TARGET" = "15.0";
         "SWIFT_COMPILATION_MODE" = "wholemodule";
         "ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
         "SWIFT_OPTIMIZATION_LEVEL" = "-O";
@@ -836,6 +847,7 @@
       "buildConfigurationList" = "C0631FFB4C9621A761CD753C";
       "packageReferences" = (
         "47520DFBC21476733446881D",
+        "705A00000000000000000001",
       );
       "targets" = (
         "16E3F3B9FAF3F021E25FD9F4",
@@ -886,6 +898,7 @@
       "buildActionMask" = "2147483647";
       "files" = (
         "F915E3F710264BA39EDBCA29",
+        "705A00000000000000000003",
         "E80886E9BF4361F40AE0A96D",
         "EC72F7F6F11429BF60F0270C",
         "9C33D42162A80F6D89B306F3",
@@ -950,6 +963,7 @@
       "isa" = "PBXResourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = (
+        "705A00000000000000000007",
       );
       "runOnlyForDeploymentPostprocessing" = "0";
     };

@@ -96,6 +96,18 @@ public struct AppleSpeechConfiguration: Sendable, Equatable {
     /// Read-only: never requests installation, reserves a locale or prepares a model.
     @MainActor public static func inspect(localeIdentifier: String) async -> AppleSpeechConfiguration {
         let locale = Locale(identifier:localeIdentifier)
+        guard #available(macOS 26.0, *) else {
+            let legacy = SFSpeechRecognizer(locale: locale)
+            let permissions = permissionSummary()
+            func unavailable(_ engine: ModernSpeechEngine) -> SpeechEngineResources {
+                .init(engine: engine, deviceAvailable: false, resolvedLocale: nil,
+                      supportedLocales: [], installedLocales: [], inventoryStatus: "requiresMacOS26")
+            }
+            return .init(locale: localeIdentifier, speech: unavailable(.speechTranscriber),
+                         dictation: unavailable(.dictationTranscriber),
+                         legacyOnDeviceAvailable: legacy?.isAvailable == true && legacy?.supportsOnDeviceRecognition == true,
+                         microphone: permissions.microphone, speechPermission: permissions.speech)
+        }
         let speechSupported = await SpeechTranscriber.supportedLocales
         let speechInstalled = await SpeechTranscriber.installedLocales
         let speechLocale = await SpeechTranscriber.supportedLocale(equivalentTo:locale)
@@ -119,6 +131,7 @@ public struct AppleSpeechConfiguration: Sendable, Equatable {
                      legacyOnDeviceAvailable:legacy?.isAvailable == true && legacy?.supportsOnDeviceRecognition == true,
                      microphone:permissions.microphone,speechPermission:permissions.speech,reservedLocales:reservations.map(\.identifier).sorted())
     }
+    @available(macOS 26.0, *)
     private static func statusName(_ value: AssetInventory.Status) -> String {
         switch value {
         case .unsupported: "unsupported"
@@ -131,6 +144,7 @@ public struct AppleSpeechConfiguration: Sendable, Equatable {
 }
 
 /// Inspection, installation, preparation and capture must describe the same modules.
+@available(macOS 26.0, *)
 @MainActor enum AppleSpeechModules {
     static func speech(_ locale: Locale) -> SpeechTranscriber { SpeechTranscriber(locale:locale,preset:.timeIndexedProgressiveTranscription) }
     static func dictation(_ locale: Locale) -> DictationTranscriber {
@@ -227,11 +241,13 @@ public enum SpeechResourceFailure: Error, Equatable, Sendable { case busy, unsup
     public init() {}
     public func inspect(localeIdentifier: String) async -> AppleSpeechConfiguration { await AppleSpeechConfiguration.inspect(localeIdentifier:localeIdentifier) }
     public func installation(engine: ModernSpeechEngine, locale: String) async throws -> (any SpeechResourceInstallation)? {
+        guard #available(macOS 26.0, *) else { throw SpeechResourceFailure.unsupported }
         // This call may reserve the requested locale. It is never reached from inspect/capture.
         guard let request = try await AssetInventory.assetInstallationRequest(supporting:try await AppleSpeechModules.modules(engine,locale:locale)) else { return nil }
         return NativeSpeechResourceInstallation(request)
     }
     public func prepare(engine: ModernSpeechEngine, requestedLocale: String, resolvedLocale: String) async throws -> SpeechEnginePreparation {
+        guard #available(macOS 26.0, *) else { throw SpeechResourceFailure.unsupported }
         let modules = try await AppleSpeechModules.modules(engine,locale:resolvedLocale)
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:modules), format.commonFormat == .pcmFormatInt16 else { throw DictationFailure.audioUnavailable }
         let analyzer = SpeechAnalyzer(modules:modules,options:.init(priority:.userInitiated,modelRetention:.whileInUse))
@@ -242,6 +258,7 @@ public enum SpeechResourceFailure: Error, Equatable, Sendable { case busy, unsup
         } catch { await analyzer.cancelAndFinishNow(); throw error }
     }
 }
+@available(macOS 26.0, *)
 @MainActor private final class NativeSpeechResourceInstallation: SpeechResourceInstallation {
     private let request: AssetInstallationRequest
     init(_ request: AssetInstallationRequest) { self.request = request }

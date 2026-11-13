@@ -162,15 +162,30 @@ public extension SpeakerMatching {
         return cutoff
     }
 
-    static func enrolledLabel(_ embedding: [Float], model: SpeakerModel, profiles: [SpeakerProfile]) throws -> DictationSpeakerLabel {
+    static func enrolledLabel(_ embedding: [Float], model: SpeakerModel, profiles: [SpeakerProfile],
+                              audioFrameCount: Int? = nil) throws -> DictationSpeakerLabel {
         let query = try normalize(embedding, dimension: model.dimension)
-        let matches = profiles.filter { profile in
+        let scores = profiles.compactMap { profile -> (profile: SpeakerProfile, score: Double, cutoff: Double)? in
             guard profile.model == model, let cutoff = profile.minimumSimilarity,
-                  let template = try? normalize(profile.embedding, dimension: model.dimension) else { return false }
-            return cosine(query, template) >= cutoff
+                  let template = try? normalize(profile.embedding, dimension: model.dimension) else { return nil }
+            return (profile, cosine(query, template), cutoff)
         }
-        guard matches.count == 1, let match = matches.first else { return .unknown }
-        return .init(profileID: match.id, name: match.displayName)
+        let matches = scores.filter { $0.score >= $0.cutoff }
+        if let match = matches.first {
+            guard matches.count == 1 else { return .unknown }
+            return .init(profileID: match.profile.id, name: match.profile.displayName)
+        }
+
+        // Short dictations can score below cutoffs derived from longer enrollment passages.
+        // Only recover a high absolute score near its cutoff, with no close competitor.
+        let rate = SpeakerAudioSegment.sampleRate
+        guard let audioFrameCount, (rate...(4 * rate)).contains(audioFrameCount),
+              let best = scores.max(by: { $0.score < $1.score }),
+              best.score >= max(0.89, best.cutoff - 0.07),
+              !scores.contains(where: { $0.profile.id != best.profile.id && best.score - $0.score < 0.08 }) else {
+            return .unknown
+        }
+        return .init(profileID: best.profile.id, name: best.profile.displayName)
     }
 
     private static func cosine(_ lhs: [Float], _ rhs: [Float]) -> Double {

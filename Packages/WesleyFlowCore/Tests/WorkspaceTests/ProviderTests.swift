@@ -1084,6 +1084,7 @@ extension OfflineRewriteProviderTests {
 
 
 extension OfflineRewriteProviderTests {
+    @available(macOS 26.0, *)
     @Test func guidedPromptTransportRetainsAllContractChecks() throws {
         let request = OfflineRewriteRequest(id:"guided",text:"Check the save button.\nKeep the current layout.\nReturn a short report.",localeIdentifier:"en-IN",kind:.promptEngineering)
         let contract = try PromptEngineeringContract(request,allowRewriting:true)
